@@ -5,7 +5,7 @@ namespace MapperIce.Services;
 
 public class RoomTypeManager
 {
-    public string SelectedType { get; private set; } = "BaseRoom";
+    public string SelectedType { get; private set; } = "General";
     public event Action? OnTypeChanged;
 
     private Dictionary<string, RoomType> _types = new();
@@ -28,30 +28,41 @@ public class RoomTypeManager
         LoadCustomTypes();
     }
 
-    private void LoadVanillaTypes()
+private void LoadVanillaTypes()
+{
+    var allTypes = new RoomType[]
     {
-        var vanillaTypes = new RoomType[]
-        {
-            new BaseRoom(),
-            new Armory(),
-            new Medical(),
-            new Engineering(),
-            new Security(),
-            new Science(),
-            new Cargo(),
-            new Kitchen(),
-            new Bar()
-        };
+        new BaseRoom(),      // Будет скрыт
+        new General(),
+        new Technical(),
+        new Command(),
+        new Medical(),
+        new Service(),
+        new Engineering(),
+        new Security(),
+        new Bar(),
+        new Science(),
+        new Cargo(),
+        new Janitor(),
+        new Chemistry(),
+        new Virology(),
+        new Atmospherics(),
+        new Salvage(),
+        new Neutral(),
+        new NeutralLight()
+    };
 
-        foreach (var type in vanillaTypes)
-        {
-            _types[type.Name] = type;
-            if (!_categories.ContainsKey(type.Category))
-                _categories[type.Category] = new List<RoomType>();
-            _categories[type.Category].Add(type);
-        }
+    foreach (var type in allTypes)
+    {
+        // Пропускаем скрытые типы
+        if (type.IsHidden) continue;
+        
+        _types[type.Name] = type;
+        if (!_categories.ContainsKey(type.Category))
+            _categories[type.Category] = new List<RoomType>();
+        _categories[type.Category].Add(type);
     }
-
+}
     private void LoadCustomTypes()
     {
         if (!File.Exists(_customTypesPath)) return;
@@ -98,14 +109,21 @@ public class RoomTypeManager
         catch { }
     }
 
-    public void CreateCustomType(string name, string category, string wallProto, string floorProto, Color fillColor, Color lineColor)
+    public void CreateCustomType(string name, string category, string wallProto, string floorProto, string doorProto, Color fillColor, Color lineColor)
     {
+        if (_types.ContainsKey(name))
+        {
+            MessageBox.Show($"Тип с именем '{name}' уже существует!");
+            return;
+        }
+
         var data = new CustomRoomTypeData
         {
             Name = name,
             Category = category,
             WallProto = wallProto,
             FloorProto = floorProto,
+            DoorProto = doorProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}"
         };
@@ -140,10 +158,16 @@ public class RoomTypeManager
         OnTypeChanged?.Invoke();
     }
 
-    public void EditCustomType(string oldName, string newName, string category, string wallProto, string floorProto, Color fillColor, Color lineColor)
+    public void EditCustomType(string oldName, string newName, string category, string wallProto, string floorProto, string doorProto, Color fillColor, Color lineColor)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
+
+        if (oldName != newName && _types.ContainsKey(newName))
+        {
+            MessageBox.Show($"Тип с именем '{newName}' уже существует!");
+            return;
+        }
 
         _types.Remove(oldName);
         if (_categories.TryGetValue(oldType.Category, out var list))
@@ -159,6 +183,7 @@ public class RoomTypeManager
             Category = category,
             WallProto = wallProto,
             FloorProto = floorProto,
+            DoorProto = doorProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}"
         };
@@ -190,7 +215,7 @@ public class RoomTypeManager
         }
     }
 
-    public RoomType GetType(string? typeName = null)
+    public RoomType GetRoomType(string? typeName = null)
     {
         var key = typeName ?? SelectedType;
         return _types.TryGetValue(key, out var type) ? type : _types["BaseRoom"];
@@ -198,51 +223,136 @@ public class RoomTypeManager
 
     public void ApplyTypeToRoom(Room room, string? typeName = null)
     {
-        var type = GetType(typeName);
+        var type = GetRoomType(typeName);
         room.WallProto = type.WallProto;
         room.FloorProto = type.FloorProto;
+        room.DoorProto = type.DoorProto;
         room.FillColor = type.FillColor;
         room.LineColor = type.LineColor;
         room.RoomType = type.Name;
     }
-}
 
-public class CustomRoomTypeData
-{
-    public string Name { get; set; } = "";
-    public string Category { get; set; } = "Custom";
-    public string WallProto { get; set; } = "WallSolid";
-    public string FloorProto { get; set; } = "Plating";
-    public string FillColor { get; set; } = "128,230,230,230";
-    public string LineColor { get; set; } = "255,200,200,200";
-}
-
-public class CustomRoomType : RoomType
-{
-    public CustomRoomTypeData Data { get; }
-
-    public CustomRoomType(CustomRoomTypeData data)
+    public void ExportType(string typeName, string filePath)
     {
-        Data = data;
+        var type = GetRoomType(typeName);
+        if (type == null) return;
+
+        var data = new ExportData
+        {
+            Type = "Single",
+            Name = type.Name,
+            Category = type.Category,
+            WallProto = type.WallProto,
+            FloorProto = type.FloorProto,
+            DoorProto = type.DoorProto,
+            FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}"
+        };
+
+        var json = JsonSerializer.Serialize(data, _jsonOptions);
+        File.WriteAllText(filePath, json);
     }
 
-    public override string Name => Data.Name;
-    public override string Category => Data.Category;
-    public override string WallProto => Data.WallProto;
-    public override string FloorProto => Data.FloorProto;
-    public override Color FillColor => ParseColor(Data.FillColor);
-    public override Color LineColor => ParseColor(Data.LineColor);
-    public override bool IsCustom => true;
-
-    private static Color ParseColor(string value)
+    public void ExportCategory(string categoryName, string filePath)
     {
-        try
+        if (!_categories.TryGetValue(categoryName, out var types) || types.Count == 0)
         {
-            var parts = value.Split(',');
-            if (parts.Length == 4)
-                return Color.FromArgb(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]));
+            MessageBox.Show($"Категория '{categoryName}' пуста или не найдена");
+            return;
         }
-        catch { }
-        return Color.FromArgb(128, 230, 230, 230);
+
+        var dataList = types.Select(type => new ExportData
+        {
+            Type = "Category",
+            Name = type.Name,
+            Category = type.Category,
+            WallProto = type.WallProto,
+            FloorProto = type.FloorProto,
+            DoorProto = type.DoorProto,
+            FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}"
+        }).ToList();
+
+        var json = JsonSerializer.Serialize(dataList, _jsonOptions);
+        File.WriteAllText(filePath, json);
+    }
+
+    public void ImportType(string filePath)
+    {
+        var json = File.ReadAllText(filePath);
+        var data = JsonSerializer.Deserialize<ExportData>(json);
+        if (data == null) return;
+
+        if (_types.ContainsKey(data.Name))
+        {
+            MessageBox.Show($"Тип с именем '{data.Name}' уже существует!");
+            return;
+        }
+
+        var customData = new CustomRoomTypeData
+        {
+            Name = data.Name,
+            Category = data.Category,
+            WallProto = data.WallProto,
+            FloorProto = data.FloorProto,
+            DoorProto = data.DoorProto,
+            FillColor = data.FillColor,
+            LineColor = data.LineColor
+        };
+
+        var type = new CustomRoomType(customData);
+        _types[type.Name] = type;
+        if (!_categories.ContainsKey(type.Category))
+            _categories[type.Category] = new List<RoomType>();
+        _categories[type.Category].Add(type);
+
+        SaveCustomTypes();
+        OnTypeChanged?.Invoke();
+        MessageBox.Show($"Тип '{type.Name}' импортирован!");
+    }
+
+    public void ImportCategory(string filePath)
+    {
+        var json = File.ReadAllText(filePath);
+        var dataList = JsonSerializer.Deserialize<List<ExportData>>(json);
+        if (dataList == null || dataList.Count == 0) return;
+
+        int imported = 0;
+        int skipped = 0;
+
+        foreach (var data in dataList)
+        {
+            if (_types.ContainsKey(data.Name))
+            {
+                skipped++;
+                continue;
+            }
+
+            var customData = new CustomRoomTypeData
+            {
+                Name = data.Name,
+                Category = data.Category,
+                WallProto = data.WallProto,
+                FloorProto = data.FloorProto,
+                DoorProto = data.DoorProto,
+                FillColor = data.FillColor,
+                LineColor = data.LineColor
+            };
+
+            var type = new CustomRoomType(customData);
+            _types[type.Name] = type;
+            if (!_categories.ContainsKey(type.Category))
+                _categories[type.Category] = new List<RoomType>();
+            _categories[type.Category].Add(type);
+            imported++;
+        }
+
+        SaveCustomTypes();
+        OnTypeChanged?.Invoke();
+        
+        if (skipped > 0)
+            MessageBox.Show($"Импортировано: {imported}, пропущено (уже есть): {skipped}");
+        else
+            MessageBox.Show($"Импортировано: {imported}");
     }
 }

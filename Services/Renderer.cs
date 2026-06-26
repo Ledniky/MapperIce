@@ -110,47 +110,38 @@ public class Renderer
         g.FillRectangle(fill, rect);
     }
 
-    private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
+private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
+{
+    // Используем ТЕ ЖЕ координаты, что и в DrawRoomFill
+    int innerW = Math.Max(0, room.Width - 1);
+    int innerH = Math.Max(0, room.Height - 1);
+    
+    float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+    float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+    var rect = new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
+
+    Color color = isCurrent ? Color.Red : Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
+    using var pen = new Pen(color, isCurrent ? 3 : 2);
+    g.DrawRectangle(pen, rect);
+
+    // Внутренний объём: (ширина - 2) × (высота - 2)
+    if (tileSize > 20 && opacity > 0.3f)
     {
-        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-
-        var rect = new Rectangle(
-            (int)x,
-            (int)y,
-            (room.Width - 1) * tileSize,
-            (room.Height - 1) * tileSize
-        );
-
-        Color lineColor;
-        if (isCurrent)
+        int innerWText = Math.Max(0, room.Width - 2);
+        int innerHText = Math.Max(0, room.Height - 2);
+        
+        if (innerWText > 0 && innerHText > 0)
         {
-            lineColor = Color.Red;
-        }
-        else
-        {
-            int alpha = (int)(room.LineColor.A * opacity);
-            lineColor = Color.FromArgb(alpha, room.LineColor.R, room.LineColor.G, room.LineColor.B);
-        }
-
-        using var stroke = new Pen(lineColor, isCurrent ? 3 : 2);
-        g.DrawRectangle(stroke, rect);
-
-        // Внутренний объём: (ширина - 2) × (высота - 2)
-        if (tileSize > 20 && opacity > 0.3f)
-        {
-            int innerW = Math.Max(0, room.Width - 2);
-            int innerH = Math.Max(0, room.Height - 2);
-            
-            if (innerW > 0 && innerH > 0)
-            {
-                using var font = new Font("Arial", Math.Min(10, tileSize / 3));
-                int textAlpha = (int)(200 * opacity);
-                using var textBrush = new SolidBrush(Color.FromArgb(textAlpha, 50, 50, 50));
-                g.DrawString($"{innerW}×{innerH}", font, textBrush, rect.X + 2, rect.Y + 2);
-            }
+            using var font = new Font("Arial", Math.Min(10, tileSize / 3));
+            Color textColor = GetContrastColor(room.FillColor);
+            int alpha = (int)(200 * opacity);
+            using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
+            g.DrawString($"{innerWText}×{innerHText}", font, brush, rect.X + 2, rect.Y + 2);
         }
     }
+}
+
 
     private void DrawInfo(Graphics g, float scale, string toolName, MapData map)
     {
@@ -159,5 +150,13 @@ public class Renderer
         var name = map.ActiveGrid?.Name ?? "Нет";
         g.DrawString($"Инструмент: {toolName}  Масштаб: {scale:P0}  Активный грид: {name}  Всего: {map.Grids.Count}",
             font, brush, 10, 10);
+    }
+    private Color GetContrastColor(Color backgroundColor)
+    {
+        // Вычисляем яркость цвета (0-255)
+        int brightness = (int)(backgroundColor.R * 0.299 + backgroundColor.G * 0.587 + backgroundColor.B * 0.114);
+
+        // Если яркость меньше 128 — текст белый, иначе чёрный
+        return brightness < 128 ? Color.White : Color.Black;
     }
 }

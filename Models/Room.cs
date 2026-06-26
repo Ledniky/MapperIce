@@ -15,6 +15,7 @@ public class Room
     public string RoomType { get; set; } = "BaseRoom";
     public string WallProto { get; set; } = "WallSolid";
     public string FloorProto { get; set; } = "Plating";
+    public string DoorProto { get; set; } = "";
 
     public Room Clone()
     {
@@ -28,7 +29,8 @@ public class Room
             LineColor = LineColor,
             RoomType = RoomType,
             WallProto = WallProto,
-            FloorProto = FloorProto
+            FloorProto = FloorProto,
+            DoorProto = DoorProto
         };
     }
 }

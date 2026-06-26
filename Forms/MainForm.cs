@@ -37,7 +37,8 @@ public class MainForm : Form
     private string _currentFilter = "all";
 
     private Form? _roomTypeForm = null;
-
+    private Label _typeLabel = null!;
+    
     public MainForm()
     {
         Text = "MapperIce";
@@ -425,6 +426,20 @@ public class MainForm : Form
             Padding = new Padding(5, 2, 5, 2)
         };
 
+
+        _typeLabel = new Label
+        {
+            Name = "typeLabel",
+            Text = $"Тип: {_roomTypeManager.SelectedType}",
+            Dock = DockStyle.Top,
+            Height = 25,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.DarkGray,
+            Font = new Font("Arial", 8)
+        };
+        panel.Controls.Add(_typeLabel);
+
+
         _btnCreateRoom = new Button
         {
             Text = "🟦 Создать",
@@ -484,7 +499,7 @@ public class MainForm : Form
         Controls.Add(panel);
     }
 
-    // === Диалог выбора типа комнаты (неблокирующий) ===
+    // === Диалог выбора типа комнаты ===
 
     private void ShowRoomTypeDialog()
     {
@@ -498,12 +513,12 @@ public class MainForm : Form
         _roomTypeForm = new Form
         {
             Text = "Выберите тип комнаты",
-            Size = new Size(450, 500),
+            Size = new Size(550, 520),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.Sizable,
-            TopMost = true,
             ShowInTaskbar = false
         };
+        _roomTypeForm.Owner = this;
 
         var treeView = new TreeView
         {
@@ -513,152 +528,141 @@ public class MainForm : Form
         };
         UpdateTreeView(treeView);
 
-        var btnPanel = new Panel
+        var btnPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
             Height = 50,
-            Padding = new Padding(10)
+            Padding = new Padding(10),
+            ColumnCount = 7,
+            RowCount = 1
         };
+        for (int i = 0; i < 7; i++)
+            btnPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 / 7));
 
+        // OK
         var btnOk = new Button
         {
             Text = "OK",
-            Location = new Point(10, 10),
-            Width = 60,
-            Height = 30
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
         };
         btnOk.Click += (s, e) =>
         {
             if (treeView.SelectedNode?.Tag is RoomType selected)
+            {
                 _roomTypeManager.SelectType(selected.Name);
+                UpdateTypeLabel();
+            }
             _roomTypeForm?.Close();
         };
-        btnPanel.Controls.Add(btnOk);
+        btnPanel.Controls.Add(btnOk, 0, 0);
 
+        // Отмена
         var btnCancel = new Button
         {
             Text = "Отмена",
-            Location = new Point(75, 10),
-            Width = 60,
-            Height = 30
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
         };
         btnCancel.Click += (s, e) => _roomTypeForm?.Close();
-        btnPanel.Controls.Add(btnCancel);
+        btnPanel.Controls.Add(btnCancel, 1, 0);
 
+        // Создать
         var btnAdd = new Button
         {
             Text = "➕ Создать",
-            Location = new Point(145, 10),
-            Width = 70,
-            Height = 30
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
         };
         btnAdd.Click += (s, e) =>
         {
             using var editForm = new Form
             {
-        Text = "Создать тип комнаты",
-        Size = new Size(300, 350),
-        StartPosition = FormStartPosition.CenterParent,
-        FormBorderStyle = FormBorderStyle.FixedDialog,
-        TopMost = true  // ← ДОБАВЬ ЭТУ СТРОКУ
-    };
+                Text = "Создать тип комнаты",
+                Size = new Size(300, 400),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog
+            };
+            editForm.Owner = _roomTypeForm;
 
             var table = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(10),
-                RowCount = 7,
+                RowCount = 8,
                 ColumnCount = 2
             };
 
-            table.Controls.Add(new Label { Text = "Название:", AutoSize = true }, 0, 0);
             var txtName = new TextBox { Dock = DockStyle.Fill };
-            table.Controls.Add(txtName, 1, 0);
-
-            table.Controls.Add(new Label { Text = "Категория:", AutoSize = true }, 0, 1);
             var txtCategory = new TextBox { Dock = DockStyle.Fill, Text = "Custom" };
-            table.Controls.Add(txtCategory, 1, 1);
-
-            table.Controls.Add(new Label { Text = "Стена (proto):", AutoSize = true }, 0, 2);
             var txtWall = new TextBox { Dock = DockStyle.Fill, Text = "WallSolid" };
-            table.Controls.Add(txtWall, 1, 2);
-
-            table.Controls.Add(new Label { Text = "Пол (proto):", AutoSize = true }, 0, 3);
             var txtFloor = new TextBox { Dock = DockStyle.Fill, Text = "Plating" };
-            table.Controls.Add(txtFloor, 1, 3);
+            var txtDoor = new TextBox { Dock = DockStyle.Fill, Text = "" };
+            var txtFill = new TextBox { Dock = DockStyle.Fill, Text = "200,230,230,230" };
+            var txtLine = new TextBox { Dock = DockStyle.Fill, Text = "255,180,180,180" };
 
-            table.Controls.Add(new Label { Text = "Цвет (A,R,G,B):", AutoSize = true }, 0, 4);
-            var txtFill = new TextBox { Dock = DockStyle.Fill, Text = "128,230,230,230" };
-            table.Controls.Add(txtFill, 1, 4);
-
-            table.Controls.Add(new Label { Text = "Цвет линии (A,R,G,B):", AutoSize = true }, 0, 5);
-            var txtLine = new TextBox { Dock = DockStyle.Fill, Text = "255,200,200,200" };
-            table.Controls.Add(txtLine, 1, 5);
+            AddRow(table, "Название:", txtName, 0);
+            AddRow(table, "Категория:", txtCategory, 1);
+            AddRow(table, "Стена (proto):", txtWall, 2);
+            AddRow(table, "Пол (proto):", txtFloor, 3);
+            AddRow(table, "Дверь (proto):", txtDoor, 4);
+            AddRow(table, "Цвет (A,R,G,B):", txtFill, 5);
+            AddRow(table, "Цвет линии (A,R,G,B):", txtLine, 6);
 
             var btnSave = new Button { Text = "Сохранить", Dock = DockStyle.Fill };
             var btnCancelEdit = new Button { Text = "Отмена", Dock = DockStyle.Fill };
             var btnPanelEdit = new Panel { Dock = DockStyle.Fill };
+
             btnSave.Click += (s2, e2) =>
             {
                 try
                 {
-                    var fillParts = txtFill.Text.Split(',').Select(int.Parse).ToArray();
-                    var lineParts = txtLine.Text.Split(',').Select(int.Parse).ToArray();
+                    var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
+                    var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
                     _roomTypeManager.CreateCustomType(
-                        txtName.Text,
-                        txtCategory.Text,
-                        txtWall.Text,
-                        txtFloor.Text,
-                        Color.FromArgb(fillParts[0], fillParts[1], fillParts[2], fillParts[3]),
-                        Color.FromArgb(lineParts[0], lineParts[1], lineParts[2], lineParts[3])
+                        txtName.Text, txtCategory.Text, txtWall.Text, txtFloor.Text, txtDoor.Text,
+                        Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
+                        Color.FromArgb(line[0], line[1], line[2], line[3])
                     );
                     UpdateTreeView(treeView);
-                    editForm.DialogResult = DialogResult.OK;
                     editForm.Close();
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка: {ex.Message}");
-                }
+                catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
             };
             btnCancelEdit.Click += (s2, e2) => editForm.Close();
 
             btnPanelEdit.Controls.Add(btnSave);
             btnPanelEdit.Controls.Add(btnCancelEdit);
-            table.Controls.Add(btnPanelEdit, 0, 6);
+            table.Controls.Add(btnPanelEdit, 0, 7);
             table.SetColumnSpan(btnPanelEdit, 2);
 
             editForm.Controls.Add(table);
-            editForm.ShowDialog();
+            editForm.ShowDialog(_roomTypeForm);
         };
-        btnPanel.Controls.Add(btnAdd);
+        btnPanel.Controls.Add(btnAdd, 2, 0);
 
+        // Правка
         var btnEdit = new Button
         {
             Text = "✏️ Правка",
-            Location = new Point(220, 10),
-            Width = 65,
-            Height = 30
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
         };
         btnEdit.Click += (s, e) =>
         {
             if (treeView.SelectedNode?.Tag is CustomRoomType custom)
-            {
                 MessageBox.Show("Редактирование пока не реализовано");
-            }
             else
-            {
-                MessageBox.Show("Выберите кастомный тип для редактирования");
-            }
+                MessageBox.Show("Выберите кастомный тип");
         };
-        btnPanel.Controls.Add(btnEdit);
+        btnPanel.Controls.Add(btnEdit, 3, 0);
 
+        // Удалить
         var btnDelete = new Button
         {
             Text = "🗑 Удалить",
-            Location = new Point(290, 10),
-            Width = 65,
-            Height = 30
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
         };
         btnDelete.Click += (s, e) =>
         {
@@ -670,12 +674,66 @@ public class MainForm : Form
                     UpdateTreeView(treeView);
                 }
             }
+            else MessageBox.Show("Выберите кастомный тип");
+        };
+        btnPanel.Controls.Add(btnDelete, 4, 0);
+
+        // Экспорт
+        var btnExport = new Button
+        {
+            Text = "📤 Экспорт",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnExport.Click += (s, e) =>
+        {
+            if (treeView.SelectedNode == null) { MessageBox.Show("Выберите тип или категорию"); return; }
+            using var dialog = new SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (treeView.SelectedNode.Tag is RoomType selected)
+            {
+                dialog.FileName = $"{selected.Name}.json";
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _roomTypeManager.ExportType(selected.Name, dialog.FileName);
+                    MessageBox.Show($"Тип '{selected.Name}' экспортирован!");
+                }
+            }
             else
             {
-                MessageBox.Show("Выберите кастомный тип для удаления");
+                dialog.FileName = $"{treeView.SelectedNode.Text}.json";
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _roomTypeManager.ExportCategory(treeView.SelectedNode.Text, dialog.FileName);
+                    MessageBox.Show($"Категория '{treeView.SelectedNode.Text}' экспортирована!");
+                }
             }
         };
-        btnPanel.Controls.Add(btnDelete);
+        btnPanel.Controls.Add(btnExport, 5, 0);
+
+        // Импорт
+        var btnImport = new Button
+        {
+            Text = "📥 Импорт",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnImport.Click += (s, e) =>
+        {
+            using var dialog = new OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+            try
+            {
+                var json = File.ReadAllText(dialog.FileName);
+                if (json.Contains("\"Type\":\"Category\"") || json.StartsWith("["))
+                    _roomTypeManager.ImportCategory(dialog.FileName);
+                else
+                    _roomTypeManager.ImportType(dialog.FileName);
+                UpdateTreeView(treeView);
+                MessageBox.Show("Импорт завершён!");
+            }
+            catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
+        };
+        btnPanel.Controls.Add(btnImport, 6, 0);
 
         _roomTypeForm.Controls.Add(treeView);
         _roomTypeForm.Controls.Add(btnPanel);
@@ -683,22 +741,37 @@ public class MainForm : Form
         _roomTypeForm.FormClosed += (s, e) => { _roomTypeForm = null; };
         _roomTypeForm.Show(this);
     }
+    // === Вспомогательные методы ===
+
+    private Button CreateButton(string text, EventHandler click)
+    {
+        return new Button
+        {
+            Text = text,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+    }
+
+    private void AddRow(TableLayoutPanel table, string labelText, Control control, int row)
+    {
+        table.Controls.Add(new Label { Text = labelText, AutoSize = true }, 0, row);
+        table.Controls.Add(control, 1, row);
+    }
 
     private void UpdateTreeView(TreeView treeView)
     {
         treeView.Nodes.Clear();
-        var categories = _roomTypeManager.GetCategories();
-        foreach (var category in categories.OrderBy(c => c.Key))
+        foreach (var category in _roomTypeManager.GetCategories().OrderBy(c => c.Key))
         {
             var node = new TreeNode(category.Key);
             foreach (var type in category.Value.OrderBy(t => t.Name))
             {
-                var childNode = new TreeNode(type.Name)
+                node.Nodes.Add(new TreeNode(type.Name)
                 {
                     Tag = type,
                     ForeColor = type.IsCustom ? Color.Blue : Color.Black
-                };
-                node.Nodes.Add(childNode);
+                });
             }
             treeView.Nodes.Add(node);
         }
@@ -993,4 +1066,9 @@ public class MainForm : Form
         _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
         Render();
     }
+    private void UpdateTypeLabel()
+{
+    if (_typeLabel != null)
+        _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
+}
 }
