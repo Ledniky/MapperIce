@@ -93,61 +93,64 @@ public class Renderer
 
     private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
-        int innerW = Math.Max(0, room.Width - 1);
-        int innerH = Math.Max(0, room.Height - 1);
-        
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-        var rect = new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
+        var rect = new Rectangle(
+            (int)x,
+            (int)y,
+            (room.Width - 1) * tileSize,
+            (room.Height - 1) * tileSize
+        );
+
         int alpha = (int)(room.FillColor.A * opacity);
-        using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
-        g.FillRectangle(brush, rect);
+        var color = Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B);
+
+        using var fill = new SolidBrush(color);
+        g.FillRectangle(fill, rect);
     }
 
-private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
-{
-    // Комната рисуется со смещением 0.5 (центр тайла)
-    float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-    float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-
-    var rect = new Rectangle(
-        (int)x,
-        (int)y,
-        (room.Width - 1) * tileSize,
-        (room.Height - 1) * tileSize
-    );
-
-    Color lineColor;
-    if (isCurrent)
+    private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
-        lineColor = Color.Red;
-    }
-    else
-    {
-        int alpha = (int)(room.LineColor.A * opacity);
-        lineColor = Color.FromArgb(alpha, room.LineColor.R, room.LineColor.G, room.LineColor.B);
-    }
+        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-    using var stroke = new Pen(lineColor, isCurrent ? 3 : 2);
-    g.DrawRectangle(stroke, rect);
+        var rect = new Rectangle(
+            (int)x,
+            (int)y,
+            (room.Width - 1) * tileSize,
+            (room.Height - 1) * tileSize
+        );
 
-    // ВНУТРЕННИЙ ОБЪЁМ: (ширина - 2) × (высота - 2)
-    if (tileSize > 20 && opacity > 0.3f)
-    {
-        int innerW = Math.Max(0, room.Width - 2);
-        int innerH = Math.Max(0, room.Height - 2);
-        
-        // Показываем только если есть внутреннее пространство
-        if (innerW > 0 && innerH > 0)
+        Color lineColor;
+        if (isCurrent)
         {
-            using var font = new Font("Arial", Math.Min(10, tileSize / 3));
-            int textAlpha = (int)(200 * opacity);
-            using var textBrush = new SolidBrush(Color.FromArgb(textAlpha, 50, 50, 50));
-            g.DrawString($"{innerW}×{innerH}", font, textBrush, rect.X + 2, rect.Y + 2);
+            lineColor = Color.Red;
+        }
+        else
+        {
+            int alpha = (int)(room.LineColor.A * opacity);
+            lineColor = Color.FromArgb(alpha, room.LineColor.R, room.LineColor.G, room.LineColor.B);
+        }
+
+        using var stroke = new Pen(lineColor, isCurrent ? 3 : 2);
+        g.DrawRectangle(stroke, rect);
+
+        // Внутренний объём: (ширина - 2) × (высота - 2)
+        if (tileSize > 20 && opacity > 0.3f)
+        {
+            int innerW = Math.Max(0, room.Width - 2);
+            int innerH = Math.Max(0, room.Height - 2);
+            
+            if (innerW > 0 && innerH > 0)
+            {
+                using var font = new Font("Arial", Math.Min(10, tileSize / 3));
+                int textAlpha = (int)(200 * opacity);
+                using var textBrush = new SolidBrush(Color.FromArgb(textAlpha, 50, 50, 50));
+                g.DrawString($"{innerW}×{innerH}", font, textBrush, rect.X + 2, rect.Y + 2);
+            }
         }
     }
-}
 
     private void DrawInfo(Graphics g, float scale, string toolName, MapData map)
     {

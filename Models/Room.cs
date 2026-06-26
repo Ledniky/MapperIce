@@ -14,16 +14,17 @@ public class Room
     
     // Линия: синяя, почти непрозрачная (альфа 200)
     public Color LineColor { get; set; } = Color.FromArgb(255, 200, 200, 200);
+
     public Room Clone()
     {
         return new Room
         {
-            X = this.X,
-            Y = this.Y,
-            Width = this.Width,
-            Height = this.Height,
-            FillColor = this.FillColor,
-            LineColor = this.LineColor
+            X = X,
+            Y = Y,
+            Width = Width,
+            Height = Height,
+            FillColor = FillColor,
+            LineColor = LineColor
         };
     }
 }

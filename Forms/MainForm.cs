@@ -9,20 +9,15 @@ public class MainForm : Form
     private Room? _currentRoom = null;
     private Renderer _renderer;
     private ToolManager _toolManager = new();
+    private UndoManager _undo = new();
 
     private Point _startPoint;
     private bool _isDrawing = false;
 
-    // Используем PointF для плавного смещения
     private PointF _viewOffset = new PointF(0, 0);
     private PointF _panStart;
     private bool _isPanning = false;
     private float _scale = 1.0f;
-
-    // Константы для масштабирования
-    private const float MIN_SCALE = 0.2f;
-    private const float MAX_SCALE = 3.0f;
-    private const float ZOOM_STEP = 0.1f;
 
     private PictureBox _canvas = null!;
     private Button _btnCreateRoom = null!;
@@ -54,8 +49,58 @@ public class MainForm : Form
         _map.AddGrid(defaultGrid);
         UpdateGridSelector();
 
+        // Сохраняем начальное состояние (пусто)
+        SaveState();
+
         UpdateBuffer();
     }
+
+    // === Undo/Redo ===
+
+    private void SaveState()
+    {
+        if (_map.ActiveGrid == null) return;
+        var state = _map.ActiveGrid.Rooms.Select(r => r.Clone()).ToList();
+        _undo.SaveState(state);
+    }
+
+    private void RestoreState(List<Room> state)
+    {
+        if (_map.ActiveGrid == null) return;
+        _map.ActiveGrid.Rooms.Clear();
+        foreach (var room in state)
+            _map.ActiveGrid.Rooms.Add(room);
+        Render();
+    }
+
+    // === Обработка клавиш ===
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == (Keys.Control | Keys.Z))
+        {
+            if (_undo.CanUndo)
+            {
+                var state = _undo.Undo();
+                RestoreState(state);
+            }
+            return true;
+        }
+        
+        if (keyData == (Keys.Control | Keys.Y))
+        {
+            if (_undo.CanRedo)
+            {
+                var state = _undo.Redo();
+                RestoreState(state);
+            }
+            return true;
+        }
+        
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    // === Панель гридов ===
 
     private void CreateGridPanel()
     {
@@ -152,6 +197,8 @@ public class MainForm : Form
         }
     }
 
+    // === Панель инструментов ===
+
     private void CreateToolPanel()
     {
         var panel = new Panel
@@ -218,6 +265,8 @@ public class MainForm : Form
         Controls.Add(panel);
     }
 
+    // === Холст ===
+
     private void CreateCanvas()
     {
         _canvas = new PictureBox
@@ -234,6 +283,8 @@ public class MainForm : Form
         Controls.Add(_canvas);
     }
 
+    // === Меню ===
+
     private void CreateMenu()
     {
         var menu = new MenuStrip();
@@ -248,17 +299,14 @@ public class MainForm : Form
         var toolStrip = new ToolStrip();
         toolStrip.Items.Add(new ToolStripButton("Сбросить вид", null, (s, e) =>
         {
-            ResetView();
+            _scale = 1.0f;
+            _viewOffset = new PointF(0, 0);
+            Render();
         }));
         Controls.Add(toolStrip);
     }
 
-    private void ResetView()
-    {
-        _scale = 1.0f;
-        _viewOffset = new PointF(0, 0);
-        Render();
-    }
+    // === Отрисовка ===
 
     private void OnToolChanged(ToolManager.Tool tool)
     {
@@ -315,13 +363,10 @@ public class MainForm : Form
         if (e.Button == MouseButtons.Left)
         {
             int tileSize = (int)(Constants.TILE_SIZE * _scale);
-
             float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
             float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
-
             float worldX = (e.Location.X + _viewOffset.X - gridOffsetX) / tileSize;
             float worldY = (e.Location.Y + _viewOffset.Y - gridOffsetY) / tileSize;
-
             int tileX = (int)Math.Floor(worldX);
             int tileY = (int)Math.Floor(worldY);
 
@@ -329,13 +374,7 @@ public class MainForm : Form
             {
                 _isDrawing = true;
                 _startPoint = e.Location;
-                _currentRoom = new Room
-                {
-                    X = tileX,
-                    Y = tileY,
-                    Width = 1,
-                    Height = 1
-                };
+                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
             }
             else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
             {
@@ -344,6 +383,7 @@ public class MainForm : Form
                     tileY >= r.Y && tileY < r.Y + r.Height);
                 if (room != null)
                 {
+                    SaveState();
                     _map.ActiveGrid.Rooms.Remove(room);
                     Render();
                 }
@@ -398,7 +438,10 @@ public class MainForm : Form
         if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
         {
             if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
+            {
+                SaveState();
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
+            }
 
             _currentRoom = null;
             _isDrawing = false;
@@ -406,11 +449,10 @@ public class MainForm : Form
         }
     }
 
-private void OnMouseWheel(object? sender, MouseEventArgs e)
-{
-    float delta = e.Delta > 0 ? 0.1f : -0.1f;
-    _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
-    Render();
-}
-
+    private void OnMouseWheel(object? sender, MouseEventArgs e)
+    {
+        float delta = e.Delta > 0 ? 0.1f : -0.1f;
+        _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
+        Render();
+    }
 }
