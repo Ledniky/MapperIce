@@ -39,13 +39,14 @@ public class MainForm : Form
     private Form? _roomTypeForm = null;
     private Label _typeLabel = null!;
     
+    
     public MainForm()
     {
         Text = "MapperIce";
         Size = new Size(1024, 768);
         WindowState = FormWindowState.Maximized;
 
-        _renderer = new Renderer(Width, Height);
+        _renderer = new Renderer(Width, Height, _indexer);
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -356,7 +357,7 @@ public class MainForm : Form
                 break;
         }
 
-        foreach (var id in filteredIds.Take(1000))
+        foreach (var id in filteredIds)
             _protoList.Items.Add(id);
 
         if (_protoList.Items.Count == 0)

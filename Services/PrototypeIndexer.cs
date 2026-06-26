@@ -8,6 +8,7 @@ public class PrototypeIndexer
     private Dictionary<string, Prototype> _prototypes = new();
     private string _currentRepoPath = "";
     private string _currentRepoId = "";
+    private string _rootPath = "";
 
     public event Action? OnIndexingComplete;
     public string CurrentRepoId => _currentRepoId;
@@ -52,46 +53,38 @@ public class PrototypeIndexer
 private List<Prototype> ParsePrototypes(string content, string filePath)
 {
     var result = new List<Prototype>();
-    
-    // Ищем все блоки с id:
-    var blocks = Regex.Split(content, @"(?=^[ \t]*id:)", RegexOptions.Multiline);
+    var blocks = Regex.Split(content, @"(?=^[ \t]*- type:)", RegexOptions.Multiline);
     
     foreach (var block in blocks)
     {
         if (string.IsNullOrWhiteSpace(block)) continue;
         if (!block.Contains("id:")) continue;
-        
-        // Парсим ID
-        var idMatch = Regex.Match(block, @"id:\s*(\S+)");
+
+        // === ПРОВЕРКА НА ABSTRACT ===
+        if (block.Contains("abstract: true")) continue;
+
+        var proto = new Prototype();
+        proto.FilePath = filePath;
+
+        var idMatch = Regex.Match(block, @"^[ \t]*id:\s*(\S+)", RegexOptions.Multiline);
         if (!idMatch.Success) continue;
         
         var id = idMatch.Groups[1].Value;
         
-        // ❌ ФИЛЬТРЫ
+        // === МИНИМАЛЬНЫЙ ФИЛЬТР ===
         if (string.IsNullOrEmpty(id)) continue;
-        if (!Regex.IsMatch(id, @"[A-Za-z]")) continue;                    // Должна быть буква
-        if (id == "true" || id == "false") continue;                     // Булевы
-        if (id.All(c => char.IsDigit(c))) continue;                      // Только цифры
-        if (id.StartsWith("!")) continue;                                // Начинается с "!"
-        if (id.StartsWith("#")) continue;                                // Начинается с "#"
-        if (id.StartsWith("\"")) continue;                               // Начинается с кавычки
-        if (id.StartsWith("*")) continue;                                // Начинается с "*" ← НОВОЕ
-        if (id.Contains("*")) continue;                                  // Содержит "*" ← НОВОЕ
-        if (id.StartsWith("'")) continue;                                // Начинается с апострофа
-        if (id.Contains("'")) continue;                                  // Содержит апостроф
-        if (id.StartsWith(".")) continue;                                // Начинается с точки
-        if (id.All(c => !char.IsLetterOrDigit(c))) continue;             // Только спецсимволы
-        
-        var proto = new Prototype();
-        proto.Id = id;
-        proto.FilePath = filePath;
+        if (!Regex.IsMatch(id, @"[A-Za-z]")) continue;
+        if (id.All(c => char.IsDigit(c))) continue;
+        if (id.Length < 2) continue;
+        if (id.Contains("*")) continue;                             // Содержит *
+        if (id.Contains("\"")) continue;                             // Содержит "
 
-        // Ищем sprite
+        proto.Id = id;
+
         var spriteMatch = Regex.Match(block, @"sprite:\s*(\S+)");
         if (spriteMatch.Success)
             proto.SpritePath = spriteMatch.Groups[1].Value;
 
-        // Ищем rsi
         var rsiMatch = Regex.Match(block, @"rsi:\s*(\S+)");
         if (rsiMatch.Success)
             proto.RsiPath = rsiMatch.Groups[1].Value;
@@ -118,41 +111,43 @@ private List<Prototype> ParsePrototypes(string content, string filePath)
     {
         if (string.IsNullOrWhiteSpace(query))
             return GetPrototypeIds();
-        
+
         return _prototypes.Keys
             .Where(k => k.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Take(1000)
+            .Take(100000)
             .ToList();
     }
 
-    public string? GetFullTexturePath(string id)
+public string? GetFullTexturePath(string id)
+{
+    var proto = FindPrototype(id);
+    if (proto == null) return null;
+
+    string texturesPath = Path.Combine(_rootPath, "Resources", "Textures");
+    string relativePath = proto.SpritePath ?? proto.RsiPath ?? "";
+    
+    if (string.IsNullOrEmpty(relativePath)) return null;
+
+    relativePath = relativePath.Replace("/", "\\").TrimStart('\\');
+    
+    if (relativePath.EndsWith(".rsi"))
     {
-        var proto = FindPrototype(id);
-        if (proto == null) return null;
-
-        string texturesPath = Path.Combine(_currentRepoPath, "Resources", "Textures");
-        string relativePath = proto.SpritePath ?? proto.RsiPath ?? "";
-        
-        if (string.IsNullOrEmpty(relativePath)) return null;
-
-        relativePath = relativePath.Replace("/", "\\").TrimStart('\\');
-        
-        if (relativePath.EndsWith(".rsi"))
+        string dirPath = Path.Combine(texturesPath, relativePath);
+        if (Directory.Exists(dirPath))
         {
-            string dirPath = Path.Combine(texturesPath, relativePath);
-            if (Directory.Exists(dirPath))
-            {
-                var pngFiles = Directory.GetFiles(dirPath, "*.png", SearchOption.TopDirectoryOnly);
-                if (pngFiles.Length > 0)
-                    return pngFiles[0];
-            }
-            return null;
+            var pngFiles = Directory.GetFiles(dirPath, "*.png", SearchOption.TopDirectoryOnly);
+            if (pngFiles.Length > 0)
+                return pngFiles[0];
         }
-
-        string fullPath = Path.Combine(texturesPath, relativePath + ".png");
-        if (File.Exists(fullPath))
-            return fullPath;
-        
         return null;
     }
+
+    string fullPath = Path.Combine(texturesPath, relativePath + ".png");
+    if (File.Exists(fullPath))
+        return fullPath;
+    
+    return null;
+}
+
+
 }
