@@ -49,20 +49,20 @@ public class MainForm : Form
         _map.AddGrid(defaultGrid);
         UpdateGridSelector();
 
-        // Сохраняем начальное состояние (пусто)
-        SaveState();
-
-        UpdateBuffer();
+        // Сохраняем начальное состояние
+    SaveState();
+    
+    UpdateBuffer();
     }
 
     // === Undo/Redo ===
 
     private void SaveState()
-    {
-        if (_map.ActiveGrid == null) return;
-        var state = _map.ActiveGrid.Rooms.Select(r => r.Clone()).ToList();
-        _undo.SaveState(state);
-    }
+{
+    if (_map.ActiveGrid == null) return;
+    var state = _map.ActiveGrid.Rooms.Select(r => r.Clone()).ToList();
+    _undo.AddState(state);
+}
 
     private void RestoreState(List<Room> state)
     {
@@ -86,7 +86,7 @@ public class MainForm : Form
             }
             return true;
         }
-        
+
         if (keyData == (Keys.Control | Keys.Y))
         {
             if (_undo.CanRedo)
@@ -96,7 +96,7 @@ public class MainForm : Form
             }
             return true;
         }
-        
+
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -347,50 +347,6 @@ public class MainForm : Form
 
     // === Обработка мыши ===
 
-    private void OnMouseDown(object? sender, MouseEventArgs e)
-    {
-        if (_canvas.Width == 0 || _canvas.Height == 0) return;
-        if (_map.ActiveGrid == null) return;
-
-        if (e.Button == MouseButtons.Right)
-        {
-            _isPanning = true;
-            _panStart = new PointF(e.Location.X, e.Location.Y);
-            Cursor = Cursors.SizeAll;
-            return;
-        }
-
-        if (e.Button == MouseButtons.Left)
-        {
-            int tileSize = (int)(Constants.TILE_SIZE * _scale);
-            float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-            float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
-            float worldX = (e.Location.X + _viewOffset.X - gridOffsetX) / tileSize;
-            float worldY = (e.Location.Y + _viewOffset.Y - gridOffsetY) / tileSize;
-            int tileX = (int)Math.Floor(worldX);
-            int tileY = (int)Math.Floor(worldY);
-
-            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
-            {
-                _isDrawing = true;
-                _startPoint = e.Location;
-                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
-            {
-                var room = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
-                if (room != null)
-                {
-                    SaveState();
-                    _map.ActiveGrid.Rooms.Remove(room);
-                    Render();
-                }
-            }
-        }
-    }
-
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
         if (_isPanning)
@@ -426,28 +382,78 @@ public class MainForm : Form
         Render();
     }
 
-    private void OnMouseUp(object? sender, MouseEventArgs e)
+
+
+// В OnMouseUp (создание) - сохраняем ПОСЛЕ добавления
+private void OnMouseUp(object? sender, MouseEventArgs e)
+{
+    if (e.Button == MouseButtons.Right && _isPanning)
     {
-        if (e.Button == MouseButtons.Right && _isPanning)
+        _isPanning = false;
+        Cursor = _toolManager.CurrentTool == ToolManager.Tool.CreateRoom ? Cursors.Cross : Cursors.Default;
+        return;
+    }
+
+    if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
+    {
+        if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
         {
-            _isPanning = false;
-            Cursor = _toolManager.CurrentTool == ToolManager.Tool.CreateRoom ? Cursors.Cross : Cursors.Default;
-            return;
+            _map.ActiveGrid.Rooms.Add(_currentRoom);
+            SaveState();  // ← Сохраняем ПОСЛЕ добавления
         }
 
-        if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
-        {
-            if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
-            {
-                SaveState();
-                _map.ActiveGrid.Rooms.Add(_currentRoom);
-            }
+        _currentRoom = null;
+        _isDrawing = false;
+        Render();
+    }
+}
 
-            _currentRoom = null;
-            _isDrawing = false;
-            Render();
+// В OnMouseDown (удаление) - сохраняем ПОСЛЕ удаления
+private void OnMouseDown(object? sender, MouseEventArgs e)
+{
+    if (_canvas.Width == 0 || _canvas.Height == 0) return;
+    if (_map.ActiveGrid == null) return;
+
+    if (e.Button == MouseButtons.Right)
+    {
+        _isPanning = true;
+        _panStart = new PointF(e.Location.X, e.Location.Y);
+        Cursor = Cursors.SizeAll;
+        return;
+    }
+
+    if (e.Button == MouseButtons.Left)
+    {
+        int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float worldX = (e.Location.X + _viewOffset.X - gridOffsetX) / tileSize;
+        float worldY = (e.Location.Y + _viewOffset.Y - gridOffsetY) / tileSize;
+        int tileX = (int)Math.Floor(worldX);   // ← объявлена здесь
+        int tileY = (int)Math.Floor(worldY);   // ← объявлена здесь
+
+        if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+        {
+            _isDrawing = true;
+            _startPoint = e.Location;
+            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+        {
+            var room = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
+                tileX >= r.X && tileX < r.X + r.Width &&   // ← доступна здесь
+                tileY >= r.Y && tileY < r.Y + r.Height);   // ← доступна здесь
+            if (room != null)
+            {
+                _map.ActiveGrid.Rooms.Remove(room);
+                SaveState();
+                Render();
+            }
         }
     }
+}
+
+
 
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {

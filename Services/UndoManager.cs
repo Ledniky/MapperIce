@@ -4,38 +4,36 @@ namespace MapperIce.Services;
 
 public class UndoManager
 {
-    private Stack<List<Room>> _undoStack = new();
-    private Stack<List<Room>> _redoStack = new();
-    private List<Room> _currentState = new();
+    private List<List<Room>> _history = new();
+    private int _currentIndex = -1;
 
-    public void SaveState(List<Room> rooms)
+    public void AddState(List<Room> rooms)
     {
-        var copy = rooms.Select(r => r.Clone()).ToList();
+        // Если мы не в конце списка - обрезаем будущее
+        if (_currentIndex < _history.Count - 1)
+        {
+            _history.RemoveRange(_currentIndex + 1, _history.Count - _currentIndex - 1);
+        }
         
-        // Сохраняем в стек
-        _undoStack.Push(copy);
-        _redoStack.Clear();
-        _currentState = copy;
+        var copy = rooms.Select(r => r.Clone()).ToList();
+        _history.Add(copy);
+        _currentIndex = _history.Count - 1;
     }
 
-    public bool CanUndo => _undoStack.Count > 0;
-    public bool CanRedo => _redoStack.Count > 0;
+    public bool CanUndo => _currentIndex > 0;
+    public bool CanRedo => _currentIndex < _history.Count - 1;
 
     public List<Room> Undo()
     {
-        if (!CanUndo) return _currentState;
-        
-        _redoStack.Push(_currentState);
-        _currentState = _undoStack.Pop();
-        return _currentState.Select(r => r.Clone()).ToList();
+        if (!CanUndo) return _history[_currentIndex];
+        _currentIndex--;
+        return _history[_currentIndex].Select(r => r.Clone()).ToList();
     }
 
     public List<Room> Redo()
     {
-        if (!CanRedo) return _currentState;
-        
-        _undoStack.Push(_currentState);
-        _currentState = _redoStack.Pop();
-        return _currentState.Select(r => r.Clone()).ToList();
+        if (!CanRedo) return _history[_currentIndex];
+        _currentIndex++;
+        return _history[_currentIndex].Select(r => r.Clone()).ToList();
     }
 }
