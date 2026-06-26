@@ -15,3 +15,4 @@ D:\My programs\MapperIce\obj\Debug\net10.0-windows\refint\MapperIce.dll
 D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.pdb
 D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.genruntimeconfig.cache
 D:\My programs\MapperIce\obj\Debug\net10.0-windows\ref\MapperIce.dll
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\Newtonsoft.Json.dll
