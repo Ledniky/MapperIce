@@ -1,0 +1,17 @@
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\MapperIce.exe
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\MapperIce.deps.json
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\MapperIce.runtimeconfig.json
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\MapperIce.dll
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\MapperIce.pdb
+D:\My programs\MapperIce\bin\Debug\net10.0-windows\YamlDotNet.dll
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.csproj.AssemblyReference.cache
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.GeneratedMSBuildEditorConfig.editorconfig
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.AssemblyInfoInputs.cache
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.AssemblyInfo.cs
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.csproj.CoreCompileInputs.cache
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.csproj.Up2Date
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.dll
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\refint\MapperIce.dll
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.pdb
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.genruntimeconfig.cache
+D:\My programs\MapperIce\obj\Debug\net10.0-windows\ref\MapperIce.dll
