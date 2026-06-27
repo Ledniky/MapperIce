@@ -43,7 +43,7 @@ public class Renderer
                 DrawGrid(g, tileSize, viewOffset, grid.Position, opacity);
             }
 
-            // 1.5. ТАЙЛЫ ПОЛА (под комнатами)
+            // 2. ТАЙЛЫ ПОЛА
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -53,7 +53,25 @@ public class Renderer
                     DrawFloorTiles(g, room, tileSize, viewOffset, grid.Position, opacity);
             }
 
-            // 2. ЗАЛИВКА КОМНАТ
+            // 3. СТЕНЫ
+            foreach (var grid in map.Grids)
+            {
+                if (!grid.IsVisible) continue;
+                bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
+                float opacity = isActive ? 1.0f : 0.3f;
+                var allRooms = grid.Rooms;
+                foreach (var room in allRooms)
+                {
+                    DrawRoomWalls(g, room, tileSize, viewOffset, grid.Position, opacity, allRooms);
+                }
+            }
+
+            if (currentRoom != null && map.ActiveGrid != null)
+            {
+                DrawRoomWalls(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f, new List<Room>());
+            }
+
+            // 4. ЗАЛИВКА КОМНАТ
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -66,7 +84,7 @@ public class Renderer
             if (currentRoom != null && map.ActiveGrid != null)
                 DrawRoomFill(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f);
 
-            // 3. ЛИНИИ КОМНАТ
+            // 5. ЛИНИИ (поверх стен и заливки)
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -79,7 +97,7 @@ public class Renderer
             if (currentRoom != null && map.ActiveGrid != null)
                 DrawRoomLine(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, true, 1.0f);
 
-            // 4. ИНФОРМАЦИЯ
+            // 6. ИНФОРМАЦИЯ
             DrawInfo(g, scale, toolName, map);
 
             return _buffer;
@@ -105,47 +123,47 @@ public class Renderer
             g.DrawLine(pen, 0, y, _buffer.Width, y);
     }
 
-private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
-{
-    // ===== ВСЯ ПЛОЩАДЬ КОМНАТЫ (включая края) =====
-    int totalW = room.Width;
-    int totalH = room.Height;
-
-    if (totalW <= 0 || totalH <= 0) return;
-
-    Image? floorTexture = null;
-    if (_indexer != null)
+    private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
-        var floorPath = _indexer.GetFullTexturePath(room.FloorProto);
-        if (floorPath != null && File.Exists(floorPath))
+        int totalW = room.Width;
+        int totalH = room.Height;
+        
+        if (totalW <= 0 || totalH <= 0) return;
+
+        Image? floorTexture = null;
+        if (_indexer != null)
         {
-            try { floorTexture = Image.FromFile(floorPath); }
-            catch { }
+            var floorPath = _indexer.GetFullTexturePath(room.FloorProto);
+            if (floorPath != null && File.Exists(floorPath))
+            {
+                try { floorTexture = Image.FromFile(floorPath); }
+                catch { }
+            }
+        }
+
+        using var fillBrush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
+        
+        for (int x = 0; x < totalW; x++)
+        {
+            for (int y = 0; y < totalH; y++)
+            {
+                float tileX = (room.X + x + gridOffset.X) * tileSize - viewOffset.X;
+                float tileY = (room.Y + y + gridOffset.Y) * tileSize - viewOffset.Y;
+                var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
+                
+                if (floorTexture != null)
+                    g.DrawImage(floorTexture, rect);
+                else
+                    g.FillRectangle(fillBrush, rect);
+            }
         }
     }
 
-    using var fillBrush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
-
-    for (int x = 0; x < totalW; x++)
-    {
-        for (int y = 0; y < totalH; y++)
-        {
-            float tileX = (room.X + x + gridOffset.X) * tileSize - viewOffset.X;
-            float tileY = (room.Y + y + gridOffset.Y) * tileSize - viewOffset.Y;
-            var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
-
-            if (floorTexture != null)
-                g.DrawImage(floorTexture, rect);
-            else
-                g.FillRectangle(fillBrush, rect);
-        }
-    }
-}
     private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-
+        
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -155,11 +173,78 @@ private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffs
         g.FillRectangle(brush, rect);
     }
 
+    private void DrawRoomWalls(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, List<Room> allRooms)
+    {
+        string? wallPath = null;
+        if (_indexer != null)
+        {
+            wallPath = _indexer.GetFullTexturePath(room.WallProto);
+        }
+
+        if (string.IsNullOrEmpty(wallPath) || !File.Exists(wallPath))
+        {
+            DrawRoomLines(g, room, tileSize, viewOffset, gridOffset, opacity);
+            return;
+        }
+
+        Image? wallTexture = null;
+        try { wallTexture = Image.FromFile(wallPath); }
+        catch { return; }
+
+        // Верхняя стена
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
+            float wy = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+            g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
+        }
+
+        // Нижняя стена
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
+            float wy = (room.Y + room.Height - 1 + gridOffset.Y) * tileSize - viewOffset.Y;
+            g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
+        }
+
+        // Левая стена (без углов)
+        for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
+        {
+            float wx = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+            float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
+            g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
+        }
+
+        // Правая стена (без углов)
+        for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
+        {
+            float wx = (room.X + room.Width - 1 + gridOffset.X) * tileSize - viewOffset.X;
+            float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
+            g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
+        }
+
+        DrawRoomText(g, room, tileSize, opacity, GetRoomRect(room, tileSize, viewOffset, gridOffset));
+    }
+
+    private void DrawRoomLines(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        int innerW = Math.Max(0, room.Width - 1);
+        int innerH = Math.Max(0, room.Height - 1);
+        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+        var rect = new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
+
+        Color color = Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
+        using var pen = new Pen(color, 2);
+        g.DrawRectangle(pen, rect);
+        DrawRoomText(g, room, tileSize, opacity, rect);
+    }
+
     private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-
+        
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -169,11 +254,25 @@ private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffs
         using var pen = new Pen(color, isCurrent ? 3 : 2);
         g.DrawRectangle(pen, rect);
 
+        DrawRoomText(g, room, tileSize, opacity, rect);
+    }
+
+    private Rectangle GetRoomRect(Room room, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        int innerW = Math.Max(0, room.Width - 1);
+        int innerH = Math.Max(0, room.Height - 1);
+        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+        return new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
+    }
+
+    private void DrawRoomText(Graphics g, Room room, int tileSize, float opacity, Rectangle rect)
+    {
         if (tileSize > 20 && opacity > 0.3f)
         {
             int innerWText = Math.Max(0, room.Width - 2);
             int innerHText = Math.Max(0, room.Height - 2);
-
+            
             if (innerWText > 0 && innerHText > 0)
             {
                 using var font = new Font("Arial", Math.Min(10, tileSize / 3));
