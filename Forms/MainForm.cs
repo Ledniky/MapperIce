@@ -39,6 +39,7 @@ public class MainForm : Form
     private Form? _roomTypeForm = null;
     private Label _typeLabel = null!;
     
+    private CancellationTokenSource? _searchCts;
     
     public MainForm()
     {
@@ -162,7 +163,7 @@ public class MainForm : Form
             Text = "Поиск прототипов...",
             Enabled = false
         };
-        _searchBox.TextChanged += (s, e) => UpdatePrototypeList(_searchBox.Text);
+        _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
         _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
         _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
         searchPanel.Controls.Add(_searchBox);
@@ -314,86 +315,134 @@ public class MainForm : Form
             int count = _indexer.GetPrototypeIds().Count;
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
+
+            
+        // ===== ОТЛАДКА =====
+        var path = _indexer.GetFullTexturePath("Plating");
+        MessageBox.Show(path ?? "Plating НЕ найден");
+        // ===================
+
             MessageBox.Show($"Проиндексировано {count} прототипов");
         }
     }
 
-    private void UpdatePrototypeList(string filter = "")
+private void UpdatePrototypeList(string filter = "")
+{
+    // Отменяем предыдущий поиск
+    _searchCts?.Cancel();
+    _searchCts = new CancellationTokenSource();
+    var token = _searchCts.Token;
+
+    // Показываем загрузку
+    _protoList.Items.Clear();
+    _protoList.Items.Add("⏳ Поиск...");
+
+    // Запускаем поиск в фоне (не блокируем UI)
+    Task.Run(() =>
     {
-        _protoList.Items.Clear();
-
-        var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
-            ? _indexer.GetPrototypeIds()
-            : _indexer.SearchPrototypes(filter);
-
-        var filteredIds = allIds;
-
-        switch (_currentFilter)
+        try
         {
-            case "all":
-                break;
-            case "тайл":
-            case "tiles":
-                filteredIds = allIds.Where(id =>
-                    id.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
-                    id.Contains("floor", StringComparison.OrdinalIgnoreCase) ||
-                    id.Contains("plating", StringComparison.OrdinalIgnoreCase)
-                ).ToList();
-                break;
-            case "структура":
-            case "structures":
-                filteredIds = allIds.Where(id =>
-                    id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
-                    id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
-                    id.Contains("window", StringComparison.OrdinalIgnoreCase)
-                ).ToList();
-                break;
-            case "спавнер":
-            case "spawner":
-                filteredIds = allIds.Where(id =>
-                    id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
-                    id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
-                ).ToList();
-                break;
+            var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
+                ? _indexer.GetPrototypeIds()
+                : _indexer.SearchPrototypes(filter);
+
+            if (token.IsCancellationRequested) return;
+
+            var filteredIds = allIds;
+
+            switch (_currentFilter)
+            {
+                case "all": break;
+                case "тайл":
+                case "tiles":
+                    filteredIds = allIds.Where(id =>
+                        id.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
+                        id.Contains("floor", StringComparison.OrdinalIgnoreCase) ||
+                        id.Contains("plating", StringComparison.OrdinalIgnoreCase)
+                    ).ToList();
+                    break;
+                case "структура":
+                case "structures":
+                    filteredIds = allIds.Where(id =>
+                        id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
+                        id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
+                        id.Contains("window", StringComparison.OrdinalIgnoreCase)
+                    ).ToList();
+                    break;
+                case "спавнер":
+                case "spawner":
+                    filteredIds = allIds.Where(id =>
+                        id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
+                        id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
+                    ).ToList();
+                    break;
+            }
+
+            var result = filteredIds.Take(1000).ToList();
+
+            if (token.IsCancellationRequested) return;
+
+            // Обновляем UI в главном потоке
+            _protoList.Invoke(() =>
+            {
+                _protoList.Items.Clear();
+                if (result.Count == 0)
+                    _protoList.Items.Add("(нет прототипов)");
+                else
+                    foreach (var id in result)
+                        _protoList.Items.Add(id);
+            });
         }
+        catch (Exception ex)
+        {
+            _protoList.Invoke(() =>
+            {
+                _protoList.Items.Clear();
+                _protoList.Items.Add($"Ошибка: {ex.Message}");
+            });
+        }
+    }, token);
+}
 
-        foreach (var id in filteredIds)
-            _protoList.Items.Add(id);
 
-        if (_protoList.Items.Count == 0)
-            _protoList.Items.Add("(нет прототипов)");
-    }
 
-    private void OnPrototypeDoubleClick(object? sender, EventArgs e)
+private void OnPrototypeDoubleClick(object? sender, EventArgs e)
+{
+    if (_protoList.SelectedItem == null) return;
+    string? id = _protoList.SelectedItem.ToString();
+    if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
+
+    var proto = _indexer.FindPrototype(id);
+    var path = _indexer.GetFullTexturePath(id);
+    
+    // ===== РУЧНОЙ ПУТЬ ИЗ РЕПОЗИТОРИЯ =====
+    string manualPath = "";
+    if (proto != null && !string.IsNullOrEmpty(proto.SpritePath))
     {
-        if (_protoList.SelectedItem == null) return;
-        string? id = _protoList.SelectedItem.ToString();
-        if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
-
-        var path = _indexer.GetFullTexturePath(id);
-        if (path != null && File.Exists(path))
-        {
-            using var img = Image.FromFile(path);
-            var previewForm = new Form
-            {
-                Text = $"Спрайт: {id}",
-                Size = new Size(300, 300),
-                StartPosition = FormStartPosition.CenterParent
-            };
-            var pb = new PictureBox
-            {
-                Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.Zoom,
-                Image = (Image)img.Clone()
-            };
-            previewForm.Controls.Add(pb);
-            previewForm.ShowDialog();
-        }
+        // Берём путь из выбранного репозитория
+        string repoPath = "";
+        if (_repoSelector.SelectedItem is Repository repo)
+            repoPath = repo.Path;
         else
-        {
-            MessageBox.Show($"Спрайт для '{id}' не найден");
-        }
+            repoPath = @"D:\_Goob-Station";  // fallback
+        
+        string texturesPath = Path.Combine(repoPath, "Resources", "Textures");
+        string relative = proto.SpritePath.Replace("/Textures/", "").TrimStart('/');
+        relative = relative.Replace("/", "\\");
+        manualPath = Path.Combine(texturesPath, relative);
+        if (!manualPath.EndsWith(".png")) manualPath += ".png";
     }
+    
+    string message = $"ID: {id}\n";
+    message += $"SpritePath: {proto?.SpritePath ?? "(нет)"}\n";
+    message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
+    message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
+    message += $"\n--- РУЧНОЙ ПУТЬ ---\n{manualPath}\n";
+    message += $"Файл существует: {File.Exists(manualPath)}";
+    
+    MessageBox.Show(message, "Отладка пути");
+}
+
 
     // === Панель инструментов ===
 
@@ -1072,4 +1121,7 @@ public class MainForm : Form
     if (_typeLabel != null)
         _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
 }
+
+// Где-нибудь в MainForm или отдельном файле
+
 }

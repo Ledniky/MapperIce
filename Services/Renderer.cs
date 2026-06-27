@@ -109,7 +109,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 2);
         int innerH = Math.Max(0, room.Height - 2);
-        
+
         if (innerW <= 0 || innerH <= 0) return;
 
         Image? floorTexture = null;
@@ -124,7 +124,7 @@ public class Renderer
         }
 
         using var fillBrush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
-        
+
         for (int x = 0; x < innerW; x++)
         {
             for (int y = 0; y < innerH; y++)
@@ -132,7 +132,7 @@ public class Renderer
                 float tileX = (room.X + 1 + x + gridOffset.X) * tileSize - viewOffset.X;
                 float tileY = (room.Y + 1 + y + gridOffset.Y) * tileSize - viewOffset.Y;
                 var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
-                
+
                 if (floorTexture != null)
                     g.DrawImage(floorTexture, rect);
                 else
@@ -145,7 +145,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -159,7 +159,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -173,7 +173,7 @@ public class Renderer
         {
             int innerWText = Math.Max(0, room.Width - 2);
             int innerHText = Math.Max(0, room.Height - 2);
-            
+
             if (innerWText > 0 && innerHText > 0)
             {
                 using var font = new Font("Arial", Math.Min(10, tileSize / 3));

@@ -15,6 +15,7 @@ public class PrototypeIndexer
 
     public void IndexRepository(Repository repo)
     {
+        _rootPath = repo.Path;
         _currentRepoId = repo.Id;
         _currentRepoPath = repo.Path;
         _prototypes.Clear();
@@ -59,41 +60,78 @@ private List<Prototype> ParsePrototypes(string content, string filePath)
     {
         if (string.IsNullOrWhiteSpace(block)) continue;
         if (!block.Contains("id:")) continue;
-
-        // === ПРОВЕРКА НА ABSTRACT ===
         if (block.Contains("abstract: true")) continue;
 
-        var proto = new Prototype();
-        proto.FilePath = filePath;
+        var typeMatch = Regex.Match(block, @"^[ \t]*- type:\s*(\S+)", RegexOptions.Multiline);
+        if (!typeMatch.Success) continue;
+        var blockType = typeMatch.Groups[1].Value;
+        
+        if (blockType != "tile" && blockType != "entity") continue;
 
         var idMatch = Regex.Match(block, @"^[ \t]*id:\s*(\S+)", RegexOptions.Multiline);
         if (!idMatch.Success) continue;
         
         var id = idMatch.Groups[1].Value;
-        
-        // === МИНИМАЛЬНЫЙ ФИЛЬТР ===
         if (string.IsNullOrEmpty(id)) continue;
-        if (!Regex.IsMatch(id, @"[A-Za-z]")) continue;
-        if (id.All(c => char.IsDigit(c))) continue;
-        if (id.Length < 2) continue;
-        if (id.Contains("*")) continue;                             // Содержит *
-        if (id.Contains("\"")) continue;                             // Содержит "
+        if (!char.IsUpper(id[0])) continue;
 
-        proto.Id = id;
+        var proto = new Prototype
+        {
+            Id = id,
+            FilePath = filePath
+        };
 
-        var spriteMatch = Regex.Match(block, @"sprite:\s*(\S+)");
-        if (spriteMatch.Success)
-            proto.SpritePath = spriteMatch.Groups[1].Value;
-
-        var rsiMatch = Regex.Match(block, @"rsi:\s*(\S+)");
-        if (rsiMatch.Success)
-            proto.RsiPath = rsiMatch.Groups[1].Value;
+        // Для tile — sprite на уровне блока
+        if (blockType == "tile")
+        {
+            var spriteMatch = Regex.Match(block, @"sprite:\s*(\S+)");
+            if (spriteMatch.Success)
+            {
+                // ===== НОРМАЛИЗУЕМ ПУТЬ СРАЗУ =====
+                string spritePath = spriteMatch.Groups[1].Value;
+                spritePath = spritePath.Replace("/", "\\");
+                spritePath = spritePath.TrimStart('\\');
+                if (spritePath.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+                    spritePath = spritePath.Substring(9);
+                proto.SpritePath = spritePath;
+            }
+        }
+        else // entity
+        {
+            var compMatch = Regex.Match(block, @"components:\s*\n((?:.+\n)+?)(?=\n[^ ]|$)", RegexOptions.Multiline);
+            if (compMatch.Success)
+            {
+                var compText = compMatch.Groups[1].Value;
+                var spriteMatch = Regex.Match(compText, @"sprite:\s*(\S+)");
+                if (spriteMatch.Success)
+                {
+                    string spritePath = spriteMatch.Groups[1].Value;
+                    spritePath = spritePath.Replace("/", "\\");
+                    spritePath = spritePath.TrimStart('\\');
+                    if (spritePath.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+                        spritePath = spritePath.Substring(9);
+                    proto.SpritePath = spritePath;
+                }
+                
+                var rsiMatch = Regex.Match(compText, @"rsi:\s*(\S+)");
+                if (rsiMatch.Success)
+                {
+                    string rsiPath = rsiMatch.Groups[1].Value;
+                    rsiPath = rsiPath.Replace("/", "\\");
+                    rsiPath = rsiPath.TrimStart('\\');
+                    if (rsiPath.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+                        rsiPath = rsiPath.Substring(9);
+                    proto.RsiPath = rsiPath;
+                }
+            }
+        }
 
         result.Add(proto);
     }
 
     return result;
 }
+
 
 
     public Prototype? FindPrototype(string id)
@@ -114,40 +152,27 @@ private List<Prototype> ParsePrototypes(string content, string filePath)
 
         return _prototypes.Keys
             .Where(k => k.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Take(100000)
+            .Take(1000)
             .ToList();
     }
 
 public string? GetFullTexturePath(string id)
 {
+    if (string.IsNullOrEmpty(_rootPath)) return null;
+    
     var proto = FindPrototype(id);
     if (proto == null) return null;
 
-    string texturesPath = Path.Combine(_rootPath, "Resources", "Textures");
-    string relativePath = proto.SpritePath ?? proto.RsiPath ?? "";
-    
-    if (string.IsNullOrEmpty(relativePath)) return null;
+    string path = proto.SpritePath ?? proto.RsiPath ?? "";
+    if (string.IsNullOrEmpty(path)) return null;
 
-    relativePath = relativePath.Replace("/", "\\").TrimStart('\\');
-    
-    if (relativePath.EndsWith(".rsi"))
-    {
-        string dirPath = Path.Combine(texturesPath, relativePath);
-        if (Directory.Exists(dirPath))
-        {
-            var pngFiles = Directory.GetFiles(dirPath, "*.png", SearchOption.TopDirectoryOnly);
-            if (pngFiles.Length > 0)
-                return pngFiles[0];
-        }
-        return null;
-    }
+    string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
+    if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        fullPath += ".png";
 
-    string fullPath = Path.Combine(texturesPath, relativePath + ".png");
-    if (File.Exists(fullPath))
-        return fullPath;
-    
-    return null;
+    return File.Exists(fullPath) ? fullPath : null;
 }
+
 
 
 }

@@ -13,7 +13,7 @@ public abstract class RoomType
     public virtual string WallProto => "WallSolid";
     public virtual string FloorProto => "Plating";
     public virtual string DoorProto => "";
-    public virtual Color FillColor => Color.FromArgb(200, 230, 230, 230);
+    public virtual Color FillColor => Color.FromArgb(100, 230, 230, 230);
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
     public virtual bool IsHidden => false;
@@ -44,13 +44,13 @@ public abstract class DepartmentalRoomType : RoomType
 public class General : CommonRoomType
 {
     public override string Name => "General";
-    public override Color FillColor => Color.FromArgb(200, 220, 220, 220);
+    public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
 }
 
 public class Technical : CommonRoomType
 {
     public override string Name => "Technical";
-    public override Color FillColor => Color.FromArgb(200, 255, 240, 200);
+    public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
 }
 
@@ -67,21 +67,21 @@ public class BaseRoom : CommonRoomType
 public class Command : DepartmentalRoomType
 {
     public override string Name => "Command";
-    public override Color FillColor => Color.FromArgb(200, 51, 77, 109);
+    public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
 }
 
 public class Medical : DepartmentalRoomType
 {
     public override string Name => "Medical";
-    public override Color FillColor => Color.FromArgb(200, 82, 180, 233);
+    public override Color FillColor => Color.FromArgb(100, 82, 180, 233);
     public override Color LineColor => Color.FromArgb(255, 82, 180, 233);
 }
 
 public class Service : DepartmentalRoomType
 {
     public override string Name => "Service";
-    public override Color FillColor => Color.FromArgb(200, 159, 237, 88);
+    public override Color FillColor => Color.FromArgb(100, 159, 237, 88);
     public override Color LineColor => Color.FromArgb(255, 159, 237, 88);
 }
 
@@ -89,7 +89,7 @@ public class Engineering : DepartmentalRoomType
 {
     public override string Name => "Engineering";
     public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(200, 239, 179, 65);
+    public override Color FillColor => Color.FromArgb(100, 239, 179, 65);
     public override Color LineColor => Color.FromArgb(255, 239, 179, 65);
 }
 
@@ -97,42 +97,42 @@ public class Security : DepartmentalRoomType
 {
     public override string Name => "Security";
     public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(200, 222, 58, 58);
+    public override Color FillColor => Color.FromArgb(100, 222, 58, 58);
     public override Color LineColor => Color.FromArgb(255, 222, 58, 58);
 }
 
 public class Bar : DepartmentalRoomType
 {
     public override string Name => "Bar";
-    public override Color FillColor => Color.FromArgb(200, 121, 21, 0);
+    public override Color FillColor => Color.FromArgb(100, 121, 21, 0);
     public override Color LineColor => Color.FromArgb(255, 121, 21, 0);
 }
 
 public class Science : DepartmentalRoomType
 {
     public override string Name => "Science";
-    public override Color FillColor => Color.FromArgb(200, 211, 129, 201);
+    public override Color FillColor => Color.FromArgb(100, 211, 129, 201);
     public override Color LineColor => Color.FromArgb(255, 211, 129, 201);
 }
 
 public class Cargo : DepartmentalRoomType
 {
     public override string Name => "Cargo";
-    public override Color FillColor => Color.FromArgb(200, 164, 97, 6);
+    public override Color FillColor => Color.FromArgb(100, 164, 97, 6);
     public override Color LineColor => Color.FromArgb(255, 164, 97, 6);
 }
 
 public class Janitor : DepartmentalRoomType
 {
     public override string Name => "Janitor";
-    public override Color FillColor => Color.FromArgb(200, 140, 52, 127);
+    public override Color FillColor => Color.FromArgb(100, 140, 52, 127);
     public override Color LineColor => Color.FromArgb(255, 140, 52, 127);
 }
 
 public class Chemistry : DepartmentalRoomType
 {
     public override string Name => "Chemistry";
-    public override Color FillColor => Color.FromArgb(200, 250, 117, 0);
+    public override Color FillColor => Color.FromArgb(100, 250, 117, 0);
     public override Color LineColor => Color.FromArgb(255, 250, 117, 0);
 }
 
@@ -140,7 +140,7 @@ public class Virology : DepartmentalRoomType
 {
     public override string Name => "Virology";
     public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(200, 67, 153, 9);
+    public override Color FillColor => Color.FromArgb(100, 67, 153, 9);
     public override Color LineColor => Color.FromArgb(255, 67, 153, 9);
 }
 
@@ -148,21 +148,21 @@ public class Atmospherics : DepartmentalRoomType
 {
     public override string Name => "Atmospherics";
     public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(200, 62, 179, 136);
+    public override Color FillColor => Color.FromArgb(100, 62, 179, 136);
     public override Color LineColor => Color.FromArgb(255, 62, 179, 136);
 }
 
 public class Salvage : DepartmentalRoomType
 {
     public override string Name => "Salvage";
-    public override Color FillColor => Color.FromArgb(200, 141, 28, 153);
+    public override Color FillColor => Color.FromArgb(100, 141, 28, 153);
     public override Color LineColor => Color.FromArgb(255, 141, 28, 153);
 }
 
 public class Neutral : DepartmentalRoomType
 {
     public override string Name => "Neutral";
-    public override Color FillColor => Color.FromArgb(200, 212, 212, 212);
+    public override Color FillColor => Color.FromArgb(100, 212, 212, 212);
     public override Color LineColor => Color.FromArgb(255, 212, 212, 212);
 }
 
