@@ -406,42 +406,47 @@ private void UpdatePrototypeList(string filter = "")
 
 
 
-private void OnPrototypeDoubleClick(object? sender, EventArgs e)
-{
-    if (_protoList.SelectedItem == null) return;
-    string? id = _protoList.SelectedItem.ToString();
-    if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
-
-    var proto = _indexer.FindPrototype(id);
-    var path = _indexer.GetFullTexturePath(id);
-    
-    // ===== РУЧНОЙ ПУТЬ ИЗ РЕПОЗИТОРИЯ =====
-    string manualPath = "";
-    if (proto != null && !string.IsNullOrEmpty(proto.SpritePath))
+    private void OnPrototypeDoubleClick(object? sender, EventArgs e)
     {
-        // Берём путь из выбранного репозитория
-        string repoPath = "";
-        if (_repoSelector.SelectedItem is Repository repo)
-            repoPath = repo.Path;
-        else
-            repoPath = @"D:\_Goob-Station";  // fallback
-        
-        string texturesPath = Path.Combine(repoPath, "Resources", "Textures");
-        string relative = proto.SpritePath.Replace("/Textures/", "").TrimStart('/');
-        relative = relative.Replace("/", "\\");
-        manualPath = Path.Combine(texturesPath, relative);
-        if (!manualPath.EndsWith(".png")) manualPath += ".png";
+        if (_protoList.SelectedItem == null) return;
+        string? id = _protoList.SelectedItem.ToString();
+        if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
+
+        var proto = _indexer.FindPrototype(id);
+        var path = _indexer.GetFullTexturePath(id);
+
+        // ===== РУЧНОЙ ПУТЬ (закомментирован) =====
+        /*
+        string manualPath = "";
+        if (proto != null && !string.IsNullOrEmpty(proto.SpritePath))
+        {
+            string repoPath = "";
+            if (_repoSelector.SelectedItem is Repository repo)
+                repoPath = repo.Path;
+            else
+                repoPath = @"D:\_Goob-Station";
+
+            string texturesPath = Path.Combine(repoPath, "Resources", "Textures");
+            string relative = proto.SpritePath.Replace("/Textures/", "").TrimStart('/');
+            relative = relative.Replace("/", "\\");
+            manualPath = Path.Combine(texturesPath, relative);
+            if (!manualPath.EndsWith(".png")) manualPath += ".png";
+        }
+        */
+
+        // ===== ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА =====
+        bool fileExists = path != null && File.Exists(path);
+
+        string message = $"ID: {id}\n";
+        message += $"SpritePath: {proto?.SpritePath ?? "(нет)"}\n";
+        message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
+        message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
+        message += $"Файл существует: {(fileExists ? "✅ ДА" : "❌ НЕТ")}";
+        // message += $"\n--- РУЧНОЙ ПУТЬ ---\n{manualPath}\n";
+        // message += $"Файл существует: {File.Exists(manualPath)}";
+
+        MessageBox.Show(message, "Информация о прототипе");
     }
-    
-    string message = $"ID: {id}\n";
-    message += $"SpritePath: {proto?.SpritePath ?? "(нет)"}\n";
-    message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
-    message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
-    message += $"\n--- РУЧНОЙ ПУТЬ ---\n{manualPath}\n";
-    message += $"Файл существует: {File.Exists(manualPath)}";
-    
-    MessageBox.Show(message, "Отладка пути");
-}
 
 
     // === Панель инструментов ===
