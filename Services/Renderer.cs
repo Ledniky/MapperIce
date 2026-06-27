@@ -105,42 +105,42 @@ public class Renderer
             g.DrawLine(pen, 0, y, _buffer.Width, y);
     }
 
-    private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+private void DrawFloorTiles(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+{
+    // ===== ВСЯ ПЛОЩАДЬ КОМНАТЫ (включая края) =====
+    int totalW = room.Width;
+    int totalH = room.Height;
+
+    if (totalW <= 0 || totalH <= 0) return;
+
+    Image? floorTexture = null;
+    if (_indexer != null)
     {
-        int innerW = Math.Max(0, room.Width - 2);
-        int innerH = Math.Max(0, room.Height - 2);
-
-        if (innerW <= 0 || innerH <= 0) return;
-
-        Image? floorTexture = null;
-        if (_indexer != null)
+        var floorPath = _indexer.GetFullTexturePath(room.FloorProto);
+        if (floorPath != null && File.Exists(floorPath))
         {
-            var floorPath = _indexer.GetFullTexturePath(room.FloorProto);
-            if (floorPath != null && File.Exists(floorPath))
-            {
-                try { floorTexture = Image.FromFile(floorPath); }
-                catch { }
-            }
-        }
-
-        using var fillBrush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
-
-        for (int x = 0; x < innerW; x++)
-        {
-            for (int y = 0; y < innerH; y++)
-            {
-                float tileX = (room.X + 1 + x + gridOffset.X) * tileSize - viewOffset.X;
-                float tileY = (room.Y + 1 + y + gridOffset.Y) * tileSize - viewOffset.Y;
-                var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
-
-                if (floorTexture != null)
-                    g.DrawImage(floorTexture, rect);
-                else
-                    g.FillRectangle(fillBrush, rect);
-            }
+            try { floorTexture = Image.FromFile(floorPath); }
+            catch { }
         }
     }
 
+    using var fillBrush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
+
+    for (int x = 0; x < totalW; x++)
+    {
+        for (int y = 0; y < totalH; y++)
+        {
+            float tileX = (room.X + x + gridOffset.X) * tileSize - viewOffset.X;
+            float tileY = (room.Y + y + gridOffset.Y) * tileSize - viewOffset.Y;
+            var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
+
+            if (floorTexture != null)
+                g.DrawImage(floorTexture, rect);
+            else
+                g.FillRectangle(fillBrush, rect);
+        }
+    }
+}
     private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         int innerW = Math.Max(0, room.Width - 1);
