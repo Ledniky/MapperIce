@@ -6,4 +6,5 @@ public class Prototype
     public string? SpritePath { get; set; }
     public string? RsiPath { get; set; }
     public string FilePath { get; set; } = "";
+    public List<string> Components { get; set; } = new();
 }

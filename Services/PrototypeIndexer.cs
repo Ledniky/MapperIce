@@ -53,98 +53,132 @@ public class PrototypeIndexer
         OnIndexingComplete?.Invoke();
     }
 
-    private List<Prototype> ParsePrototypes(string content, string filePath)
+private List<Prototype> ParsePrototypes(string content, string filePath)
+{
+    var result = new List<Prototype>();
+    var lines = content.Split('\n');
+    
+    string block = "";
+    string id = "";
+    string type = "";
+    bool inBlock = false;
+    int baseIndent = -1;  // Отступ начала блока
+    
+    foreach (var line in lines)
     {
-        var result = new List<Prototype>();
-        var lines = content.Split('\n');
+        int indent = line.Length - line.TrimStart().Length;
+        var trimmed = line.TrimStart();
         
-        string currentBlock = "";
-        string currentId = "";
-        string currentType = "";
-        bool inBlock = false;
-        
-        foreach (var line in lines)
+        // Проверяем, что это начало прототипа: "- type:" с отступом 0
+        if (trimmed.StartsWith("- type:") && indent == 0)
         {
-            var trimmed = line.TrimStart();
-            
-            // ===== НОВЫЙ БЛОК: начинается с "- type:" =====
-            if (trimmed.StartsWith("- type:"))
+            // Сохраняем предыдущий
+            if (inBlock && !string.IsNullOrEmpty(id))
             {
-                // Сохраняем предыдущий блок
-                if (inBlock && !string.IsNullOrEmpty(currentId))
+                var proto = ParseBlock(block, id, type, filePath);
+                if (proto != null) result.Add(proto);
+            }
+            
+            // Начинаем новый
+            block = line + "\n";
+            inBlock = true;
+            id = "";
+            baseIndent = 0;
+            
+            var tMatch = Regex.Match(line, @"- type:\s*(\S+)");
+            type = tMatch.Success ? tMatch.Groups[1].Value : "";
+            
+            var iMatch = Regex.Match(line, @"id:\s*(\S+)");
+            if (iMatch.Success) id = iMatch.Groups[1].Value;
+        }
+        else if (inBlock)
+        {
+            // Если встретили "- type:" с отступом 0 — это новый прототип
+            if (trimmed.StartsWith("- type:") && indent == 0)
+            {
+                // Сохраняем текущий
+                if (!string.IsNullOrEmpty(id))
                 {
-                    var proto = ParseSingleBlock(currentBlock, currentId, currentType, filePath);
+                    var proto = ParseBlock(block, id, type, filePath);
                     if (proto != null) result.Add(proto);
                 }
                 
-                // Начинаем новый блок
-                currentBlock = line + "\n";
-                inBlock = true;
-                currentId = "";
+                // Начинаем новый
+                block = line + "\n";
+                id = "";
+                baseIndent = 0;
                 
-                var typeMatch = Regex.Match(line, @"- type:\s*(\S+)");
-                currentType = typeMatch.Success ? typeMatch.Groups[1].Value : "";
+                var tMatch = Regex.Match(line, @"- type:\s*(\S+)");
+                type = tMatch.Success ? tMatch.Groups[1].Value : "";
                 
-                // Ищем id в этой же строке
-                var idMatch = Regex.Match(line, @"id:\s*(\S+)");
-                if (idMatch.Success) currentId = idMatch.Groups[1].Value;
+                var iMatch = Regex.Match(line, @"id:\s*(\S+)");
+                if (iMatch.Success) id = iMatch.Groups[1].Value;
             }
-            else if (inBlock)
+            else
             {
-                // ===== ДОБАВЛЯЕМ ВСЕ СТРОКИ В БЛОК =====
-                currentBlock += line + "\n";
+                // Добавляем ВСЕ строки с отступом > 0 (компоненты и их содержимое)
+                block += line + "\n";
                 
-                // Ищем id (если ещё не нашли)
-                if (string.IsNullOrEmpty(currentId))
+                if (string.IsNullOrEmpty(id))
                 {
-                    var idMatch = Regex.Match(line, @"^[ \t]*id:\s*(\S+)");
-                    if (idMatch.Success) currentId = idMatch.Groups[1].Value;
+                    var iMatch = Regex.Match(line, @"id:\s*(\S+)");
+                    if (iMatch.Success) id = iMatch.Groups[1].Value;
                 }
             }
         }
-        
-        // Сохраняем последний блок
-        if (inBlock && !string.IsNullOrEmpty(currentId))
-        {
-            var proto = ParseSingleBlock(currentBlock, currentId, currentType, filePath);
-            if (proto != null) result.Add(proto);
-        }
-        
-        return result;
     }
-
-    private Prototype? ParseSingleBlock(string block, string id, string type, string filePath)
+    
+    // Последний блок
+    if (inBlock && !string.IsNullOrEmpty(id))
     {
-        // Оставляем только tile и entity
+        var proto = ParseBlock(block, id, type, filePath);
+        if (proto != null) result.Add(proto);
+    }
+    
+    return result;
+}
+    private Prototype? ParseBlock(string block, string id, string type, string filePath)
+    {
         if (type != "tile" && type != "entity") return null;
         if (string.IsNullOrEmpty(id)) return null;
         if (!char.IsUpper(id[0])) return null;
         
-        var proto = new Prototype
-        {
-            Id = id,
-            FilePath = filePath
-        };
+        var proto = new Prototype { Id = id, FilePath = filePath };
         
-        // ===== ИЩЕМ sprite И rsi ВО ВСЁМ БЛОКЕ =====
-        var spriteMatch = Regex.Match(block, @"sprite:\s*([^\s]+)");
-        if (spriteMatch.Success)
+        // Ищем sprite
+        var s = Regex.Match(block, @"sprite:\s*([^\s]+)");
+        if (s.Success)
         {
-            string spritePath = spriteMatch.Groups[1].Value;
-            spritePath = spritePath.Replace("/", "\\").TrimStart('\\');
-            if (spritePath.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
-                spritePath = spritePath.Substring(9);
-            proto.SpritePath = spritePath;
+            var path = s.Groups[1].Value.Replace("/", "\\").TrimStart('\\');
+            if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+                path = path.Substring(9);
+            proto.SpritePath = path;
         }
         
-        var rsiMatch = Regex.Match(block, @"rsi:\s*([^\s]+)");
-        if (rsiMatch.Success)
+        // Ищем rsi
+        var r = Regex.Match(block, @"rsi:\s*([^\s]+)");
+        if (r.Success)
         {
-            string rsiPath = rsiMatch.Groups[1].Value;
-            rsiPath = rsiPath.Replace("/", "\\").TrimStart('\\');
-            if (rsiPath.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
-                rsiPath = rsiPath.Substring(9);
-            proto.RsiPath = rsiPath;
+            var path = r.Groups[1].Value.Replace("/", "\\").TrimStart('\\');
+            if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+                path = path.Substring(9);
+            proto.RsiPath = path;
+        }
+        
+        // Ищем все компоненты
+        var compMatches = Regex.Matches(block, @"-\s*type:\s*([^\s]+)");
+        foreach (Match cm in compMatches)
+        {
+            string compType = cm.Groups[1].Value;
+            if (compType == type) continue;
+            proto.Components.Add(compType);
+        }
+        
+        // ОТЛАДКА
+        if (id == "WallSolid")
+        {
+            var comps = string.Join("\n  ", proto.Components);
+            MessageBox.Show($"=== WallSolid ===\n\nВЕСЬ БЛОК:\n{block}\n\n---\nSprite: {proto.SpritePath ?? "НЕТ"}\nRsi: {proto.RsiPath ?? "НЕТ"}\n\nКомпоненты ({proto.Components.Count}):\n  {comps}");
         }
         
         return proto;
@@ -182,14 +216,12 @@ public class PrototypeIndexer
         string path = proto.SpritePath ?? proto.RsiPath ?? "";
         if (string.IsNullOrEmpty(path)) return null;
 
-        // Нормализуем путь
         path = path.Replace("/", "\\").TrimStart('\\');
         if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
             path = path.Substring(9);
 
         string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
         
-        // Если это .rsi — ищем первый .png внутри папки
         if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
         {
             string dirPath = fullPath;
@@ -202,14 +234,12 @@ public class PrototypeIndexer
             return null;
         }
 
-        // Обычный файл .png
         if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
             fullPath += ".png";
 
         if (File.Exists(fullPath))
             return fullPath;
         
-        // Если не нашли — пробуем найти по имени без учёта регистра
         string dir = Path.GetDirectoryName(fullPath)!;
         string fileName = Path.GetFileName(fullPath);
         if (Directory.Exists(dir))
