@@ -38,9 +38,9 @@ public class MainForm : Form
 
     private Form? _roomTypeForm = null;
     private Label _typeLabel = null!;
-    
+
     private CancellationTokenSource? _searchCts;
-    
+
     public MainForm()
     {
         Text = "MapperIce";
@@ -316,93 +316,93 @@ public class MainForm : Form
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
 
-            
-        // ===== ОТЛАДКА =====
-        var path = _indexer.GetFullTexturePath("Plating");
-        MessageBox.Show(path ?? "Plating НЕ найден");
-        // ===================
+
+            // ===== ОТЛАДКА =====
+            var path = _indexer.GetFullTexturePath("Plating");
+            MessageBox.Show(path ?? "Plating НЕ найден");
+            // ===================
 
             MessageBox.Show($"Проиндексировано {count} прототипов");
         }
     }
 
-private void UpdatePrototypeList(string filter = "")
-{
-    // Отменяем предыдущий поиск
-    _searchCts?.Cancel();
-    _searchCts = new CancellationTokenSource();
-    var token = _searchCts.Token;
-
-    // Показываем загрузку
-    _protoList.Items.Clear();
-    _protoList.Items.Add("⏳ Поиск...");
-
-    // Запускаем поиск в фоне (не блокируем UI)
-    Task.Run(() =>
+    private void UpdatePrototypeList(string filter = "")
     {
-        try
+        // Отменяем предыдущий поиск
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
+        // Показываем загрузку
+        _protoList.Items.Clear();
+        _protoList.Items.Add("⏳ Поиск...");
+
+        // Запускаем поиск в фоне (не блокируем UI)
+        Task.Run(() =>
         {
-            var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
-                ? _indexer.GetPrototypeIds()
-                : _indexer.SearchPrototypes(filter);
-
-            if (token.IsCancellationRequested) return;
-
-            var filteredIds = allIds;
-
-            switch (_currentFilter)
+            try
             {
-                case "all": break;
-                case "тайл":
-                case "tiles":
-                    filteredIds = allIds.Where(id =>
-                        id.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
-                        id.Contains("floor", StringComparison.OrdinalIgnoreCase) ||
-                        id.Contains("plating", StringComparison.OrdinalIgnoreCase)
-                    ).ToList();
-                    break;
-                case "структура":
-                case "structures":
-                    filteredIds = allIds.Where(id =>
-                        id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
-                        id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
-                        id.Contains("window", StringComparison.OrdinalIgnoreCase)
-                    ).ToList();
-                    break;
-                case "спавнер":
-                case "spawner":
-                    filteredIds = allIds.Where(id =>
-                        id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
-                        id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
-                    ).ToList();
-                    break;
+                var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
+                    ? _indexer.GetPrototypeIds()
+                    : _indexer.SearchPrototypes(filter);
+
+                if (token.IsCancellationRequested) return;
+
+                var filteredIds = allIds;
+
+                switch (_currentFilter)
+                {
+                    case "all": break;
+                    case "тайл":
+                    case "tiles":
+                        filteredIds = allIds.Where(id =>
+                            id.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
+                            id.Contains("floor", StringComparison.OrdinalIgnoreCase) ||
+                            id.Contains("plating", StringComparison.OrdinalIgnoreCase)
+                        ).ToList();
+                        break;
+                    case "структура":
+                    case "structures":
+                        filteredIds = allIds.Where(id =>
+                            id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
+                            id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
+                            id.Contains("window", StringComparison.OrdinalIgnoreCase)
+                        ).ToList();
+                        break;
+                    case "спавнер":
+                    case "spawner":
+                        filteredIds = allIds.Where(id =>
+                            id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
+                            id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
+                        ).ToList();
+                        break;
+                }
+
+                var result = filteredIds.Take(1000).ToList();
+
+                if (token.IsCancellationRequested) return;
+
+                // Обновляем UI в главном потоке
+                _protoList.Invoke(() =>
+                {
+                    _protoList.Items.Clear();
+                    if (result.Count == 0)
+                        _protoList.Items.Add("(нет прототипов)");
+                    else
+                        foreach (var id in result)
+                            _protoList.Items.Add(id);
+                });
             }
-
-            var result = filteredIds.Take(1000).ToList();
-
-            if (token.IsCancellationRequested) return;
-
-            // Обновляем UI в главном потоке
-            _protoList.Invoke(() =>
+            catch (Exception ex)
             {
-                _protoList.Items.Clear();
-                if (result.Count == 0)
-                    _protoList.Items.Add("(нет прототипов)");
-                else
-                    foreach (var id in result)
-                        _protoList.Items.Add(id);
-            });
-        }
-        catch (Exception ex)
-        {
-            _protoList.Invoke(() =>
-            {
-                _protoList.Items.Clear();
-                _protoList.Items.Add($"Ошибка: {ex.Message}");
-            });
-        }
-    }, token);
-}
+                _protoList.Invoke(() =>
+                {
+                    _protoList.Items.Clear();
+                    _protoList.Items.Add($"Ошибка: {ex.Message}");
+                });
+            }
+        }, token);
+    }
 
 
 
@@ -954,7 +954,7 @@ private void UpdatePrototypeList(string filter = "")
         var menu = new MenuStrip();
         var fileMenu = new ToolStripMenuItem("Файл");
         fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => { });
-        fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => { });
+        fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => { });
         menu.Items.Add(fileMenu);
 
@@ -1122,11 +1122,39 @@ private void UpdatePrototypeList(string filter = "")
         Render();
     }
     private void UpdateTypeLabel()
-{
-    if (_typeLabel != null)
-        _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
-}
+    {
+        if (_typeLabel != null)
+            _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
+    }
 
-// Где-нибудь в MainForm или отдельном файле
+    private void ExportToYAML()
+    {
+        if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
+        {
+            MessageBox.Show("Нет комнат для экспорта");
+            return;
+        }
 
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "YAML files (*.yml)|*.yml",
+            DefaultExt = "yml",
+            FileName = "map.yml"
+        };
+
+        if (dialog.ShowDialog() == DialogResult.OK)
+        {
+            try
+            {
+                var generator = new YAMLGenerator();
+                var yaml = generator.Generate(_map.ActiveGrid.Rooms);
+                File.WriteAllText(dialog.FileName, yaml);
+                MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка экспорта: {ex.Message}");
+            }
+        }
+    }
 }

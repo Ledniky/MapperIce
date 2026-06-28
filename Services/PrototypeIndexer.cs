@@ -62,7 +62,6 @@ public class PrototypeIndexer
         string id = "";
         string type = "";
         bool inBlock = false;
-        int baseIndent = -1;  // Отступ начала блока
 
         foreach (var line in lines)
         {
@@ -83,7 +82,6 @@ public class PrototypeIndexer
                 block = line + "\n";
                 inBlock = true;
                 id = "";
-                baseIndent = 0;
 
                 var tMatch = Regex.Match(line, @"- type:\s*(\S+)");
                 type = tMatch.Success ? tMatch.Groups[1].Value : "";
@@ -106,7 +104,6 @@ public class PrototypeIndexer
                     // Начинаем новый
                     block = line + "\n";
                     id = "";
-                    baseIndent = 0;
 
                     var tMatch = Regex.Match(line, @"- type:\s*(\S+)");
                     type = tMatch.Success ? tMatch.Groups[1].Value : "";
