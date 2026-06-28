@@ -110,50 +110,50 @@ public class YAMLGenerator
         return sb.ToString();
     }
 
-private Dictionary<(int x, int y), string> GenerateChunks(List<Room> rooms)
-{
-    var chunks = new Dictionary<(int x, int y), int[]>();
-
-    foreach (var room in rooms)
+    private Dictionary<(int x, int y), string> GenerateChunks(List<Room> rooms)
     {
-        for (int x = room.X; x < room.X + room.Width; x++)
+        var chunks = new Dictionary<(int x, int y), int[]>();
+
+        foreach (var room in rooms)
         {
-            for (int y = room.Y; y < room.Y + room.Height; y++)
+            for (int x = room.X; x < room.X + room.Width; x++)
             {
-                // Инвертируем Y для чанков
-                int invY = -y;
-                int cx = x / CHUNK_SIZE;
-                int cy = invY / CHUNK_SIZE;
-                int lx = x % CHUNK_SIZE;
-                int ly = invY % CHUNK_SIZE;
-
-                // Приводим к положительным координатам
-                if (ly < 0) ly += CHUNK_SIZE;
-                if (cy < 0) cy--;
-
-                var key = (cx, cy);
-                if (!chunks.ContainsKey(key))
+                for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
-                    for (int i = 0; i < tiles.Length; i++)
-                        tiles[i] = 0;
-                    chunks[key] = tiles;
-                }
+                    // Инвертируем Y для чанков
+                    int invY = -y;
+                    int cx = x / CHUNK_SIZE;
+                    int cy = invY / CHUNK_SIZE;
+                    int lx = x % CHUNK_SIZE;
+                    int ly = invY % CHUNK_SIZE;
 
-                int index = ly * CHUNK_SIZE + lx;
-                chunks[key][index] = 1;
+                    // Приводим к положительным координатам
+                    if (ly < 0) ly += CHUNK_SIZE;
+                    if (cy < 0) cy--;
+
+                    var key = (cx, cy);
+                    if (!chunks.ContainsKey(key))
+                    {
+                        var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
+                        for (int i = 0; i < tiles.Length; i++)
+                            tiles[i] = 0;
+                        chunks[key] = tiles;
+                    }
+
+                    int index = ly * CHUNK_SIZE + lx;
+                    chunks[key][index] = 1;
+                }
             }
         }
-    }
 
-    var result = new Dictionary<(int x, int y), string>();
-    foreach (var kvp in chunks)
-    {
-        result[kvp.Key] = EncodeTiles(kvp.Value);
-    }
+        var result = new Dictionary<(int x, int y), string>();
+        foreach (var kvp in chunks)
+        {
+            result[kvp.Key] = EncodeTiles(kvp.Value);
+        }
 
-    return result;
-}
+        return result;
+    }
 
 
 
@@ -182,46 +182,53 @@ private Dictionary<(int x, int y), string> GenerateChunks(List<Room> rooms)
         return count;
     }
 
-private void GenerateWalls(StringBuilder sb, List<Room> rooms)
-{
-    int uid = 3;
-    var entities = new List<string>();
-
-    foreach (var room in rooms)
+    private void GenerateWalls(StringBuilder sb, List<Room> rooms)
     {
-        for (int x = room.X; x < room.X + room.Width; x++)
+        int uid = 3;
+        var entities = new List<string>();
+        var wallPositions = new HashSet<(int x, int y)>();
+
+        // Сначала собираем все позиции стен
+        foreach (var room in rooms)
         {
-            for (int y = room.Y; y < room.Y + room.Height; y++)
+            for (int x = room.X; x < room.X + room.Width; x++)
             {
-                if (x == room.X || x == room.X + room.Width - 1 ||
-                    y == room.Y || y == room.Y + room.Height - 1)
+                for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    // Инвертируем Y: -y
-                    float posX = x + 0.5f;
-                    float posY = -(y + 0.5f); // ← МИНУС!
-
-                    string posXStr = posX.ToString("0.0").Replace(',', '.');
-                    string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                    entities.Add($"  - uid: {uid}");
-                    entities.Add($"    components:");
-                    entities.Add($"    - type: Transform");
-                    entities.Add($"      pos: {posXStr},{posYStr}");
-                    entities.Add($"      parent: 2");
-                    uid++;
+                    // Только края комнаты
+                    if (x == room.X || x == room.X + room.Width - 1 ||
+                        y == room.Y || y == room.Y + room.Height - 1)
+                    {
+                        wallPositions.Add((x, y));
+                    }
                 }
             }
         }
+
+        // Затем создаём стены только для уникальных позиций
+        foreach (var (x, y) in wallPositions)
+        {
+            string posX = (x + 0.5).ToString("0.0").Replace(',', '.');
+            string posY = (y + 0.5).ToString("0.0").Replace(',', '.');
+
+            entities.Add($"  - uid: {uid}");
+            entities.Add($"    components:");
+            entities.Add($"    - type: Transform");
+            entities.Add($"      pos: {posX},{posY}");
+            entities.Add($"      parent: 2");
+            uid++;
+        }
+
+        if (entities.Count > 0)
+        {
+            sb.AppendLine("- proto: WallSolid");
+            sb.AppendLine("  entities:");
+            foreach (var line in entities)
+                sb.AppendLine(line);
+        }
     }
 
-    if (entities.Count > 0)
-    {
-        sb.AppendLine("- proto: WallSolid");
-        sb.AppendLine("  entities:");
-        foreach (var line in entities)
-            sb.AppendLine(line);
-    }
-}
+
 
 
 

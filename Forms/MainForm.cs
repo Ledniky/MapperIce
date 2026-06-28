@@ -378,7 +378,7 @@ public class MainForm : Form
                         break;
                 }
 
-                var result = filteredIds.Take(1000).ToList();
+                var result = filteredIds.Take(100000).ToList();
 
                 if (token.IsCancellationRequested) return;
 
@@ -952,10 +952,11 @@ public class MainForm : Form
     private void CreateMenu()
     {
         var menu = new MenuStrip();
-        var fileMenu = new ToolStripMenuItem("Файл");
-        fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => { });
-        fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
-        fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => { });
+    var fileMenu = new ToolStripMenuItem("Файл");
+    fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
+    fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
+    fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
+    fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
         Controls.Add(menu);
@@ -1127,6 +1128,11 @@ public class MainForm : Form
             _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
     }
 
+    private void LoadMapFromYAML()
+    {
+        MessageBox.Show("Загрузка карт из YAML пока не реализована");
+    }
+
     private void ExportToYAML()
     {
         if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
@@ -1157,4 +1163,126 @@ public class MainForm : Form
             }
         }
     }
+
+
+    private void SaveProject()
+{
+    if (_map.ActiveGrid == null)
+    {
+        MessageBox.Show("Нет активного грида для сохранения");
+        return;
+    }
+
+    using var dialog = new SaveFileDialog
+    {
+        Filter = "Project files (*.ice)|*.ice",
+        DefaultExt = "ice",
+        FileName = "project.ice"
+    };
+
+    if (dialog.ShowDialog() != DialogResult.OK) return;
+
+    try
+    {
+        var data = new ProjectData
+        {
+            LastSaved = DateTime.Now,
+            ActiveGridName = _map.ActiveGrid.Name
+        };
+
+        foreach (var room in _map.ActiveGrid.Rooms)
+        {
+            data.Rooms.Add(new RoomData
+            {
+                X = room.X,
+                Y = room.Y,
+                Width = room.Width,
+                Height = room.Height,
+                RoomType = room.RoomType,
+                WallProto = room.WallProto,
+                FloorProto = room.FloorProto,
+                DoorProto = room.DoorProto,
+                FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
+                LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
+            });
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions 
+        { 
+            WriteIndented = true 
+        });
+        File.WriteAllText(dialog.FileName, json);
+        MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}");
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Ошибка сохранения: {ex.Message}");
+    }
+}
+
+private void LoadProject()
+{
+    using var dialog = new OpenFileDialog
+    {
+        Filter = "Project files (*.ice)|*.ice"
+    };
+
+    if (dialog.ShowDialog() != DialogResult.OK) return;
+
+    try
+    {
+        var json = File.ReadAllText(dialog.FileName);
+        var data = System.Text.Json.JsonSerializer.Deserialize<ProjectData>(json);
+        
+        if (data == null)
+        {
+            MessageBox.Show("Ошибка чтения файла");
+            return;
+        }
+
+        // Очищаем текущую карту
+        if (_map.ActiveGrid != null)
+        {
+            _map.ActiveGrid.Rooms.Clear();
+
+            foreach (var roomData in data.Rooms)
+            {
+                var room = new Room
+                {
+                    X = roomData.X,
+                    Y = roomData.Y,
+                    Width = roomData.Width,
+                    Height = roomData.Height,
+                    RoomType = roomData.RoomType,
+                    WallProto = roomData.WallProto,
+                    FloorProto = roomData.FloorProto,
+                    DoorProto = roomData.DoorProto,
+                    FillColor = ParseColor(roomData.FillColor),
+                    LineColor = ParseColor(roomData.LineColor)
+                };
+                _map.ActiveGrid.Rooms.Add(room);
+            }
+
+            SaveState(); // Сохраняем состояние для Undo
+            Render();
+            MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}");
+        }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Ошибка загрузки: {ex.Message}");
+    }
+}
+
+private Color ParseColor(string value)
+{
+    try
+    {
+        var parts = value.Split(',');
+        if (parts.Length == 4)
+            return Color.FromArgb(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]));
+    }
+    catch { }
+    return Color.FromArgb(200, 230, 230, 230);
+}
 }
