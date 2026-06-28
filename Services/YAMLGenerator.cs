@@ -61,7 +61,6 @@ public class YAMLGenerator
         sb.AppendLine("    - type: MapGrid");
         sb.AppendLine("      chunks:");
 
-        // ===== ГЕНЕРИРУЕМ ВСЕ ЧАНКИ =====
         var chunks = GenerateChunks(rooms);
         foreach (var chunk in chunks)
         {
@@ -104,7 +103,6 @@ public class YAMLGenerator
         sb.AppendLine("    - type: GasTileOverlay");
         sb.AppendLine("    - type: RadiationGridResistance");
 
-        // Стены
         GenerateWalls(sb, rooms);
 
         return sb.ToString();
@@ -120,16 +118,20 @@ public class YAMLGenerator
             {
                 for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    // Инвертируем Y для чанков
+                    // ИНВЕРТИРУЕМ Y (как и в стенах)
                     int invY = -y;
+
                     int cx = x / CHUNK_SIZE;
                     int cy = invY / CHUNK_SIZE;
                     int lx = x % CHUNK_SIZE;
                     int ly = invY % CHUNK_SIZE;
 
-                    // Приводим к положительным координатам
-                    if (ly < 0) ly += CHUNK_SIZE;
-                    if (cy < 0) cy--;
+                    // Для отрицательных координат корректируем
+                    if (ly < 0)
+                    {
+                        ly += CHUNK_SIZE;
+                        cy--;
+                    }
 
                     var key = (cx, cy);
                     if (!chunks.ContainsKey(key))
@@ -155,18 +157,15 @@ public class YAMLGenerator
         return result;
     }
 
-
-
     private string EncodeTiles(int[] tileIds)
     {
-        // 7 байт на тайл: ID (4) + Flags (1) + Variant (1) + Rotation (1)
         var bytes = new List<byte>();
         for (int i = 0; i < tileIds.Length; i++)
         {
-            bytes.AddRange(BitConverter.GetBytes(tileIds[i])); // 4 байта (ID)
-            bytes.Add(0); // Flags
-            bytes.Add(0); // Variant
-            bytes.Add(0); // Rotation
+            bytes.AddRange(BitConverter.GetBytes(tileIds[i]));
+            bytes.Add(0);
+            bytes.Add(0);
+            bytes.Add(0);
         }
         return Convert.ToBase64String(bytes.ToArray());
     }
@@ -182,54 +181,56 @@ public class YAMLGenerator
         return count;
     }
 
-    private void GenerateWalls(StringBuilder sb, List<Room> rooms)
-    {
-        int uid = 3;
-        var entities = new List<string>();
-        var wallPositions = new HashSet<(int x, int y)>();
+private void GenerateWalls(StringBuilder sb, List<Room> rooms)
+{
+    int uid = 3;
+    var entities = new List<string>();
+    var wallPositions = new HashSet<(int x, int y)>();
 
-        // Сначала собираем все позиции стен
-        foreach (var room in rooms)
+    foreach (var room in rooms)
+    {
+        for (int x = room.X; x < room.X + room.Width; x++)
         {
-            for (int x = room.X; x < room.X + room.Width; x++)
+            for (int y = room.Y; y < room.Y + room.Height; y++)
             {
-                for (int y = room.Y; y < room.Y + room.Height; y++)
+                if (x == room.X || x == room.X + room.Width - 1 ||
+                    y == room.Y || y == room.Y + room.Height - 1)
                 {
-                    // Только края комнаты
-                    if (x == room.X || x == room.X + room.Width - 1 ||
-                        y == room.Y || y == room.Y + room.Height - 1)
-                    {
-                        wallPositions.Add((x, y));
-                    }
+                    wallPositions.Add((x, y));
                 }
             }
         }
-
-        // Затем создаём стены только для уникальных позиций
-        foreach (var (x, y) in wallPositions)
-        {
-            string posX = (x + 0.5).ToString("0.0").Replace(',', '.');
-            string posY = (y + 0.5).ToString("0.0").Replace(',', '.');
-
-            entities.Add($"  - uid: {uid}");
-            entities.Add($"    components:");
-            entities.Add($"    - type: Transform");
-            entities.Add($"      pos: {posX},{posY}");
-            entities.Add($"      parent: 2");
-            uid++;
-        }
-
-        if (entities.Count > 0)
-        {
-            sb.AppendLine("- proto: WallSolid");
-            sb.AppendLine("  entities:");
-            foreach (var line in entities)
-                sb.AppendLine(line);
-        }
     }
 
+    foreach (var (x, y) in wallPositions)
+    {
+        // Используем ТЕ ЖЕ координаты, что и для тайлов
+        // Тайлы в чанке используют инвертированный Y
+        int invY = -y;
+        
+        // Стены должны быть в центре тайла
+        float posX = x + 0.5f;
+        float posY = invY + 0.5f; // НЕ -(y + 0.5), а invY + 0.5!
 
+        string posXStr = posX.ToString("0.0").Replace(',', '.');
+        string posYStr = posY.ToString("0.0").Replace(',', '.');
 
+        entities.Add($"  - uid: {uid}");
+        entities.Add($"    components:");
+        entities.Add($"    - type: Transform");
+        entities.Add($"      pos: {posXStr},{posYStr}");
+        entities.Add($"      parent: 2");
+        uid++;
+    }
+
+    if (entities.Count > 0)
+    {
+        sb.AppendLine("- proto: WallSolid");
+        sb.AppendLine("  entities:");
+        foreach (var line in entities)
+            sb.AppendLine(line);
+    }
+}
 
 
 }
