@@ -181,56 +181,82 @@ public class YAMLGenerator
         return count;
     }
 
-private void GenerateWalls(StringBuilder sb, List<Room> rooms)
-{
-    int uid = 3;
-    var entities = new List<string>();
-    var wallPositions = new HashSet<(int x, int y)>();
-
-    foreach (var room in rooms)
+    private void GenerateWalls(StringBuilder sb, List<Room> rooms)
     {
-        for (int x = room.X; x < room.X + room.Width; x++)
+        int uid = 3;
+        var entities = new List<string>();
+        var wallPositions = new HashSet<(int x, int y)>();
+
+        foreach (var room in rooms)
         {
-            for (int y = room.Y; y < room.Y + room.Height; y++)
+            for (int x = room.X; x < room.X + room.Width; x++)
             {
-                if (x == room.X || x == room.X + room.Width - 1 ||
-                    y == room.Y || y == room.Y + room.Height - 1)
+                for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    wallPositions.Add((x, y));
+                    if (x == room.X || x == room.X + room.Width - 1 ||
+                        y == room.Y || y == room.Y + room.Height - 1)
+                    {
+                        wallPositions.Add((x, y));
+                    }
                 }
             }
         }
+
+        foreach (var (x, y) in wallPositions)
+        {
+            // Используем ТЕ ЖЕ координаты, что и для тайлов
+            // Тайлы в чанке используют инвертированный Y
+            int invY = -y;
+
+            // Стены должны быть в центре тайла
+            float posX = x + 0.5f;
+            float posY = invY + 0.5f; // НЕ -(y + 0.5), а invY + 0.5!
+
+            string posXStr = posX.ToString("0.0").Replace(',', '.');
+            string posYStr = posY.ToString("0.0").Replace(',', '.');
+
+            entities.Add($"  - uid: {uid}");
+            entities.Add($"    components:");
+            entities.Add($"    - type: Transform");
+            entities.Add($"      pos: {posXStr},{posYStr}");
+            entities.Add($"      parent: 2");
+            uid++;
+        }
+
+        if (entities.Count > 0)
+        {
+            sb.AppendLine("- proto: WallSolid");
+            sb.AppendLine("  entities:");
+            foreach (var line in entities)
+                sb.AppendLine(line);
+        }
     }
 
-    foreach (var (x, y) in wallPositions)
+
+
+    private void GenerateDoors(StringBuilder sb, List<Room> rooms, ref int uid)
     {
-        // Используем ТЕ ЖЕ координаты, что и для тайлов
-        // Тайлы в чанке используют инвертированный Y
-        int invY = -y;
-        
-        // Стены должны быть в центре тайла
-        float posX = x + 0.5f;
-        float posY = invY + 0.5f; // НЕ -(y + 0.5), а invY + 0.5!
+        foreach (var room in rooms)
+        {
+            foreach (var door in room.Doors)
+            {
+                float posX = door.X + 0.5f;
+                float posY = -(door.Y + 0.5f); // Инвертируем Y
 
-        string posXStr = posX.ToString("0.0").Replace(',', '.');
-        string posYStr = posY.ToString("0.0").Replace(',', '.');
+                string posXStr = posX.ToString("0.0").Replace(',', '.');
+                string posYStr = posY.ToString("0.0").Replace(',', '.');
 
-        entities.Add($"  - uid: {uid}");
-        entities.Add($"    components:");
-        entities.Add($"    - type: Transform");
-        entities.Add($"      pos: {posXStr},{posYStr}");
-        entities.Add($"      parent: 2");
-        uid++;
+                sb.AppendLine($"- proto: {door.Proto}");
+                sb.AppendLine($"  entities:");
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posXStr},{posYStr}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
     }
-
-    if (entities.Count > 0)
-    {
-        sb.AppendLine("- proto: WallSolid");
-        sb.AppendLine("  entities:");
-        foreach (var line in entities)
-            sb.AppendLine(line);
-    }
-}
 
 
 }

@@ -204,16 +204,36 @@ public class PrototypeIndexer
             .ToList();
     }
 
+private string? GetSpritePathRecursive(string id, int depth, out string? state)
+{
+    state = null;
+    
+    if (depth > 3) return null;
+    
+    var proto = FindPrototype(id);
+    if (proto == null) return null;
+    
+    // Если есть спрайт — возвращаем его
+    string path = proto.SpritePath ?? proto.RsiPath ?? "";
+    if (!string.IsNullOrEmpty(path))
+    {
+        state = proto.State;
+        return path;
+    }
+    
+    // Если нет — ищем у родителя
+    if (!string.IsNullOrEmpty(proto.Parent))
+        return GetSpritePathRecursive(proto.Parent, depth + 1, out state);
+    
+    return null;
+}
+
 public string? GetFullTexturePath(string id)
 {
     if (string.IsNullOrEmpty(_rootPath)) return null;
     
-    var proto = FindPrototype(id);
-    if (proto == null) return null;
-
-    string path = proto.SpritePath ?? "";
-    string state = proto.State ?? "";
-    
+    // Ищем путь и state с учётом наследования
+    string? path = GetSpritePathRecursive(id, 0, out var state);
     if (string.IsNullOrEmpty(path)) return null;
 
     // Нормализуем путь
@@ -221,57 +241,47 @@ public string? GetFullTexturePath(string id)
     if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
         path = path.Substring(9);
 
-    string basePath = Path.Combine(_rootPath, "Resources", "Textures", path);
+    string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
     
-    // ===== ЕСЛИ ЕСТЬ state — ищем конкретный файл =====
-    if (!string.IsNullOrEmpty(state))
-    {
-        string filePath = Path.Combine(basePath, state + ".png");
-        if (File.Exists(filePath))
-            return filePath;
-        
-        // Если не нашли — пробуем без учёта регистра
-        string dir = Path.GetDirectoryName(filePath)!;
-        string fileName = Path.GetFileName(filePath);
-        if (Directory.Exists(dir))
-        {
-            var files = Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly);
-            foreach (var f in files)
-            {
-                if (string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase))
-                    return f;
-            }
-        }
-        return null;
-    }
-    
-    // ===== ЕСЛИ НЕТ state — ищем внутри папки .rsi =====
+    // Если это .rsi — ищем state
     if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
     {
-        if (Directory.Exists(basePath))
+        if (Directory.Exists(fullPath))
         {
-            // Сначала ищем full.png
-            string fullPng = Path.Combine(basePath, "full.png");
-            if (File.Exists(fullPng))
-                return fullPng;
+            // 1. Если есть state — ищем его
+            if (!string.IsNullOrEmpty(state))
+            {
+                string stateFile = Path.Combine(fullPath, state + ".png");
+                if (File.Exists(stateFile))
+                    return stateFile;
+            }
             
-            // Или берём первый .png
-            var pngFiles = Directory.GetFiles(basePath, "*.png", SearchOption.TopDirectoryOnly);
+            // 2. ПРИОРИТЕТ: closed.png (для дверей)
+            string[] priorityFiles = { "closed.png", "full.png", "state0.png", "icon.png" };
+            foreach (var fileName in priorityFiles)
+            {
+                string testPath = Path.Combine(fullPath, fileName);
+                if (File.Exists(testPath))
+                    return testPath;
+            }
+            
+            // 3. Если ничего не нашли — берём первый .png
+            var pngFiles = Directory.GetFiles(fullPath, "*.png", SearchOption.TopDirectoryOnly);
             if (pngFiles.Length > 0)
                 return pngFiles[0];
         }
         return null;
     }
 
-    // ===== ОБЫЧНЫЙ .png ФАЙЛ =====
-    if (!basePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-        basePath += ".png";
+    // Обычный файл .png
+    if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        fullPath += ".png";
 
-    return File.Exists(basePath) ? basePath : null;
+    if (File.Exists(fullPath))
+        return fullPath;
+    
+    return null;
 }
-
-
-
 
 
 

@@ -7,11 +7,14 @@ public class Renderer
     private Bitmap _buffer;
     private readonly object _lock = new();
     private PrototypeIndexer? _indexer;
+    private string _rootPath = "";
 
     public Renderer(int width, int height, PrototypeIndexer? indexer = null)
     {
         _buffer = new Bitmap(Math.Max(1, width), Math.Max(1, height));
         _indexer = indexer;
+        if (_indexer != null)
+            _rootPath = _indexer.GetRootPath();
     }
 
     public void Resize(int width, int height)
@@ -53,7 +56,7 @@ public class Renderer
                     DrawFloorTiles(g, room, tileSize, viewOffset, grid.Position, opacity);
             }
 
-            // 3. СТЕНЫ
+            // 3. СТЕНЫ (под заливкой)
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -71,7 +74,17 @@ public class Renderer
                 DrawRoomWalls(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f, new List<Room>());
             }
 
-            // 4. ЗАЛИВКА КОМНАТ
+            // 4. ДВЕРИ (под заливкой)
+            foreach (var grid in map.Grids)
+            {
+                if (!grid.IsVisible) continue;
+                foreach (var room in grid.Rooms)
+                {
+                    DrawDoors(g, room, tileSize, viewOffset, grid.Position);
+                }
+            }
+
+            // 5. ЗАЛИВКА КОМНАТ (поверх стен и дверей)
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -84,7 +97,7 @@ public class Renderer
             if (currentRoom != null && map.ActiveGrid != null)
                 DrawRoomFill(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f);
 
-            // 5. ЛИНИИ (поверх стен и заливки)
+            // 6. ЛИНИИ (поверх всего)
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -97,7 +110,7 @@ public class Renderer
             if (currentRoom != null && map.ActiveGrid != null)
                 DrawRoomLine(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, true, 1.0f);
 
-            // 6. ИНФОРМАЦИЯ
+            // 7. ИНФОРМАЦИЯ
             DrawInfo(g, scale, toolName, map);
 
             return _buffer;
@@ -175,6 +188,7 @@ public class Renderer
 
     private void DrawRoomWalls(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, List<Room> allRooms)
     {
+        // Получаем путь к текстуре стены
         string? wallPath = null;
         if (_indexer != null)
         {
@@ -191,9 +205,15 @@ public class Renderer
         try { wallTexture = Image.FromFile(wallPath); }
         catch { return; }
 
+        // Собираем позиции дверей в этой комнате
+        var doorPositions = room.Doors.Select(d => (d.X, d.Y)).ToHashSet();
+
         // Верхняя стена
         for (int x = room.X; x < room.X + room.Width; x++)
         {
+            // Пропускаем, если здесь дверь
+            if (doorPositions.Contains((x, room.Y))) continue;
+
             float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
             float wy = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
             g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
@@ -202,6 +222,8 @@ public class Renderer
         // Нижняя стена
         for (int x = room.X; x < room.X + room.Width; x++)
         {
+            if (doorPositions.Contains((x, room.Y + room.Height - 1))) continue;
+
             float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
             float wy = (room.Y + room.Height - 1 + gridOffset.Y) * tileSize - viewOffset.Y;
             g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
@@ -210,6 +232,8 @@ public class Renderer
         // Левая стена (без углов)
         for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
         {
+            if (doorPositions.Contains((room.X, y))) continue;
+
             float wx = (room.X + gridOffset.X) * tileSize - viewOffset.X;
             float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
             g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
@@ -218,6 +242,8 @@ public class Renderer
         // Правая стена (без углов)
         for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
         {
+            if (doorPositions.Contains((room.X + room.Width - 1, y))) continue;
+
             float wx = (room.X + room.Width - 1 + gridOffset.X) * tileSize - viewOffset.X;
             float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
             g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
@@ -289,6 +315,70 @@ public class Renderer
         int brightness = (int)(backgroundColor.R * 0.299 + backgroundColor.G * 0.587 + backgroundColor.B * 0.114);
         return brightness < 128 ? Color.White : Color.Black;
     }
+
+    // ===== ДВЕРИ =====
+
+private void DrawDoors(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
+{
+    if (_indexer == null) return;
+    
+    foreach (var door in room.Doors)
+    {
+        // Координаты двери в тайлах (центр тайла)
+        float x = (door.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (door.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+        
+        // Смещаем на пол-тайла влево и вверх, чтобы центрировать
+        x -= tileSize / 2f;
+        y -= tileSize / 2f;
+        
+        // ===== ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА =====
+        Image? doorTexture = null;
+        string hardPath = @"D:\_Goob-Station\Resources\Textures\Structures\Doors\Airlocks\Glass\glass.rsi\closed.png";
+        
+        if (File.Exists(hardPath))
+        {
+            try { doorTexture = Image.FromFile(hardPath); }
+            catch { }
+        }
+        
+        // Если принудительная загрузка не сработала — пробуем через индексатор
+        if (doorTexture == null)
+        {
+            var doorPath = _indexer.GetFullTexturePath(door.Proto);
+            if (doorPath != null && File.Exists(doorPath))
+            {
+                try { doorTexture = Image.FromFile(doorPath); }
+                catch { }
+            }
+        }
+        
+        if (doorTexture != null)
+        {
+            g.DrawImage(doorTexture, new Rectangle((int)x, (int)y, tileSize, tileSize));
+        }
+        else
+        {
+            // Заглушка
+            using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
+            g.FillRectangle(brush, (int)x, (int)y, tileSize, tileSize);
+            using var pen = new Pen(Color.DarkBlue, 2);
+            g.DrawRectangle(pen, (int)x, (int)y, tileSize, tileSize);
+            using var font = new Font("Segoe UI", 14);
+            using var textBrush = new SolidBrush(Color.White);
+            g.DrawString("🚪", font, textBrush, (int)x + 4, (int)y + 2);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
 
     private void DrawInfo(Graphics g, float scale, string toolName, MapData map)
     {

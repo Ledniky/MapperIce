@@ -12,15 +12,17 @@ public class Room
     public Color FillColor { get; set; } = Color.FromArgb(128, 230, 230, 230);
     public Color LineColor { get; set; } = Color.FromArgb(255, 200, 200, 200);
     
-    public string RoomType { get; set; } = "BaseRoom";
+    public string RoomType { get; set; } = "General";
     public string WallProto { get; set; } = "WallSolid";
     public string FloorProto { get; set; } = "Plating";
-    public string DoorProto { get; set; } = "";
+    public string DoorProto { get; set; } = "AirlockGlass";
+    public List<Door> Doors { get; set; } = new();
 
     public Room Clone()
     {
         return new Room
         {
+            
             X = X,
             Y = Y,
             Width = Width,
@@ -30,7 +32,8 @@ public class Room
             RoomType = RoomType,
             WallProto = WallProto,
             FloorProto = FloorProto,
-            DoorProto = DoorProto
+            DoorProto = DoorProto,
+            Doors = Doors.Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto }).ToList()
         };
     }
 }
