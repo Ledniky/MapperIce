@@ -134,13 +134,21 @@ public class PrototypeIndexer
 
         return result;
     }
+    
     private Prototype? ParseBlock(string block, string id, string type, string filePath)
     {
         if (type != "tile" && type != "entity") return null;
         if (string.IsNullOrEmpty(id)) return null;
-        if (!char.IsUpper(id[0])) return null;
+        // Убрано условие !char.IsUpper(id[0]) - теперь принимаем любые id
 
         var proto = new Prototype { Id = id, FilePath = filePath };
+
+        // Ищем parent
+        var parentMatch = Regex.Match(block, @"parent:\s*([^\s]+)");
+        if (parentMatch.Success)
+        {
+            proto.Parent = parentMatch.Groups[1].Value;
+        }
 
         // Ищем sprite
         var s = Regex.Match(block, @"sprite:\s*([^\s]+)");
@@ -162,7 +170,7 @@ public class PrototypeIndexer
             proto.RsiPath = path;
         }
 
-        // ===== ИЩЕМ state =====
+        // Ищем state
         var stateMatch = Regex.Match(block, @"state:\s*([^\s]+)");
         if (stateMatch.Success)
         {
@@ -180,7 +188,6 @@ public class PrototypeIndexer
 
         return proto;
     }
-
 
     public Prototype? FindPrototype(string id)
     {
@@ -204,86 +211,145 @@ public class PrototypeIndexer
             .ToList();
     }
 
-private string? GetSpritePathRecursive(string id, int depth, out string? state)
-{
-    state = null;
-    
-    if (depth > 3) return null;
-    
-    var proto = FindPrototype(id);
-    if (proto == null) return null;
-    
-    // Если есть спрайт — возвращаем его
-    string path = proto.SpritePath ?? proto.RsiPath ?? "";
-    if (!string.IsNullOrEmpty(path))
+    public string? GetFullTexturePath(string id)
     {
-        state = proto.State;
-        return path;
-    }
-    
-    // Если нет — ищем у родителя
-    if (!string.IsNullOrEmpty(proto.Parent))
-        return GetSpritePathRecursive(proto.Parent, depth + 1, out state);
-    
-    return null;
-}
+        if (string.IsNullOrEmpty(_rootPath)) return null;
+        
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
 
-public string? GetFullTexturePath(string id)
-{
-    if (string.IsNullOrEmpty(_rootPath)) return null;
-    
-    // Ищем путь и state с учётом наследования
-    string? path = GetSpritePathRecursive(id, 0, out var state);
-    if (string.IsNullOrEmpty(path)) return null;
+        // 1. Ищем путь по цепочке родителей
+        string? path = FindPathRecursive(id, 0);
+        if (string.IsNullOrEmpty(path)) return null;
 
-    // Нормализуем путь
-    path = path.Replace("/", "\\").TrimStart('\\');
-    if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
-        path = path.Substring(9);
-
-    string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
-    
-    // Если это .rsi — ищем state
-    if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
-    {
-        if (Directory.Exists(fullPath))
+        // 2. Ищем state - СНАЧАЛА у самого прототипа, потом у родителей
+        string? state = FindStateRecursive(id, 0);
+        
+        // 3. Если state не найден - используем "closed" как дефолтный для дверей
+        if (string.IsNullOrEmpty(state))
         {
-            // 1. Если есть state — ищем его
-            if (!string.IsNullOrEmpty(state))
+            state = "closed";
+            System.Diagnostics.Debug.WriteLine($"State не найден для {id}, используем 'closed'");
+        }
+
+        // 4. Собираем полный путь
+        path = path.Replace("/", "\\").TrimStart('\\');
+        if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(9);
+
+        string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
+        
+        if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Directory.Exists(fullPath))
             {
+                // Пробуем найденный state
                 string stateFile = Path.Combine(fullPath, state + ".png");
                 if (File.Exists(stateFile))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Найден файл: {stateFile}");
                     return stateFile;
+                }
+                
+                // Если не найден - пробуем стандартные состояния
+                string[] fallbackStates = { "closed", "open", "welded", "bolted", "full", "icon" };
+                foreach (var fallback in fallbackStates)
+                {
+                    string testPath = Path.Combine(fullPath, fallback + ".png");
+                    if (File.Exists(testPath))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Найден fallback файл: {testPath}");
+                        return testPath;
+                    }
+                }
+                
+                // Берем любой PNG
+                var pngFiles = Directory.GetFiles(fullPath, "*.png", SearchOption.TopDirectoryOnly);
+                if (pngFiles.Length > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Найден первый PNG: {pngFiles[0]}");
+                    return pngFiles[0];
+                }
             }
-            
-            // 2. ПРИОРИТЕТ: closed.png (для дверей)
-            string[] priorityFiles = { "closed.png", "full.png", "state0.png", "icon.png" };
-            foreach (var fileName in priorityFiles)
-            {
-                string testPath = Path.Combine(fullPath, fileName);
-                if (File.Exists(testPath))
-                    return testPath;
-            }
-            
-            // 3. Если ничего не нашли — берём первый .png
-            var pngFiles = Directory.GetFiles(fullPath, "*.png", SearchOption.TopDirectoryOnly);
-            if (pngFiles.Length > 0)
-                return pngFiles[0];
+            return null;
         }
+
+        if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            fullPath += ".png";
+
+        return File.Exists(fullPath) ? fullPath : null;
+    }
+
+    // Ищем ТОЛЬКО путь по цепочке родителей
+    private string? FindPathRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+        
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+        
+        // Проверяем SpritePath и RsiPath
+        string path = proto.SpritePath ?? proto.RsiPath ?? "";
+        if (!string.IsNullOrEmpty(path))
+        {
+            System.Diagnostics.Debug.WriteLine($"Найден путь для {id}: {path} (глубина {depth})");
+            return path;
+        }
+        
+        // Если нет - идем к родителю
+        if (!string.IsNullOrEmpty(proto.Parent))
+        {
+            return FindPathRecursive(proto.Parent, depth + 1);
+        }
+        
         return null;
     }
 
-    // Обычный файл .png
-    if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-        fullPath += ".png";
+    // Ищем state СНАЧАЛА у самого прототипа, потом у родителей
+    private string? FindStateRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+        
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+        
+        // СНАЧАЛА проверяем State у текущего прототипа
+        if (!string.IsNullOrEmpty(proto.State))
+        {
+            System.Diagnostics.Debug.WriteLine($"Найден state у самого прототипа {id}: {proto.State} (глубина {depth})");
+            return proto.State;
+        }
+        
+        // Если у текущего нет - идем к родителю
+        if (!string.IsNullOrEmpty(proto.Parent))
+        {
+            System.Diagnostics.Debug.WriteLine($"State не найден у {id}, ищем у родителя {proto.Parent}");
+            return FindStateRecursive(proto.Parent, depth + 1);
+        }
+        
+        return null;
+    }
 
-    if (File.Exists(fullPath))
-        return fullPath;
-    
-    return null;
-}
+    private (string? path, string? state) FindSpriteRecursive(string id, int depth)
+    {
+        if (depth > 5) return (null, null);
 
+        var proto = FindPrototype(id);
+        if (proto == null) return (null, null);
 
+        // Проверяем, есть ли спрайт у этого прототипа
+        string path = proto.SpritePath ?? proto.RsiPath ?? "";
+        if (!string.IsNullOrEmpty(path))
+        {
+            return (path, proto.State);
+        }
 
+        // Если нет - идем к родителю
+        if (!string.IsNullOrEmpty(proto.Parent))
+        {
+            return FindSpriteRecursive(proto.Parent, depth + 1);
+        }
 
+        return (null, null);
+    }
 }

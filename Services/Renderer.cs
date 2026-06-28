@@ -324,33 +324,15 @@ private void DrawDoors(Graphics g, Room room, int tileSize, PointF viewOffset, P
     
     foreach (var door in room.Doors)
     {
-        // Координаты двери в тайлах (центр тайла)
-        float x = (door.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (door.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+        float x = (door.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X - tileSize / 2f;
+        float y = (door.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y - tileSize / 2f;
         
-        // Смещаем на пол-тайла влево и вверх, чтобы центрировать
-        x -= tileSize / 2f;
-        y -= tileSize / 2f;
-        
-        // ===== ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА =====
         Image? doorTexture = null;
-        string hardPath = @"D:\_Goob-Station\Resources\Textures\Structures\Doors\Airlocks\Glass\glass.rsi\closed.png";
-        
-        if (File.Exists(hardPath))
+        var doorPath = _indexer.GetFullTexturePath(door.Proto);
+        if (doorPath != null && File.Exists(doorPath))
         {
-            try { doorTexture = Image.FromFile(hardPath); }
+            try { doorTexture = Image.FromFile(doorPath); }
             catch { }
-        }
-        
-        // Если принудительная загрузка не сработала — пробуем через индексатор
-        if (doorTexture == null)
-        {
-            var doorPath = _indexer.GetFullTexturePath(door.Proto);
-            if (doorPath != null && File.Exists(doorPath))
-            {
-                try { doorTexture = Image.FromFile(doorPath); }
-                catch { }
-            }
         }
         
         if (doorTexture != null)
@@ -370,7 +352,6 @@ private void DrawDoors(Graphics g, Room room, int tileSize, PointF viewOffset, P
         }
     }
 }
-
 
 
 

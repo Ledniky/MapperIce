@@ -1052,7 +1052,7 @@ public class MainForm : Form
             int tileX = (int)Math.Floor(worldX);
             int tileY = (int)Math.Floor(worldY);
 
-            // === ИНСТРУМЕНТ: СОЗДАТЬ КОМНАТУ ===
+            // === СОЗДАТЬ КОМНАТУ ===
             if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
             {
                 _isDrawing = true;
@@ -1060,15 +1060,14 @@ public class MainForm : Form
                 _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
             }
 
-            // === ИНСТРУМЕНТ: УДАЛИТЬ ===
+            // === УДАЛИТЬ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
             {
                 var grid = _map.ActiveGrid;
 
-                // 1. Проверяем, есть ли дверь в этом месте
+                // Проверяем дверь
                 Room? foundRoom = null;
                 Door? foundDoor = null;
-
                 foreach (var r in grid.Rooms)
                 {
                     var door = r.Doors.FirstOrDefault(d => d.X == tileX && d.Y == tileY);
@@ -1088,7 +1087,7 @@ public class MainForm : Form
                     return;
                 }
 
-                // 2. Если двери нет — проверяем комнату
+                // Проверяем комнату
                 var roomToDelete = grid.Rooms.FirstOrDefault(r =>
                     tileX >= r.X && tileX < r.X + r.Width &&
                     tileY >= r.Y && tileY < r.Y + r.Height);
@@ -1100,36 +1099,34 @@ public class MainForm : Form
                 }
             }
 
-            // === ИНСТРУМЕНТ: ДВЕРЬ ===
+            // === ДВЕРЬ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
                 var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
                     tileX >= r.X && tileX < r.X + r.Width &&
                     tileY >= r.Y && tileY < r.Y + r.Height);
 
-                if (targetRoom != null)
+                if (targetRoom != null && (tileX == targetRoom.X || tileX == targetRoom.X + targetRoom.Width - 1 ||
+                                           tileY == targetRoom.Y || tileY == targetRoom.Y + targetRoom.Height - 1))
                 {
-                    bool isEdge = tileX == targetRoom.X || tileX == targetRoom.X + targetRoom.Width - 1 ||
-                                  tileY == targetRoom.Y || tileY == targetRoom.Y + targetRoom.Height - 1;
-
-                    if (isEdge)
+                    if (!targetRoom.Doors.Any(d => d.X == tileX && d.Y == tileY))
                     {
-                        if (!targetRoom.Doors.Any(d => d.X == tileX && d.Y == tileY))
+                        // Добавляем дверь с прототипом из комнаты
+                        targetRoom.Doors.Add(new Door
                         {
-                            targetRoom.Doors.Add(new Door
-                            {
-                                X = tileX,
-                                Y = tileY,
-                                Proto = targetRoom.DoorProto
-                            });
-                            SaveState();
-                            Render();
-                        }
+                            X = tileX,
+                            Y = tileY,
+                            Proto = targetRoom.DoorProto
+                        });
+                        SaveState();
+                        Render();
                     }
                 }
             }
         }
     }
+
+
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {

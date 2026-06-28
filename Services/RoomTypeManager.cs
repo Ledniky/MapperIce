@@ -1,4 +1,5 @@
 using MapperIce.Models;
+using System.Reflection;
 using System.Text.Json;
 
 namespace MapperIce.Services;
@@ -24,45 +25,97 @@ public class RoomTypeManager
 
     public RoomTypeManager()
     {
-        LoadVanillaTypes();
-        LoadCustomTypes();
+        try
+        {
+            LoadVanillaTypes();
+            LoadCustomTypes();
+            
+            // Убедимся, что выбранный тип существует
+            if (!_types.ContainsKey(SelectedType))
+            {
+                SelectedType = _types.Keys.FirstOrDefault() ?? "General";
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка в конструкторе RoomTypeManager: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+            
+            // Fallback - загружаем минимальный набор
+            InitializeMinimalTypes();
+        }
     }
 
-private void LoadVanillaTypes()
-{
-    var allTypes = new RoomType[]
+    private void LoadVanillaTypes()
     {
-        new BaseRoom(),      // Будет скрыт
-        new General(),
-        new Technical(),
-        new Command(),
-        new Medical(),
-        new Service(),
-        new Engineering(),
-        new Security(),
-        new Bar(),
-        new Science(),
-        new Cargo(),
-        new Janitor(),
-        new Chemistry(),
-        new Virology(),
-        new Atmospherics(),
-        new Salvage(),
-        new Neutral(),
-        new NeutralLight()
-    };
+        try
+        {
+            var allTypes = Assembly.GetExecutingAssembly().GetTypes();
+            
+            var roomTypes = allTypes
+                .Where(t => t.IsClass && 
+                           !t.IsAbstract && 
+                           t.IsSubclassOf(typeof(RoomType)) &&
+                           t.GetConstructor(Type.EmptyTypes) != null)
+                .ToList();
+            
+            foreach (var type in roomTypes)
+            {
+                try
+                {
+                    var instance = Activator.CreateInstance(type) as RoomType;
+                    if (instance == null) continue;
+                    
+                    if (instance.IsHidden) continue;
+                    
+                    _types[instance.Name] = instance;
+                    if (!_categories.ContainsKey(instance.Category))
+                        _categories[instance.Category] = new List<RoomType>();
+                    _categories[instance.Category].Add(instance);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Ошибка создания типа {type.Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка загрузки типов: {ex.Message}");
+            throw; // Перебрасываем для обработки в конструкторе
+        }
+    }
 
-    foreach (var type in allTypes)
+    private void InitializeMinimalTypes()
     {
-        // Пропускаем скрытые типы
-        if (type.IsHidden) continue;
+        // Минимальный набор типов для работы приложения
+        var minimalTypes = new RoomType[]
+        {
+            new General(),
+            new Technical(),
+            new Security(),
+            new Medical(),
+            new Command(),
+            new Engineering(),
+            new Science(),
+            new Cargo(),
+            new Service(),
+            new Neutral()
+        };
         
-        _types[type.Name] = type;
-        if (!_categories.ContainsKey(type.Category))
-            _categories[type.Category] = new List<RoomType>();
-        _categories[type.Category].Add(type);
+        foreach (var type in minimalTypes)
+        {
+            if (type.IsHidden) continue;
+            _types[type.Name] = type;
+            if (!_categories.ContainsKey(type.Category))
+                _categories[type.Category] = new List<RoomType>();
+            _categories[type.Category].Add(type);
+        }
+        
+        if (!_types.ContainsKey(SelectedType))
+            SelectedType = "General";
     }
-}
+
     private void LoadCustomTypes()
     {
         if (!File.Exists(_customTypesPath)) return;
@@ -84,7 +137,10 @@ private void LoadVanillaTypes()
                 _categories[type.Category].Add(type);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка загрузки кастомных типов: {ex.Message}");
+        }
     }
 
     private void SaveCustomTypes()
@@ -106,7 +162,10 @@ private void LoadVanillaTypes()
 #pragma warning restore IL2026, IL3050
             File.WriteAllText(_customTypesPath, json);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка сохранения кастомных типов: {ex.Message}");
+        }
     }
 
     public void CreateCustomType(string name, string category, string wallProto, string floorProto, string doorProto, Color fillColor, Color lineColor)
@@ -152,7 +211,7 @@ private void LoadVanillaTypes()
         }
 
         if (SelectedType == name)
-            SelectedType = "BaseRoom";
+            SelectedType = _types.Keys.FirstOrDefault() ?? "General";
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
@@ -218,7 +277,7 @@ private void LoadVanillaTypes()
     public RoomType GetRoomType(string? typeName = null)
     {
         var key = typeName ?? SelectedType;
-        return _types.TryGetValue(key, out var type) ? type : _types["BaseRoom"];
+        return _types.TryGetValue(key, out var type) ? type : _types["General"];
     }
 
     public void ApplyTypeToRoom(Room room, string? typeName = null)
@@ -354,5 +413,15 @@ private void LoadVanillaTypes()
             MessageBox.Show($"Импортировано: {imported}, пропущено (уже есть): {skipped}");
         else
             MessageBox.Show($"Импортировано: {imported}");
+    }
+
+    public List<string> GetAllTypeNames()
+    {
+        return _types.Keys.ToList();
+    }
+
+    public bool TypeExists(string typeName)
+    {
+        return _types.ContainsKey(typeName);
     }
 }
