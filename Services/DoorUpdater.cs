@@ -79,34 +79,50 @@ public class DoorUpdater
     /// <summary>
     /// Обновляет двери на границах комнаты - переносит двери в комнату с максимальным приоритетом
     /// </summary>
+
     public void UpdateDoorsOnRoomBoundary(Room room, Grid grid)
     {
-        var doorsToCheck = room.Doors.ToList();
+        // Проверяем все двери в гриде
+        var allDoors = grid.Rooms
+            .SelectMany(r => r.Doors.Select(d => new { Room = r, Door = d }))
+            .ToList();
 
-        foreach (var door in doorsToCheck)
+        foreach (var item in allDoors)
         {
-            var topRoom = GetTopPriorityRoomAtPoint(grid, door.X, door.Y);
-            if (topRoom == null) continue;
+            // Находим все комнаты в точке двери
+            var roomsAtPoint = grid.Rooms
+                .Where(r => item.Door.X >= r.X && item.Door.X < r.X + r.Width &&
+                            item.Door.Y >= r.Y && item.Door.Y < r.Y + r.Height)
+                .ToList();
 
-            // Если приоритетная комната не та, у которой сейчас стоит дверь
-            if (topRoom != room)
+            if (roomsAtPoint.Count == 0) continue;
+
+            // Находим комнату с максимальным приоритетом
+            var topRoom = roomsAtPoint
+                .OrderByDescending(r => _roomTypeManager.GetPriorityForType(r.RoomType))
+                .First();
+
+            // Если дверь уже принадлежит приоритетной комнате - пропускаем
+            if (topRoom == item.Room) continue;
+
+            // Проверяем, что точка находится на границе приоритетной комнаты
+            if (!IsOnRoomBorder(topRoom, item.Door.X, item.Door.Y)) continue;
+
+            // Удаляем дверь из текущей комнаты
+            item.Room.Doors.Remove(item.Door);
+
+            // Добавляем дверь в приоритетную комнату (если её там нет)
+            if (!topRoom.Doors.Any(d => d.X == item.Door.X && d.Y == item.Door.Y))
             {
-                // Удаляем дверь из текущей комнаты
-                room.Doors.Remove(door);
+                string doorType = item.Door.Proto.Contains("Glass") ? "AirlockGlass" : "Airlock";
+                string doorProto = GetDoorProto(topRoom, doorType);
 
-                // Добавляем дверь в приоритетную комнату (если её там нет)
-                if (!topRoom.Doors.Any(d => d.X == door.X && d.Y == door.Y))
+                topRoom.Doors.Add(new Door
                 {
-                    string doorType = door.Proto.Contains("Glass") ? "AirlockGlass" : "Airlock";
-                    string doorProto = GetDoorProto(topRoom, doorType);
-
-                    topRoom.Doors.Add(new Door
-                    {
-                        X = door.X,
-                        Y = door.Y,
-                        Proto = doorProto
-                    });
-                }
+                    X = item.Door.X,
+                    Y = item.Door.Y,
+                    Proto = doorProto
+                });
             }
         }
     }
@@ -122,11 +138,39 @@ public class DoorUpdater
 
         foreach (var item in allDoors)
         {
-            var topRoom = GetTopPriorityRoomAtPoint(grid, item.Door.X, item.Door.Y);
-            if (topRoom == null || topRoom == item.Room) continue;
+            // Находим все комнаты в точке двери
+            var roomsAtPoint = grid.Rooms
+                .Where(r => item.Door.X >= r.X && item.Door.X < r.X + r.Width &&
+                            item.Door.Y >= r.Y && item.Door.Y < r.Y + r.Height)
+                .ToList();
 
+            if (roomsAtPoint.Count == 0)
+            {
+                // Если дверь не принадлежит ни одной комнате - удаляем её
+                item.Room.Doors.Remove(item.Door);
+                continue;
+            }
+
+            // Находим комнату с максимальным приоритетом
+            var topRoom = roomsAtPoint
+                .OrderByDescending(r => _roomTypeManager.GetPriorityForType(r.RoomType))
+                .First();
+
+            // Если дверь уже принадлежит приоритетной комнате - пропускаем
+            if (topRoom == item.Room) continue;
+
+            // Проверяем, что точка находится на границе приоритетной комнаты
+            if (!IsOnRoomBorder(topRoom, item.Door.X, item.Door.Y))
+            {
+                // Если точка не на границе - удаляем дверь
+                item.Room.Doors.Remove(item.Door);
+                continue;
+            }
+
+            // Удаляем дверь из текущей комнаты
             item.Room.Doors.Remove(item.Door);
 
+            // Добавляем дверь в приоритетную комнату (если её там нет)
             if (!topRoom.Doors.Any(d => d.X == item.Door.X && d.Y == item.Door.Y))
             {
                 string doorType = item.Door.Proto.Contains("Glass") ? "AirlockGlass" : "Airlock";

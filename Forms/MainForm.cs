@@ -1393,7 +1393,10 @@ public class MainForm : Form
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
-                _doorUpdater.UpdateDoorsOnRoomBoundary(_currentRoom, _map.ActiveGrid);
+
+                // Обновляем все двери в гриде (а не только на границах комнаты)
+                _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
+
                 SaveState();
             }
 
