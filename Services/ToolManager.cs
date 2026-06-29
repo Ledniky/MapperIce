@@ -11,7 +11,8 @@ public class ToolManager
     }
 
     private Tool _currentTool = Tool.None;
-
+    // В ToolManager.cs добавьте:
+    public string DoorProto { get; set; } = "Airlock";
     public Tool CurrentTool => _currentTool;
     public event Action<Tool>? ToolChanged;
 

@@ -23,9 +23,12 @@ public class MainForm : Form
     private float _scale = 1.0f;
 
     private PictureBox _canvas = null!;
+    private Panel _toolPanel = null!;
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
     private Button _btnRoomSettings = null!;
+    private Button _btnAirlock = null!;
+    private Button _btnAirlockGlass = null!;
     private ComboBox _gridSelector = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
@@ -38,7 +41,6 @@ public class MainForm : Form
 
     private Form? _roomTypeForm = null;
     private Label _typeLabel = null!;
-    private Button _btnDoor = null!;
     private CancellationTokenSource? _searchCts;
 
     public MainForm()
@@ -68,9 +70,15 @@ public class MainForm : Form
         UpdateGridSelector();
 
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
-        _indexer.OnIndexingComplete += () => { UpdatePrototypeList(); Render(); };
+        _indexer.OnIndexingComplete += () => 
+        { 
+            UpdatePrototypeList(); 
+            UpdateDoorIcons();
+            Render(); 
+        };
 
         UpdateRepoSelector();
+        LoadDoorIcons();
         SaveState();
         UpdateBuffer();
     }
@@ -315,13 +323,9 @@ public class MainForm : Form
             int count = _indexer.GetPrototypeIds().Count;
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
-
-
-            // ===== ОТЛАДКА =====
-            var path = _indexer.GetFullTexturePath("Plating");
-            MessageBox.Show(path ?? "Plating НЕ найден");
-            // ===================
-
+            
+            UpdateDoorIcons();
+            
             MessageBox.Show($"Проиндексировано {count} прототипов");
         }
     }
@@ -404,8 +408,6 @@ public class MainForm : Form
         }, token);
     }
 
-
-
     private void OnPrototypeDoubleClick(object? sender, EventArgs e)
     {
         if (_protoList.SelectedItem == null) return;
@@ -415,26 +417,6 @@ public class MainForm : Form
         var proto = _indexer.FindPrototype(id);
         var path = _indexer.GetFullTexturePath(id);
 
-        // ===== РУЧНОЙ ПУТЬ (закомментирован) =====
-        /*
-        string manualPath = "";
-        if (proto != null && !string.IsNullOrEmpty(proto.SpritePath))
-        {
-            string repoPath = "";
-            if (_repoSelector.SelectedItem is Repository repo)
-                repoPath = repo.Path;
-            else
-                repoPath = @"D:\_Goob-Station";
-
-            string texturesPath = Path.Combine(repoPath, "Resources", "Textures");
-            string relative = proto.SpritePath.Replace("/Textures/", "").TrimStart('/');
-            relative = relative.Replace("/", "\\");
-            manualPath = Path.Combine(texturesPath, relative);
-            if (!manualPath.EndsWith(".png")) manualPath += ".png";
-        }
-        */
-
-        // ===== ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА =====
         bool fileExists = path != null && File.Exists(path);
 
         string message = $"ID: {id}\n";
@@ -442,70 +424,278 @@ public class MainForm : Form
         message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
         message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
         message += $"Файл существует: {(fileExists ? "✅ ДА" : "❌ НЕТ")}";
-        // message += $"\n--- РУЧНОЙ ПУТЬ ---\n{manualPath}\n";
-        // message += $"Файл существует: {File.Exists(manualPath)}";
 
         MessageBox.Show(message, "Информация о прототипе");
     }
 
-
     // === Панель инструментов ===
 
-private void CreateToolPanel()
-{
-    var panel = new Panel { Dock = DockStyle.Right, Width = 200, BackColor = Color.FromArgb(240,240,240), BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(0) };
-    
-    int leftMargin = 2;
-    int rightMargin = 2;
-    int y = leftMargin;
-    int contentWidth = 200 - leftMargin - rightMargin;
-    
-    var title = new Label { Text = "Инструменты", Font = new Font("Arial",14,FontStyle.Bold), Location = new Point(leftMargin, y), Width = contentWidth, Height = 35, TextAlign = ContentAlignment.MiddleLeft, BackColor = Color.FromArgb(220,220,220) };
-    panel.Controls.Add(title);
-    y += 35 + 2;
-
-    // Первая строка (без отступа между кнопками)
-    _btnCreateRoom = new Button { Text = "🟦 Создать", Location = new Point(leftMargin + 2, y), Width = 149, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
-    _btnCreateRoom.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
-    panel.Controls.Add(_btnCreateRoom);
-
-    _btnRoomSettings = new Button { Text = "⚙", Location = new Point(leftMargin + 151 + 2, y), Width = contentWidth - 155, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, Font = new Font("Segoe UI",12) };
-    _btnRoomSettings.Click += (s,e) => ShowRoomTypeDialog();
-    panel.Controls.Add(_btnRoomSettings);
-    y += 40 + 2;
-
-    // Остальные кнопки с отступом 2px
-    _btnDoor = new Button { Text = "🚪 Создать дверь", Location = new Point(leftMargin + 2, y), Width = contentWidth - 4, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
-    _btnDoor.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.Door);
-    panel.Controls.Add(_btnDoor);
-    y += 40 + 2;
-
-    _btnDelete = new Button { Text = "🗑 Удалить", Location = new Point(leftMargin + 2, y), Width = contentWidth - 4, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
-    _btnDelete.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.Delete);
-    panel.Controls.Add(_btnDelete);
-    y += 40 + 2;
-
-    panel.Controls.Add(new Label { Text = $"Тип: {_roomTypeManager.SelectedType}", Location = new Point(leftMargin, y), Width = contentWidth, Height = 25, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DarkGray, Font = new Font("Arial",8) });
-    y += 25 + 2;
-
-    panel.Controls.Add(new Label { Text = "Повторное нажатие\nсбрасывает инструмент", Location = new Point(leftMargin, y), Width = contentWidth, Height = 45, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.Gray, Font = new Font("Arial",9), BackColor = Color.FromArgb(230,230,230) });
-
-    Controls.Add(panel);
-}
-
-    private Button Btn(string text, Action? onClick = null)
+    private void CreateToolPanel()
     {
-        var btn = new Button { Text = text, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(0, 0, 0, 2), Font = new Font("Arial", 9, FontStyle.Bold), Width = 196 };
-        if (onClick != null) btn.Click += (s, e) => onClick();
-        return btn;
+        _toolPanel = new Panel
+        {
+            Dock = DockStyle.Right,
+            Width = 200,
+            BackColor = Color.FromArgb(240, 240, 240),
+            BorderStyle = BorderStyle.FixedSingle,
+            Padding = new Padding(0)
+        };
+
+        int leftMargin = 2;
+        int rightMargin = 2;
+        int y = leftMargin;
+        int contentWidth = 200 - leftMargin - rightMargin;
+
+        var title = new Label
+        {
+            Text = "Инструменты",
+            Font = new Font("Arial", 14, FontStyle.Bold),
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 35,
+            TextAlign = ContentAlignment.MiddleLeft,
+            BackColor = Color.FromArgb(220, 220, 220)
+        };
+        _toolPanel.Controls.Add(title);
+        y += 35 + 2;
+
+        // Первая строка: Создать + Настройки
+        _btnCreateRoom = new Button
+        {
+            Text = "🟦 Создать",
+            Location = new Point(leftMargin + 2, y),
+            Width = 149,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnCreateRoom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
+        _toolPanel.Controls.Add(_btnCreateRoom);
+
+        _btnRoomSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(leftMargin + 151 + 2, y),
+            Width = contentWidth - 155,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12)
+        };
+        _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
+        _toolPanel.Controls.Add(_btnRoomSettings);
+        y += 40 + 2;
+
+        // Вторая строка: Две кнопки дверей (Airlock и AirlockGlass) с иконками по центру
+        var doorPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        // Кнопка Airlock (обычный шлюз)
+        _btnAirlock = new Button
+        {
+            Location = new Point(0, 0),
+            Width = (doorPanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Airlock",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        _btnAirlock.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Door);
+            _toolManager.DoorProto = "Airlock";
+            UpdateDoorButtons(_btnAirlock, _btnAirlockGlass);
+        };
+        doorPanel.Controls.Add(_btnAirlock);
+
+        // Кнопка AirlockGlass (стеклянный шлюз)
+        _btnAirlockGlass = new Button
+        {
+            Location = new Point((doorPanel.Width / 2) + 1, 0),
+            Width = (doorPanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "AirlockGlass",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        _btnAirlockGlass.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Door);
+            _toolManager.DoorProto = "AirlockGlass";
+            UpdateDoorButtons(_btnAirlock, _btnAirlockGlass);
+        };
+        doorPanel.Controls.Add(_btnAirlockGlass);
+
+        // Обработчик изменения размера панели дверей
+        doorPanel.Resize += (s, e) =>
+        {
+            int halfWidth = doorPanel.Width / 2;
+            _btnAirlock.Width = halfWidth - 1;
+            _btnAirlockGlass.Location = new Point(halfWidth + 1, 0);
+            _btnAirlockGlass.Width = halfWidth - 1;
+        };
+
+        _toolPanel.Controls.Add(doorPanel);
+        y += 40 + 2;
+
+        // Третья строка: Удалить
+        _btnDelete = new Button
+        {
+            Text = "🗑 Удалить",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnDelete.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Delete);
+        _toolPanel.Controls.Add(_btnDelete);
+        y += 40 + 2;
+
+        _typeLabel = new Label
+        {
+            Text = $"Тип: {_roomTypeManager.SelectedType}",
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 25,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.DarkGray,
+            Font = new Font("Arial", 8)
+        };
+        _toolPanel.Controls.Add(_typeLabel);
+        y += 25 + 2;
+
+        _toolPanel.Controls.Add(new Label
+        {
+            Text = "Повторное нажатие\nсбрасывает инструмент",
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 45,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.Gray,
+            Font = new Font("Arial", 9),
+            BackColor = Color.FromArgb(230, 230, 230)
+        });
+
+        Controls.Add(_toolPanel);
     }
 
+    // Метод для загрузки иконок дверей
+    private void LoadDoorIcons()
+    {
+        if (_btnAirlock != null)
+        {
+            var icon = GetPrototypeIcon("Airlock");
+            if (icon != null)
+            {
+                _btnAirlock.Image = icon;
+                _btnAirlock.ImageAlign = ContentAlignment.MiddleCenter;
+                _btnAirlock.Text = "";
+            }
+            else
+            {
+                // Fallback если иконка не найдена
+                _btnAirlock.Text = "🚪";
+                _btnAirlock.TextAlign = ContentAlignment.MiddleCenter;
+                _btnAirlock.Font = new Font("Segoe UI", 16);
+            }
+        }
+        
+        if (_btnAirlockGlass != null)
+        {
+            var icon = GetPrototypeIcon("AirlockGlass");
+            if (icon != null)
+            {
+                _btnAirlockGlass.Image = icon;
+                _btnAirlockGlass.ImageAlign = ContentAlignment.MiddleCenter;
+                _btnAirlockGlass.Text = "";
+            }
+            else
+            {
+                // Fallback если иконка не найдена
+                _btnAirlockGlass.Text = "🔲";
+                _btnAirlockGlass.TextAlign = ContentAlignment.MiddleCenter;
+                _btnAirlockGlass.Font = new Font("Segoe UI", 16);
+            }
+        }
+    }
 
+    // Метод для получения иконки прототипа
+    private Image? GetPrototypeIcon(string protoId)
+    {
+        try
+        {
+            var path = _indexer.GetFullTexturePath(protoId);
+            if (path != null && File.Exists(path))
+            {
+                // Загружаем изображение и уменьшаем его до размера иконки
+                using var original = Image.FromFile(path);
+                var icon = new Bitmap(32, 32);
+                using (var g = Graphics.FromImage(icon))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(original, new Rectangle(0, 0, 32, 32));
+                }
+                return icon;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка загрузки иконки для {protoId}: {ex.Message}");
+        }
+        
+        return null;
+    }
 
+    // Метод для обновления иконок дверей
+    private void UpdateDoorIcons()
+    {
+        if (_btnAirlock != null)
+        {
+            var icon = GetPrototypeIcon("Airlock");
+            if (icon != null)
+            {
+                _btnAirlock.Image = icon;
+                _btnAirlock.Text = "";
+            }
+        }
+        
+        if (_btnAirlockGlass != null)
+        {
+            var icon = GetPrototypeIcon("AirlockGlass");
+            if (icon != null)
+            {
+                _btnAirlockGlass.Image = icon;
+                _btnAirlockGlass.Text = "";
+            }
+        }
+    }
 
+    private void UpdateDoorButtons(Button? selectedAirlock, Button? selectedGlass)
+    {
+        if (_btnAirlock != null)
+            _btnAirlock.BackColor = _btnAirlock == selectedAirlock ? Color.LightBlue : Color.White;
 
-
-
+        if (_btnAirlockGlass != null)
+            _btnAirlockGlass.BackColor = _btnAirlockGlass == selectedGlass ? Color.LightBlue : Color.White;
+    }
 
     // === Диалог выбора типа комнаты ===
 
@@ -749,6 +939,7 @@ private void CreateToolPanel()
         _roomTypeForm.FormClosed += (s, e) => { _roomTypeForm = null; };
         _roomTypeForm.Show(this);
     }
+
     // === Вспомогательные методы ===
 
     private Button CreateButton(string text, EventHandler click)
@@ -931,7 +1122,12 @@ private void CreateToolPanel()
     {
         _btnCreateRoom.BackColor = tool == ToolManager.Tool.CreateRoom ? Color.LightBlue : Color.White;
         _btnDelete.BackColor = tool == ToolManager.Tool.Delete ? Color.LightBlue : Color.White;
-        _btnDoor.BackColor = tool == ToolManager.Tool.Door ? Color.LightBlue : Color.White;
+
+        // Сбрасываем подсветку кнопок дверей, если выбран другой инструмент
+        if (tool != ToolManager.Tool.Door)
+        {
+            UpdateDoorButtons(null, null);
+        }
 
         Cursor = tool == ToolManager.Tool.CreateRoom ? Cursors.Cross :
                  tool == ToolManager.Tool.Delete ? Cursors.Hand :
@@ -1050,12 +1246,12 @@ private void CreateToolPanel()
                 {
                     if (!targetRoom.Doors.Any(d => d.X == tileX && d.Y == tileY))
                     {
-                        // Добавляем дверь с прототипом из комнаты
+                        // Используем прототип из ToolManager
                         targetRoom.Doors.Add(new Door
                         {
                             X = tileX,
                             Y = tileY,
-                            Proto = targetRoom.DoorProto
+                            Proto = _toolManager.DoorProto
                         });
                         SaveState();
                         Render();
@@ -1064,8 +1260,6 @@ private void CreateToolPanel()
             }
         }
     }
-
-
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
@@ -1132,6 +1326,7 @@ private void CreateToolPanel()
         _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
         Render();
     }
+
     private void UpdateTypeLabel()
     {
         if (_typeLabel != null)
@@ -1173,7 +1368,6 @@ private void CreateToolPanel()
             }
         }
     }
-
 
     private void SaveProject()
     {
@@ -1273,7 +1467,7 @@ private void CreateToolPanel()
                     _map.ActiveGrid.Rooms.Add(room);
                 }
 
-                SaveState(); // Сохраняем состояние для Undo
+                SaveState();
                 Render();
                 MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}");
             }
