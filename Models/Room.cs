@@ -15,6 +15,7 @@ public class Room
     public Color FillColor { get; set; } = Color.FromArgb(100, 230, 230, 230);
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
+    public int Priority { get; set; } = 0;
     
     public Room Clone()
     {

@@ -13,6 +13,7 @@ public class MainForm : Form
     private RepositoryManager _repoManager = new();
     private PrototypeIndexer _indexer = new();
     private RoomTypeManager _roomTypeManager = new();
+    private DoorUpdater _doorUpdater = null!;
 
     private Point _startPoint;
     private bool _isDrawing = false;
@@ -44,9 +45,8 @@ public class MainForm : Form
     private CancellationTokenSource? _searchCts;
     private string _currentDoorType = "Airlock";
     private Button? _selectedDoorButton = null;
-    private bool _solidRenderMode = false;
-    private bool _hideRoomFill = false;
     private bool _hideRoomOverlay = false;
+
     public MainForm()
     {
         Text = "MapperIce";
@@ -54,6 +54,7 @@ public class MainForm : Form
         WindowState = FormWindowState.Maximized;
 
         _renderer = new Renderer(Width, Height, _indexer);
+        _doorUpdater = new DoorUpdater(_roomTypeManager);
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -74,11 +75,11 @@ public class MainForm : Form
         UpdateGridSelector();
 
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
-        _indexer.OnIndexingComplete += () =>
-        {
-            UpdatePrototypeList();
+        _indexer.OnIndexingComplete += () => 
+        { 
+            UpdatePrototypeList(); 
             UpdateDoorIcons();
-            Render();
+            Render(); 
         };
 
         UpdateRepoSelector();
@@ -336,16 +337,13 @@ public class MainForm : Form
 
     private void UpdatePrototypeList(string filter = "")
     {
-        // Отменяем предыдущий поиск
         _searchCts?.Cancel();
         _searchCts = new CancellationTokenSource();
         var token = _searchCts.Token;
 
-        // Показываем загрузку
         _protoList.Items.Clear();
         _protoList.Items.Add("⏳ Поиск...");
 
-        // Запускаем поиск в фоне (не блокируем UI)
         Task.Run(() =>
         {
             try
@@ -390,7 +388,6 @@ public class MainForm : Form
 
                 if (token.IsCancellationRequested) return;
 
-                // Обновляем UI в главном потоке
                 _protoList.Invoke(() =>
                 {
                     _protoList.Items.Clear();
@@ -434,179 +431,172 @@ public class MainForm : Form
 
     // === Панель инструментов ===
 
-private void CreateToolPanel()
-{
-    _toolPanel = new Panel
+    private void CreateToolPanel()
     {
-        Dock = DockStyle.Right,
-        Width = 200,
-        BackColor = Color.FromArgb(240, 240, 240),
-        BorderStyle = BorderStyle.FixedSingle,
-        Padding = new Padding(0)
-    };
+        _toolPanel = new Panel
+        {
+            Dock = DockStyle.Right,
+            Width = 200,
+            BackColor = Color.FromArgb(240, 240, 240),
+            BorderStyle = BorderStyle.FixedSingle,
+            Padding = new Padding(0)
+        };
 
-    int leftMargin = 2;
-    int rightMargin = 2;
-    int y = leftMargin;
-    int contentWidth = 200 - leftMargin - rightMargin;
+        int leftMargin = 2;
+        int rightMargin = 2;
+        int y = leftMargin;
+        int contentWidth = 200 - leftMargin - rightMargin;
 
-    var title = new Label
-    {
-        Text = "Инструменты",
-        Font = new Font("Arial", 14, FontStyle.Bold),
-        Location = new Point(leftMargin, y),
-        Width = contentWidth,
-        Height = 35,
-        TextAlign = ContentAlignment.MiddleLeft,
-        BackColor = Color.FromArgb(220, 220, 220)
-    };
-    _toolPanel.Controls.Add(title);
-    y += 35 + 2;
+        var title = new Label
+        {
+            Text = "Инструменты",
+            Font = new Font("Arial", 14, FontStyle.Bold),
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 35,
+            TextAlign = ContentAlignment.MiddleLeft,
+            BackColor = Color.FromArgb(220, 220, 220)
+        };
+        _toolPanel.Controls.Add(title);
+        y += 35 + 2;
 
-    // Первая строка: Создать + Настройки
-    _btnCreateRoom = new Button
-    {
-        Text = "🟦 Создать",
-        Location = new Point(leftMargin + 2, y),
-        Width = 149,
-        Height = 40,
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Font = new Font("Arial", 9, FontStyle.Bold)
-    };
-    _btnCreateRoom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
-    _toolPanel.Controls.Add(_btnCreateRoom);
+        // Первая строка: Создать + Настройки
+        _btnCreateRoom = new Button
+        {
+            Text = "🟦 Создать",
+            Location = new Point(leftMargin + 2, y),
+            Width = 149,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnCreateRoom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
+        _toolPanel.Controls.Add(_btnCreateRoom);
 
-    _btnRoomSettings = new Button
-    {
-        Text = "⚙",
-        Location = new Point(leftMargin + 151 + 2, y),
-        Width = contentWidth - 155,
-        Height = 40,
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White,
-        Font = new Font("Segoe UI", 12)
-    };
-    _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
-    _toolPanel.Controls.Add(_btnRoomSettings);
-    y += 40 + 2;
+        _btnRoomSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(leftMargin + 151 + 2, y),
+            Width = contentWidth - 155,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12)
+        };
+        _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
+        _toolPanel.Controls.Add(_btnRoomSettings);
+        y += 40 + 2;
 
-    // Вторая строка: Две кнопки дверей (Airlock и AirlockGlass)
-    var doorPanel = new Panel
-    {
-        Location = new Point(leftMargin + 2, y),
-        Width = contentWidth - 4,
-        Height = 40,
-        BackColor = Color.Transparent
-    };
+        // Вторая строка: Две кнопки дверей (Airlock и AirlockGlass)
+        var doorPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
 
-    // Кнопка Airlock (обычный шлюз)
-    _btnAirlock = new Button
-    {
-        Location = new Point(0, 0),
-        Width = (doorPanel.Width / 2) - 1,
-        Height = 40,
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White,
-        TextAlign = ContentAlignment.MiddleCenter,
-        Tag = "Airlock",
-        ImageAlign = ContentAlignment.MiddleCenter,
-        Text = "",
-        Padding = new Padding(0)
-    };
-    _btnAirlock.Click += (s, e) =>
-    {
-        _toolManager.SetTool(ToolManager.Tool.Door);
-        _currentDoorType = "Airlock";
-        _selectedDoorButton = _btnAirlock;
-        UpdateDoorButtons();
-    };
-    doorPanel.Controls.Add(_btnAirlock);
+        _btnAirlock = new Button
+        {
+            Location = new Point(0, 0),
+            Width = (doorPanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Airlock",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        _btnAirlock.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Door);
+            _currentDoorType = "Airlock";
+            _selectedDoorButton = _btnAirlock;
+            UpdateDoorButtons();
+        };
+        doorPanel.Controls.Add(_btnAirlock);
 
-    // Кнопка AirlockGlass (стеклянный шлюз)
-    _btnAirlockGlass = new Button
-    {
-        Location = new Point((doorPanel.Width / 2) + 1, 0),
-        Width = (doorPanel.Width / 2) - 1,
-        Height = 40,
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White,
-        TextAlign = ContentAlignment.MiddleCenter,
-        Tag = "AirlockGlass",
-        ImageAlign = ContentAlignment.MiddleCenter,
-        Text = "",
-        Padding = new Padding(0)
-    };
-    _btnAirlockGlass.Click += (s, e) =>
-    {
-        _toolManager.SetTool(ToolManager.Tool.Door);
-        _currentDoorType = "AirlockGlass";
-        _selectedDoorButton = _btnAirlockGlass;
-        UpdateDoorButtons();
-    };
-    doorPanel.Controls.Add(_btnAirlockGlass);
+        _btnAirlockGlass = new Button
+        {
+            Location = new Point((doorPanel.Width / 2) + 1, 0),
+            Width = (doorPanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "AirlockGlass",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        _btnAirlockGlass.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Door);
+            _currentDoorType = "AirlockGlass";
+            _selectedDoorButton = _btnAirlockGlass;
+            UpdateDoorButtons();
+        };
+        doorPanel.Controls.Add(_btnAirlockGlass);
 
-    // Обработчик изменения размера панели дверей
-    doorPanel.Resize += (s, e) =>
-    {
-        int halfWidth = doorPanel.Width / 2;
-        _btnAirlock.Width = halfWidth - 1;
-        _btnAirlockGlass.Location = new Point(halfWidth + 1, 0);
-        _btnAirlockGlass.Width = halfWidth - 1;
-    };
+        doorPanel.Resize += (s, e) =>
+        {
+            int halfWidth = doorPanel.Width / 2;
+            _btnAirlock.Width = halfWidth - 1;
+            _btnAirlockGlass.Location = new Point(halfWidth + 1, 0);
+            _btnAirlockGlass.Width = halfWidth - 1;
+        };
 
-    _toolPanel.Controls.Add(doorPanel);
-    y += 40 + 2;
+        _toolPanel.Controls.Add(doorPanel);
+        y += 40 + 2;
 
-    // Третья строка: Удалить
-    _btnDelete = new Button
-    {
-        Text = "🗑 Удалить",
-        Location = new Point(leftMargin + 2, y),
-        Width = contentWidth - 4,
-        Height = 40,
-        FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Font = new Font("Arial", 9, FontStyle.Bold)
-    };
-    _btnDelete.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Delete);
-    _toolPanel.Controls.Add(_btnDelete);
-    y += 40 + 2;
+        // Третья строка: Удалить
+        _btnDelete = new Button
+        {
+            Text = "🗑 Удалить",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnDelete.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Delete);
+        _toolPanel.Controls.Add(_btnDelete);
+        y += 40 + 2;
 
-    _typeLabel = new Label
-    {
-        Text = $"Тип: {_roomTypeManager.SelectedType}",
-        Location = new Point(leftMargin, y),
-        Width = contentWidth,
-        Height = 25,
-        TextAlign = ContentAlignment.MiddleLeft,
-        ForeColor = Color.DarkGray,
-        Font = new Font("Arial", 8)
-    };
-    _toolPanel.Controls.Add(_typeLabel);
-    y += 25 + 2;
+        _typeLabel = new Label
+        {
+            Text = $"Тип: {_roomTypeManager.SelectedType}  Приоритет: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}",
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 25,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.DarkGray,
+            Font = new Font("Arial", 8)
+        };
+        _toolPanel.Controls.Add(_typeLabel);
+        y += 25 + 2;
 
-    _toolPanel.Controls.Add(new Label
-    {
-        Text = "Повторное нажатие\nсбрасывает инструмент",
-        Location = new Point(leftMargin, y),
-        Width = contentWidth,
-        Height = 45,
-        TextAlign = ContentAlignment.MiddleCenter,
-        ForeColor = Color.Gray,
-        Font = new Font("Arial", 9),
-        BackColor = Color.FromArgb(230, 230, 230)
-    });
+        _toolPanel.Controls.Add(new Label
+        {
+            Text = "Повторное нажатие\nсбрасывает инструмент",
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 45,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.Gray,
+            Font = new Font("Arial", 9),
+            BackColor = Color.FromArgb(230, 230, 230)
+        });
 
-    Controls.Add(_toolPanel);
-}
+        Controls.Add(_toolPanel);
+    }
 
-
-
-
-    // Метод для загрузки иконок дверей
     private void LoadDoorIcons()
     {
         if (_btnAirlock != null)
@@ -620,7 +610,6 @@ private void CreateToolPanel()
             }
             else
             {
-                // Fallback если иконка не найдена
                 _btnAirlock.Text = "🚪";
                 _btnAirlock.TextAlign = ContentAlignment.MiddleCenter;
                 _btnAirlock.Font = new Font("Segoe UI", 16);
@@ -638,7 +627,6 @@ private void CreateToolPanel()
             }
             else
             {
-                // Fallback если иконка не найдена
                 _btnAirlockGlass.Text = "🔲";
                 _btnAirlockGlass.TextAlign = ContentAlignment.MiddleCenter;
                 _btnAirlockGlass.Font = new Font("Segoe UI", 16);
@@ -646,7 +634,6 @@ private void CreateToolPanel()
         }
     }
 
-    // Метод для получения иконки прототипа
     private Image? GetPrototypeIcon(string protoId)
     {
         try
@@ -654,7 +641,6 @@ private void CreateToolPanel()
             var path = _indexer.GetFullTexturePath(protoId);
             if (path != null && File.Exists(path))
             {
-                // Загружаем изображение и уменьшаем его до размера иконки
                 using var original = Image.FromFile(path);
                 var icon = new Bitmap(32, 32);
                 using (var g = Graphics.FromImage(icon))
@@ -673,7 +659,6 @@ private void CreateToolPanel()
         return null;
     }
 
-    // Метод для обновления иконок дверей
     private void UpdateDoorIcons()
     {
         if (_btnAirlock != null)
@@ -697,187 +682,98 @@ private void CreateToolPanel()
         }
     }
 
-private void UpdateDoorButtons()
-{
-    // Сбрасываем подсветку всех кнопок дверей
-    if (_btnAirlock != null)
-        _btnAirlock.BackColor = Color.White;
-    
-    if (_btnAirlockGlass != null)
-        _btnAirlockGlass.BackColor = Color.White;
-    
-    // Подсвечиваем выбранную кнопку
-    if (_selectedDoorButton != null && _toolManager.CurrentTool == ToolManager.Tool.Door)
+    private void UpdateDoorButtons()
     {
-        _selectedDoorButton.BackColor = Color.LightBlue;
+        if (_btnAirlock != null)
+            _btnAirlock.BackColor = Color.White;
+        
+        if (_btnAirlockGlass != null)
+            _btnAirlockGlass.BackColor = Color.White;
+        
+        if (_selectedDoorButton != null && _toolManager.CurrentTool == ToolManager.Tool.Door)
+        {
+            _selectedDoorButton.BackColor = Color.LightBlue;
+        }
     }
-}
+
     // === Диалог выбора типа комнаты ===
 
-private void ShowRoomTypeDialog()
-{
-    if (_roomTypeForm != null && !_roomTypeForm.IsDisposed)
+    private void ShowRoomTypeDialog()
     {
-        _roomTypeForm.Close();
-        _roomTypeForm = null;
-        return;
-    }
-
-    _roomTypeForm = new Form
-    {
-        Text = "Выберите тип комнаты",
-        Size = new Size(550, 520),
-        StartPosition = FormStartPosition.CenterParent,
-        FormBorderStyle = FormBorderStyle.Sizable,
-        ShowInTaskbar = false
-    };
-    _roomTypeForm.Owner = this;
-
-    var treeView = new TreeView
-    {
-        Dock = DockStyle.Fill,
-        Font = new Font("Segoe UI", 10),
-        Indent = 20
-    };
-    UpdateTreeView(treeView);
-
-    var btnPanel = new TableLayoutPanel
-    {
-        Dock = DockStyle.Bottom,
-        Height = 50,
-        Padding = new Padding(10),
-        ColumnCount = 7,
-        RowCount = 1
-    };
-    for (int i = 0; i < 7; i++)
-        btnPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 / 7));
-
-    // OK
-    var btnOk = new Button
-    {
-        Text = "OK",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnOk.Click += (s, e) =>
-    {
-        if (treeView.SelectedNode?.Tag is RoomType selected)
+        if (_roomTypeForm != null && !_roomTypeForm.IsDisposed)
         {
-            _roomTypeManager.SelectType(selected.Name);
-            UpdateTypeLabel();
+            _roomTypeForm.Close();
+            _roomTypeForm = null;
+            return;
         }
-        _roomTypeForm?.Close();
-    };
-    btnPanel.Controls.Add(btnOk, 0, 0);
 
-    // Отмена
-    var btnCancel = new Button
-    {
-        Text = "Отмена",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnCancel.Click += (s, e) => _roomTypeForm?.Close();
-    btnPanel.Controls.Add(btnCancel, 1, 0);
-
-    // Создать
-    var btnAdd = new Button
-    {
-        Text = "➕ Создать",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnAdd.Click += (s, e) =>
-    {
-        // Создаём форму как дочернюю для _roomTypeForm, но без блокировки
-        var editForm = new Form
+        _roomTypeForm = new Form
         {
-            Text = "Создать тип комнаты",
-            Size = new Size(350, 450),
+            Text = "Выберите тип комнаты",
+            Size = new Size(550, 520),
             StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
+            FormBorderStyle = FormBorderStyle.Sizable,
             ShowInTaskbar = false
         };
-        editForm.Owner = _roomTypeForm; // Владелец - главное окно выбора
+        _roomTypeForm.Owner = this;
 
-        var table = new TableLayoutPanel
+        var treeView = new TreeView
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(10),
-            RowCount = 9,
-            ColumnCount = 2
+            Font = new Font("Segoe UI", 10),
+            Indent = 20
         };
+        UpdateTreeView(treeView);
 
-        var txtName = new TextBox { Dock = DockStyle.Fill };
-        var txtCategory = new TextBox { Dock = DockStyle.Fill, Text = "Custom" };
-        var txtWall = new TextBox { Dock = DockStyle.Fill, Text = "WallSolid" };
-        var txtFloor = new TextBox { Dock = DockStyle.Fill, Text = "Plating" };
-        var txtDoor = new TextBox { Dock = DockStyle.Fill, Text = "Airlock" };
-        var txtGlassDoor = new TextBox { Dock = DockStyle.Fill, Text = "AirlockGlass" };
-        var txtFill = new TextBox { Dock = DockStyle.Fill, Text = "200,230,230,230" };
-        var txtLine = new TextBox { Dock = DockStyle.Fill, Text = "255,180,180,180" };
-
-        AddRow(table, "Название:", txtName, 0);
-        AddRow(table, "Категория:", txtCategory, 1);
-        AddRow(table, "Стена (proto):", txtWall, 2);
-        AddRow(table, "Пол (proto):", txtFloor, 3);
-        AddRow(table, "Дверь (proto):", txtDoor, 4);
-        AddRow(table, "Стеклянная дверь (proto):", txtGlassDoor, 5);
-        AddRow(table, "Цвет (A,R,G,B):", txtFill, 6);
-        AddRow(table, "Цвет линии (A,R,G,B):", txtLine, 7);
-
-        var btnSave = new Button { Text = "Сохранить", Dock = DockStyle.Fill };
-        var btnCancelEdit = new Button { Text = "Отмена", Dock = DockStyle.Fill };
-        var btnPanelEdit = new Panel { Dock = DockStyle.Fill };
-
-        btnSave.Click += (s2, e2) =>
+        var btnPanel = new TableLayoutPanel
         {
-            try
-            {
-                var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
-                var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
-                _roomTypeManager.CreateCustomType(
-                    txtName.Text,
-                    txtCategory.Text,
-                    txtWall.Text,
-                    txtFloor.Text,
-                    txtDoor.Text,
-                    txtGlassDoor.Text,
-                    Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
-                    Color.FromArgb(line[0], line[1], line[2], line[3])
-                );
-                UpdateTreeView(treeView);
-                editForm.Close();
-            }
-            catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
+            Dock = DockStyle.Bottom,
+            Height = 50,
+            Padding = new Padding(10),
+            ColumnCount = 7,
+            RowCount = 1
         };
-        btnCancelEdit.Click += (s2, e2) => editForm.Close();
+        for (int i = 0; i < 7; i++)
+            btnPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 / 7));
 
-        btnPanelEdit.Controls.Add(btnSave);
-        btnPanelEdit.Controls.Add(btnCancelEdit);
-        table.Controls.Add(btnPanelEdit, 0, 8);
-        table.SetColumnSpan(btnPanelEdit, 2);
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnOk.Click += (s, e) =>
+        {
+            if (treeView.SelectedNode?.Tag is RoomType selected)
+            {
+                _roomTypeManager.SelectType(selected.Name);
+                UpdateTypeLabel();
+            }
+            _roomTypeForm?.Close();
+        };
+        btnPanel.Controls.Add(btnOk, 0, 0);
 
-        editForm.Controls.Add(table);
-        editForm.Show(_roomTypeForm); // Используем Show() вместо ShowDialog()
-    };
-    btnPanel.Controls.Add(btnAdd, 2, 0);
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnCancel.Click += (s, e) => _roomTypeForm?.Close();
+        btnPanel.Controls.Add(btnCancel, 1, 0);
 
-    // Правка
-    var btnEdit = new Button
-    {
-        Text = "✏️ Правка",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnEdit.Click += (s, e) =>
-    {
-        if (treeView.SelectedNode?.Tag is CustomRoomType custom)
+        var btnAdd = new Button
+        {
+            Text = "➕ Создать",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnAdd.Click += (s, e) =>
         {
             var editForm = new Form
             {
-                Text = $"Редактировать {custom.Name}",
-                Size = new Size(350, 450),
+                Text = "Создать тип комнаты",
+                Size = new Size(350, 480),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 ShowInTaskbar = false
@@ -888,18 +784,19 @@ private void ShowRoomTypeDialog()
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(10),
-                RowCount = 9,
+                RowCount = 10,
                 ColumnCount = 2
             };
 
-            var txtName = new TextBox { Dock = DockStyle.Fill, Text = custom.Name };
-            var txtCategory = new TextBox { Dock = DockStyle.Fill, Text = custom.Category };
-            var txtWall = new TextBox { Dock = DockStyle.Fill, Text = custom.WallProto };
-            var txtFloor = new TextBox { Dock = DockStyle.Fill, Text = custom.FloorProto };
-            var txtDoor = new TextBox { Dock = DockStyle.Fill, Text = custom.DoorProto };
-            var txtGlassDoor = new TextBox { Dock = DockStyle.Fill, Text = custom.GlassDoorProto };
-            var txtFill = new TextBox { Dock = DockStyle.Fill, Text = $"{custom.FillColor.A},{custom.FillColor.R},{custom.FillColor.G},{custom.FillColor.B}" };
-            var txtLine = new TextBox { Dock = DockStyle.Fill, Text = $"{custom.LineColor.A},{custom.LineColor.R},{custom.LineColor.G},{custom.LineColor.B}" };
+            var txtName = new TextBox { Dock = DockStyle.Fill };
+            var txtCategory = new TextBox { Dock = DockStyle.Fill, Text = "Custom" };
+            var txtWall = new TextBox { Dock = DockStyle.Fill, Text = "WallSolid" };
+            var txtFloor = new TextBox { Dock = DockStyle.Fill, Text = "Plating" };
+            var txtDoor = new TextBox { Dock = DockStyle.Fill, Text = "Airlock" };
+            var txtGlassDoor = new TextBox { Dock = DockStyle.Fill, Text = "AirlockGlass" };
+            var txtFill = new TextBox { Dock = DockStyle.Fill, Text = "200,230,230,230" };
+            var txtLine = new TextBox { Dock = DockStyle.Fill, Text = "255,180,180,180" };
+            var txtPriority = new TextBox { Dock = DockStyle.Fill, Text = "0" };
 
             AddRow(table, "Название:", txtName, 0);
             AddRow(table, "Категория:", txtCategory, 1);
@@ -909,6 +806,7 @@ private void ShowRoomTypeDialog()
             AddRow(table, "Стеклянная дверь (proto):", txtGlassDoor, 5);
             AddRow(table, "Цвет (A,R,G,B):", txtFill, 6);
             AddRow(table, "Цвет линии (A,R,G,B):", txtLine, 7);
+            AddRow(table, "Приоритет (число):", txtPriority, 8);
 
             var btnSave = new Button { Text = "Сохранить", Dock = DockStyle.Fill };
             var btnCancelEdit = new Button { Text = "Отмена", Dock = DockStyle.Fill };
@@ -920,8 +818,9 @@ private void ShowRoomTypeDialog()
                 {
                     var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
                     var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
-                    _roomTypeManager.EditCustomType(
-                        custom.Name,
+                    var priority = int.Parse(txtPriority.Text);
+                    
+                    _roomTypeManager.CreateCustomType(
                         txtName.Text,
                         txtCategory.Text,
                         txtWall.Text,
@@ -929,7 +828,8 @@ private void ShowRoomTypeDialog()
                         txtDoor.Text,
                         txtGlassDoor.Text,
                         Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
-                        Color.FromArgb(line[0], line[1], line[2], line[3])
+                        Color.FromArgb(line[0], line[1], line[2], line[3]),
+                        priority
                     );
                     UpdateTreeView(treeView);
                     editForm.Close();
@@ -940,111 +840,189 @@ private void ShowRoomTypeDialog()
 
             btnPanelEdit.Controls.Add(btnSave);
             btnPanelEdit.Controls.Add(btnCancelEdit);
-            table.Controls.Add(btnPanelEdit, 0, 8);
+            table.Controls.Add(btnPanelEdit, 0, 9);
             table.SetColumnSpan(btnPanelEdit, 2);
 
             editForm.Controls.Add(table);
-            editForm.Show(_roomTypeForm); // Используем Show() вместо ShowDialog()
-        }
-        else
-        {
-            MessageBox.Show("Выберите кастомный тип для редактирования");
-        }
-    };
-    btnPanel.Controls.Add(btnEdit, 3, 0);
+            editForm.Show(_roomTypeForm);
+        };
+        btnPanel.Controls.Add(btnAdd, 2, 0);
 
-    // Удалить
-    var btnDelete = new Button
-    {
-        Text = "🗑 Удалить",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnDelete.Click += (s, e) =>
-    {
-        if (treeView.SelectedNode?.Tag is CustomRoomType custom)
+        var btnEdit = new Button
         {
-            if (MessageBox.Show($"Удалить тип '{custom.Name}'?", "Подтверждение", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            Text = "✏️ Правка",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnEdit.Click += (s, e) =>
+        {
+            if (treeView.SelectedNode?.Tag is CustomRoomType custom)
             {
-                _roomTypeManager.DeleteCustomType(custom.Name);
-                UpdateTreeView(treeView);
-            }
-        }
-        else MessageBox.Show("Выберите кастомный тип");
-    };
-    btnPanel.Controls.Add(btnDelete, 4, 0);
+                var editForm = new Form
+                {
+                    Text = $"Редактировать {custom.Name}",
+                    Size = new Size(350, 480),
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    ShowInTaskbar = false
+                };
+                editForm.Owner = _roomTypeForm;
 
-    // Экспорт
-    var btnExport = new Button
-    {
-        Text = "📤 Экспорт",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnExport.Click += (s, e) =>
-    {
-        if (treeView.SelectedNode == null) { MessageBox.Show("Выберите тип или категорию"); return; }
-        using var dialog = new SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
-        if (treeView.SelectedNode.Tag is RoomType selected)
-        {
-            dialog.FileName = $"{selected.Name}.json";
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                _roomTypeManager.ExportType(selected.Name, dialog.FileName);
-                MessageBox.Show($"Тип '{selected.Name}' экспортирован!");
-            }
-        }
-        else
-        {
-            dialog.FileName = $"{treeView.SelectedNode.Text}.json";
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                _roomTypeManager.ExportCategory(treeView.SelectedNode.Text, dialog.FileName);
-                MessageBox.Show($"Категория '{treeView.SelectedNode.Text}' экспортирована!");
-            }
-        }
-    };
-    btnPanel.Controls.Add(btnExport, 5, 0);
+                var table = new TableLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    Padding = new Padding(10),
+                    RowCount = 10,
+                    ColumnCount = 2
+                };
 
-    // Импорт
-    var btnImport = new Button
-    {
-        Text = "📥 Импорт",
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 5, 10)
-    };
-    btnImport.Click += (s, e) =>
-    {
-        using var dialog = new OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
-        if (dialog.ShowDialog() != DialogResult.OK) return;
-        try
-        {
-            var json = File.ReadAllText(dialog.FileName);
-            if (json.Contains("\"Type\":\"Category\"") || json.StartsWith("["))
-                _roomTypeManager.ImportCategory(dialog.FileName);
+                var txtName = new TextBox { Dock = DockStyle.Fill, Text = custom.Name };
+                var txtCategory = new TextBox { Dock = DockStyle.Fill, Text = custom.Category };
+                var txtWall = new TextBox { Dock = DockStyle.Fill, Text = custom.WallProto };
+                var txtFloor = new TextBox { Dock = DockStyle.Fill, Text = custom.FloorProto };
+                var txtDoor = new TextBox { Dock = DockStyle.Fill, Text = custom.DoorProto };
+                var txtGlassDoor = new TextBox { Dock = DockStyle.Fill, Text = custom.GlassDoorProto };
+                var txtFill = new TextBox { Dock = DockStyle.Fill, Text = $"{custom.FillColor.A},{custom.FillColor.R},{custom.FillColor.G},{custom.FillColor.B}" };
+                var txtLine = new TextBox { Dock = DockStyle.Fill, Text = $"{custom.LineColor.A},{custom.LineColor.R},{custom.LineColor.G},{custom.LineColor.B}" };
+                var txtPriority = new TextBox { Dock = DockStyle.Fill, Text = custom.Priority.ToString() };
+
+                AddRow(table, "Название:", txtName, 0);
+                AddRow(table, "Категория:", txtCategory, 1);
+                AddRow(table, "Стена (proto):", txtWall, 2);
+                AddRow(table, "Пол (proto):", txtFloor, 3);
+                AddRow(table, "Дверь (proto):", txtDoor, 4);
+                AddRow(table, "Стеклянная дверь (proto):", txtGlassDoor, 5);
+                AddRow(table, "Цвет (A,R,G,B):", txtFill, 6);
+                AddRow(table, "Цвет линии (A,R,G,B):", txtLine, 7);
+                AddRow(table, "Приоритет (число):", txtPriority, 8);
+
+                var btnSave = new Button { Text = "Сохранить", Dock = DockStyle.Fill };
+                var btnCancelEdit = new Button { Text = "Отмена", Dock = DockStyle.Fill };
+                var btnPanelEdit = new Panel { Dock = DockStyle.Fill };
+
+                btnSave.Click += (s2, e2) =>
+                {
+                    try
+                    {
+                        var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
+                        var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
+                        var priority = int.Parse(txtPriority.Text);
+                        
+                        _roomTypeManager.EditCustomType(
+                            custom.Name,
+                            txtName.Text,
+                            txtCategory.Text,
+                            txtWall.Text,
+                            txtFloor.Text,
+                            txtDoor.Text,
+                            txtGlassDoor.Text,
+                            Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
+                            Color.FromArgb(line[0], line[1], line[2], line[3]),
+                            priority
+                        );
+                        UpdateTreeView(treeView);
+                        editForm.Close();
+                    }
+                    catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
+                };
+                btnCancelEdit.Click += (s2, e2) => editForm.Close();
+
+                btnPanelEdit.Controls.Add(btnSave);
+                btnPanelEdit.Controls.Add(btnCancelEdit);
+                table.Controls.Add(btnPanelEdit, 0, 9);
+                table.SetColumnSpan(btnPanelEdit, 2);
+
+                editForm.Controls.Add(table);
+                editForm.Show(_roomTypeForm);
+            }
             else
-                _roomTypeManager.ImportType(dialog.FileName);
-            UpdateTreeView(treeView);
-            MessageBox.Show("Импорт завершён!");
-        }
-        catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
-    };
-    btnPanel.Controls.Add(btnImport, 6, 0);
+            {
+                MessageBox.Show("Выберите кастомный тип для редактирования");
+            }
+        };
+        btnPanel.Controls.Add(btnEdit, 3, 0);
 
-    _roomTypeForm.Controls.Add(treeView);
-    _roomTypeForm.Controls.Add(btnPanel);
+        var btnDelete = new Button
+        {
+            Text = "🗑 Удалить",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnDelete.Click += (s, e) =>
+        {
+            if (treeView.SelectedNode?.Tag is CustomRoomType custom)
+            {
+                if (MessageBox.Show($"Удалить тип '{custom.Name}'?", "Подтверждение", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                {
+                    _roomTypeManager.DeleteCustomType(custom.Name);
+                    UpdateTreeView(treeView);
+                }
+            }
+            else MessageBox.Show("Выберите кастомный тип");
+        };
+        btnPanel.Controls.Add(btnDelete, 4, 0);
 
-    _roomTypeForm.FormClosed += (s, e) => { _roomTypeForm = null; };
-    _roomTypeForm.Show(this);
-}
+        var btnExport = new Button
+        {
+            Text = "📤 Экспорт",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnExport.Click += (s, e) =>
+        {
+            if (treeView.SelectedNode == null) { MessageBox.Show("Выберите тип или категорию"); return; }
+            using var dialog = new SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (treeView.SelectedNode.Tag is RoomType selected)
+            {
+                dialog.FileName = $"{selected.Name}.json";
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _roomTypeManager.ExportType(selected.Name, dialog.FileName);
+                    MessageBox.Show($"Тип '{selected.Name}' экспортирован!");
+                }
+            }
+            else
+            {
+                dialog.FileName = $"{treeView.SelectedNode.Text}.json";
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _roomTypeManager.ExportCategory(treeView.SelectedNode.Text, dialog.FileName);
+                    MessageBox.Show($"Категория '{treeView.SelectedNode.Text}' экспортирована!");
+                }
+            }
+        };
+        btnPanel.Controls.Add(btnExport, 5, 0);
 
+        var btnImport = new Button
+        {
+            Text = "📥 Импорт",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 10, 5, 10)
+        };
+        btnImport.Click += (s, e) =>
+        {
+            using var dialog = new OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+            try
+            {
+                var json = File.ReadAllText(dialog.FileName);
+                if (json.Contains("\"Type\":\"Category\"") || json.StartsWith("["))
+                    _roomTypeManager.ImportCategory(dialog.FileName);
+                else
+                    _roomTypeManager.ImportType(dialog.FileName);
+                UpdateTreeView(treeView);
+                MessageBox.Show("Импорт завершён!");
+            }
+            catch (Exception ex) { MessageBox.Show($"Ошибка: {ex.Message}"); }
+        };
+        btnPanel.Controls.Add(btnImport, 6, 0);
 
+        _roomTypeForm.Controls.Add(treeView);
+        _roomTypeForm.Controls.Add(btnPanel);
 
-
-
-
-
-    // === Вспомогательные методы ===
+        _roomTypeForm.FormClosed += (s, e) => { _roomTypeForm = null; };
+        _roomTypeForm.Show(this);
+    }
 
     private Button CreateButton(string text, EventHandler click)
     {
@@ -1087,7 +1065,7 @@ private void ShowRoomTypeDialog()
         var panel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 55,
+            Height = 40,
             BackColor = Color.FromArgb(230, 230, 230),
             Padding = new Padding(10, 5, 10, 5)
         };
@@ -1161,26 +1139,27 @@ private void ShowRoomTypeDialog()
         };
         panel.Controls.Add(btnRemoveGrid);
 
-// Новая кнопка переключения оверлея комнат
-var btnToggleOverlay = new Button
-{
-    Text = "🎨",
-    Location = new Point(panel.Width -55, 7),
-    Width = 40,
-    Height = 40,
-    BackColor = Color.LightGreen,
-    FlatStyle = FlatStyle.Flat,
-    Font = new Font("Segoe UI", 14),
-    Anchor = AnchorStyles.Top | AnchorStyles.Right
-};
-btnToggleOverlay.Click += (s, e) =>
-{
-    _hideRoomOverlay = !_hideRoomOverlay;
-    btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
-    btnToggleOverlay.Text = _hideRoomOverlay ? "🗺️" : "📐";
-    Render();
-};
-panel.Controls.Add(btnToggleOverlay);
+        // Кнопка переключения оверлея комнат
+        var btnToggleOverlay = new Button
+        {
+            Text = "🗺️",
+            Location = new Point(0, 7),
+            Width = 35,
+            Height = 25,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 14),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnToggleOverlay.Click += (s, e) =>
+        {
+            _hideRoomOverlay = !_hideRoomOverlay;
+            btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
+            btnToggleOverlay.Text = _hideRoomOverlay ? "📍" : "🗺️";
+            Render();
+        };
+        panel.Controls.Add(btnToggleOverlay);
+
         Controls.Add(panel);
     }
 
@@ -1221,10 +1200,10 @@ panel.Controls.Add(btnToggleOverlay);
     {
         var menu = new MenuStrip();
         var fileMenu = new ToolStripMenuItem("Файл");
-        fileMenu.DropDownItems.Add("Сохранить проект как...", null, (s, e) => SaveProject());
+        fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
         fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
-        fileMenu.DropDownItems.Add("Импорт из YAML", null, (s, e) => LoadMapFromYAML());
+        fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
         Controls.Add(menu);
@@ -1247,14 +1226,12 @@ panel.Controls.Add(btnToggleOverlay);
         _btnCreateRoom.BackColor = tool == ToolManager.Tool.CreateRoom ? Color.LightBlue : Color.White;
         _btnDelete.BackColor = tool == ToolManager.Tool.Delete ? Color.LightBlue : Color.White;
 
-        // Если выбран инструмент "Дверь" - подсвечиваем выбранную кнопку
         if (tool == ToolManager.Tool.Door)
         {
             UpdateDoorButtons();
         }
         else
         {
-            // Если выбран другой инструмент - сбрасываем подсветку
             _selectedDoorButton = null;
             if (_btnAirlock != null)
                 _btnAirlock.BackColor = Color.White;
@@ -1286,9 +1263,9 @@ panel.Controls.Add(btnToggleOverlay);
     }
 
     private void Render()
-{
-    _renderer.HideRoomOverlay = _hideRoomOverlay;
-    _canvas.Invalidate();
+    {
+        _renderer.HideRoomOverlay = _hideRoomOverlay;
+        _canvas.Invalidate();
     }
 
     private void UpdateBuffer()
@@ -1335,22 +1312,8 @@ panel.Controls.Add(btnToggleOverlay);
                 var grid = _map.ActiveGrid;
 
                 // Проверяем дверь
-                Room? foundRoom = null;
-                Door? foundDoor = null;
-                foreach (var r in grid.Rooms)
+                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
                 {
-                    var door = r.Doors.FirstOrDefault(d => d.X == tileX && d.Y == tileY);
-                    if (door != null)
-                    {
-                        foundRoom = r;
-                        foundDoor = door;
-                        break;
-                    }
-                }
-
-                if (foundDoor != null && foundRoom != null)
-                {
-                    foundRoom.Doors.Remove(foundDoor);
                     SaveState();
                     Render();
                     return;
@@ -1371,41 +1334,12 @@ panel.Controls.Add(btnToggleOverlay);
             // === ДВЕРЬ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
-                var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
-
-                if (targetRoom != null && (tileX == targetRoom.X || tileX == targetRoom.X + targetRoom.Width - 1 ||
-                                           tileY == targetRoom.Y || tileY == targetRoom.Y + targetRoom.Height - 1))
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, _currentDoorType, out var newDoor))
                 {
-                    if (!targetRoom.Doors.Any(d => d.X == tileX && d.Y == tileY))
-                    {
-                        // Определяем какой ID двери использовать
-                        string doorProto;
-                        if (_currentDoorType == "Airlock")
-                        {
-                            doorProto = targetRoom.DoorProto ?? "Airlock";
-                        }
-                        else // AirlockGlass
-                        {
-                            doorProto = targetRoom.GlassDoorProto ?? "AirlockGlass";
-                        }
-
-                        targetRoom.Doors.Add(new Door
-                        {
-                            X = tileX,
-                            Y = tileY,
-                            Proto = doorProto
-                        });
-                        SaveState();
-                        Render();
-                    }
+                    SaveState();
+                    Render();
                 }
             }
-
-
-
-
         }
     }
 
@@ -1459,6 +1393,7 @@ panel.Controls.Add(btnToggleOverlay);
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
+                _doorUpdater.UpdateDoorsOnRoomBoundary(_currentRoom, _map.ActiveGrid);
                 SaveState();
             }
 
@@ -1478,7 +1413,7 @@ panel.Controls.Add(btnToggleOverlay);
     private void UpdateTypeLabel()
     {
         if (_typeLabel != null)
-            _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}";
+            _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}  Приоритет: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
     }
 
     private void LoadMapFromYAML()
@@ -1517,142 +1452,142 @@ panel.Controls.Add(btnToggleOverlay);
         }
     }
 
-private void SaveProject()
-{
-    if (_map.ActiveGrid == null)
+    private void SaveProject()
     {
-        MessageBox.Show("Нет активного грида для сохранения");
-        return;
-    }
-
-    using var dialog = new SaveFileDialog
-    {
-        Filter = "Project files (*.ice)|*.ice",
-        DefaultExt = "ice",
-        FileName = "project.ice"
-    };
-
-    if (dialog.ShowDialog() != DialogResult.OK) return;
-
-    try
-    {
-        var data = new ProjectData
+        if (_map.ActiveGrid == null)
         {
-            LastSaved = DateTime.Now,
-            ActiveGridName = _map.ActiveGrid.Name
-        };
-
-        foreach (var room in _map.ActiveGrid.Rooms)
-        {
-            var roomData = new RoomData
-            {
-                X = room.X,
-                Y = room.Y,
-                Width = room.Width,
-                Height = room.Height,
-                RoomType = room.RoomType,
-                WallProto = room.WallProto,
-                FloorProto = room.FloorProto,
-                DoorProto = room.DoorProto,
-                GlassDoorProto = room.GlassDoorProto,
-                FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
-                LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
-            };
-            
-            // Сохраняем двери
-            foreach (var door in room.Doors)
-            {
-                roomData.Doors.Add(new DoorData
-                {
-                    X = door.X,
-                    Y = door.Y,
-                    Proto = door.Proto
-                });
-            }
-            
-            data.Rooms.Add(roomData);
-        }
-
-        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
-        File.WriteAllText(dialog.FileName, json);
-        MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}");
-    }
-    catch (Exception ex)
-    {
-        MessageBox.Show($"Ошибка сохранения: {ex.Message}");
-    }
-}
-private void LoadProject()
-{
-    using var dialog = new OpenFileDialog
-    {
-        Filter = "Project files (*.ice)|*.ice"
-    };
-
-    if (dialog.ShowDialog() != DialogResult.OK) return;
-
-    try
-    {
-        var json = File.ReadAllText(dialog.FileName);
-        var data = System.Text.Json.JsonSerializer.Deserialize<ProjectData>(json);
-
-        if (data == null)
-        {
-            MessageBox.Show("Ошибка чтения файла");
+            MessageBox.Show("Нет активного грида для сохранения");
             return;
         }
 
-        // Очищаем текущую карту
-        if (_map.ActiveGrid != null)
+        using var dialog = new SaveFileDialog
         {
-            _map.ActiveGrid.Rooms.Clear();
+            Filter = "Project files (*.ice)|*.ice",
+            DefaultExt = "ice",
+            FileName = "project.ice"
+        };
 
-            foreach (var roomData in data.Rooms)
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var data = new ProjectData
             {
-                var room = new Room
+                LastSaved = DateTime.Now,
+                ActiveGridName = _map.ActiveGrid.Name
+            };
+
+            foreach (var room in _map.ActiveGrid.Rooms)
+            {
+                var roomData = new RoomData
                 {
-                    X = roomData.X,
-                    Y = roomData.Y,
-                    Width = roomData.Width,
-                    Height = roomData.Height,
-                    RoomType = roomData.RoomType,
-                    WallProto = roomData.WallProto,
-                    FloorProto = roomData.FloorProto,
-                    DoorProto = roomData.DoorProto,
-                    GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
-                    FillColor = ParseColor(roomData.FillColor),
-                    LineColor = ParseColor(roomData.LineColor)
+                    X = room.X,
+                    Y = room.Y,
+                    Width = room.Width,
+                    Height = room.Height,
+                    RoomType = room.RoomType,
+                    WallProto = room.WallProto,
+                    FloorProto = room.FloorProto,
+                    DoorProto = room.DoorProto,
+                    GlassDoorProto = room.GlassDoorProto,
+                    FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
+                    LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
                 };
                 
-                // Загружаем двери
-                foreach (var doorData in roomData.Doors)
+                foreach (var door in room.Doors)
                 {
-                    room.Doors.Add(new Door
+                    roomData.Doors.Add(new DoorData
                     {
-                        X = doorData.X,
-                        Y = doorData.Y,
-                        Proto = doorData.Proto
+                        X = door.X,
+                        Y = door.Y,
+                        Proto = door.Proto
                     });
                 }
                 
-                _map.ActiveGrid.Rooms.Add(room);
+                data.Rooms.Add(roomData);
             }
 
-            SaveState();
-            Render();
-            
-            int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
-            MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}");
+            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(dialog.FileName, json);
+            MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка сохранения: {ex.Message}");
         }
     }
-    catch (Exception ex)
+
+    private void LoadProject()
     {
-        MessageBox.Show($"Ошибка загрузки: {ex.Message}");
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Project files (*.ice)|*.ice"
+        };
+
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var json = File.ReadAllText(dialog.FileName);
+            var data = System.Text.Json.JsonSerializer.Deserialize<ProjectData>(json);
+
+            if (data == null)
+            {
+                MessageBox.Show("Ошибка чтения файла");
+                return;
+            }
+
+            if (_map.ActiveGrid != null)
+            {
+                _map.ActiveGrid.Rooms.Clear();
+
+                foreach (var roomData in data.Rooms)
+                {
+                    var room = new Room
+                    {
+                        X = roomData.X,
+                        Y = roomData.Y,
+                        Width = roomData.Width,
+                        Height = roomData.Height,
+                        RoomType = roomData.RoomType,
+                        WallProto = roomData.WallProto,
+                        FloorProto = roomData.FloorProto,
+                        DoorProto = roomData.DoorProto,
+                        GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
+                        FillColor = ParseColor(roomData.FillColor),
+                        LineColor = ParseColor(roomData.LineColor)
+                    };
+                    
+                    foreach (var doorData in roomData.Doors)
+                    {
+                        room.Doors.Add(new Door
+                        {
+                            X = doorData.X,
+                            Y = doorData.Y,
+                            Proto = doorData.Proto
+                        });
+                    }
+                    
+                    _map.ActiveGrid.Rooms.Add(room);
+                }
+
+                _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
+                SaveState();
+                Render();
+                
+                int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
+                MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка загрузки: {ex.Message}");
+        }
     }
-}
+
     private Color ParseColor(string value)
     {
         try

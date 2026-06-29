@@ -23,6 +23,70 @@ public class RoomTypeManager
         WriteIndented = true 
     };
 
+    // Приоритеты комнат (чем выше число, тем выше приоритет)
+    private static readonly Dictionary<string, int> _typePriorities = new()
+    {
+        // Общие (самый низкий приоритет)
+        { "General", 0 },
+        { "Technical", 0 },
+        { "Neutral", 0 },
+        { "Neutral Light", 0 },
+        { "BaseRoom", 0 },
+
+        // Служебные
+        { "Maintenance", 10 },
+        { "External", 10 },
+        { "Service", 10 },
+        { "Cargo", 10 },
+        { "Janitor", 10 },
+        { "Chapel", 10 },
+        { "Theatre", 10 },
+        { "Lawyer", 10 },
+        { "Kitchen", 10 },
+        { "Bar", 10 },
+        { "Hydroponics", 10 },
+
+        // Средний приоритет
+        { "Mining", 30 },
+        { "Salvage", 30 },
+        { "Atmospherics", 30 },
+        { "Chemistry", 30 },
+        { "Morgue", 30 },
+        { "Virology", 30 },
+        { "EVA", 30 },
+
+        // Медицина и Наука
+        { "Medical", 50 },
+        { "Science", 50 },
+        { "ResearchDirector", 50 },
+        { "ChiefMedicalOfficer", 50 },
+
+        // Инженерия
+        { "Engineering", 50 },
+        { "ChiefEngineer", 50 },
+
+        // Безопасность
+        { "Detective", 70 },
+        { "Brig", 70 },
+        { "Armory", 70 },
+        { "Security", 100 },
+        { "HeadOfSecurity", 100 },
+
+        // Командование
+        { "Command", 150 },
+        { "HeadOfPersonnel", 150 },
+        { "CentralCommand", 150 },
+        { "Vault", 150 },
+
+        // Высшее командование
+        { "Captain", 200 },
+        { "Bridge", 200 },
+
+        // Антагонисты
+        { "Syndicate", 250 },
+        { "Nukeop", 300 },
+    };
+
     public RoomTypeManager()
     {
         try
@@ -30,7 +94,6 @@ public class RoomTypeManager
             LoadVanillaTypes();
             LoadCustomTypes();
             
-            // Убедимся, что выбранный тип существует
             if (!_types.ContainsKey(SelectedType))
             {
                 SelectedType = _types.Keys.FirstOrDefault() ?? "General";
@@ -41,7 +104,6 @@ public class RoomTypeManager
             System.Diagnostics.Debug.WriteLine($"Ошибка в конструкторе RoomTypeManager: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
             
-            // Fallback - загружаем минимальный набор
             InitializeMinimalTypes();
         }
     }
@@ -82,13 +144,12 @@ public class RoomTypeManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Ошибка загрузки типов: {ex.Message}");
-            throw; // Перебрасываем для обработки в конструкторе
+            throw;
         }
     }
 
     private void InitializeMinimalTypes()
     {
-        // Минимальный набор типов для работы приложения
         var minimalTypes = new RoomType[]
         {
             new General(),
@@ -168,102 +229,53 @@ public class RoomTypeManager
         }
     }
 
-public void CreateCustomType(string name, string category, string wallProto, string floorProto, 
-    string doorProto, string glassDoorProto, Color fillColor, Color lineColor)
-{
-    if (_types.ContainsKey(name))
+    public int GetPriorityForType(string typeName)
     {
-        MessageBox.Show($"Тип с именем '{name}' уже существует!");
-        return;
+        // Проверяем встроенные типы
+        if (_typePriorities.TryGetValue(typeName, out var priority))
+            return priority;
+        
+        // Проверяем кастомные типы
+        if (_types.TryGetValue(typeName, out var type) && type is CustomRoomType custom)
+            return custom.Priority;
+        
+        return 0;
     }
 
-    var data = new CustomRoomTypeData
+    public void CreateCustomType(string name, string category, string wallProto, string floorProto, 
+        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
-        Name = name,
-        Category = category,
-        WallProto = wallProto,
-        FloorProto = floorProto,
-        DoorProto = doorProto,
-        GlassDoorProto = glassDoorProto,
-        FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
-        LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}"
-    };
-
-    var type = new CustomRoomType(data);
-    _types[type.Name] = type;
-    if (!_categories.ContainsKey(type.Category))
-        _categories[type.Category] = new List<RoomType>();
-    _categories[type.Category].Add(type);
-
-    SaveCustomTypes();
-    OnTypeChanged?.Invoke();
-}
-
-public void EditCustomType(string oldName, string newName, string category, string wallProto, 
-    string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor)
-{
-    var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
-    if (oldType == null) return;
-
-    if (oldName != newName && _types.ContainsKey(newName))
-    {
-        MessageBox.Show($"Тип с именем '{newName}' уже существует!");
-        return;
-    }
-
-    _types.Remove(oldName);
-    if (_categories.TryGetValue(oldType.Category, out var list))
-    {
-        list.Remove(oldType);
-        if (list.Count == 0)
-            _categories.Remove(oldType.Category);
-    }
-
-    var data = new CustomRoomTypeData
-    {
-        Name = newName,
-        Category = category,
-        WallProto = wallProto,
-        FloorProto = floorProto,
-        DoorProto = doorProto,
-        GlassDoorProto = glassDoorProto,
-        FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
-        LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}"
-    };
-
-    var type = new CustomRoomType(data);
-    _types[type.Name] = type;
-    if (!_categories.ContainsKey(type.Category))
-        _categories[type.Category] = new List<RoomType>();
-    _categories[type.Category].Add(type);
-
-    if (SelectedType == oldName)
-        SelectedType = newName;
-
-    SaveCustomTypes();
-    OnTypeChanged?.Invoke();
-}
-    public void DeleteCustomType(string name)
-    {
-        var type = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == name);
-        if (type == null) return;
-
-        _types.Remove(name);
-        if (_categories.TryGetValue(type.Category, out var list))
+        if (_types.ContainsKey(name))
         {
-            list.Remove(type);
-            if (list.Count == 0)
-                _categories.Remove(type.Category);
+            MessageBox.Show($"Тип с именем '{name}' уже существует!");
+            return;
         }
 
-        if (SelectedType == name)
-            SelectedType = _types.Keys.FirstOrDefault() ?? "General";
+        var data = new CustomRoomTypeData
+        {
+            Name = name,
+            Category = category,
+            WallProto = wallProto,
+            FloorProto = floorProto,
+            DoorProto = doorProto,
+            GlassDoorProto = glassDoorProto,
+            FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
+            LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
+            Priority = priority
+        };
+
+        var type = new CustomRoomType(data);
+        _types[type.Name] = type;
+        if (!_categories.ContainsKey(type.Category))
+            _categories[type.Category] = new List<RoomType>();
+        _categories[type.Category].Add(type);
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
     }
 
-    public void EditCustomType(string oldName, string newName, string category, string wallProto, string floorProto, string doorProto, Color fillColor, Color lineColor)
+    public void EditCustomType(string oldName, string newName, string category, string wallProto, 
+        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
@@ -289,8 +301,10 @@ public void EditCustomType(string oldName, string newName, string category, stri
             WallProto = wallProto,
             FloorProto = floorProto,
             DoorProto = doorProto,
+            GlassDoorProto = glassDoorProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
-            LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}"
+            LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
+            Priority = priority
         };
 
         var type = new CustomRoomType(data);
@@ -301,6 +315,26 @@ public void EditCustomType(string oldName, string newName, string category, stri
 
         if (SelectedType == oldName)
             SelectedType = newName;
+
+        SaveCustomTypes();
+        OnTypeChanged?.Invoke();
+    }
+
+    public void DeleteCustomType(string name)
+    {
+        var type = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == name);
+        if (type == null) return;
+
+        _types.Remove(name);
+        if (_categories.TryGetValue(type.Category, out var list))
+        {
+            list.Remove(type);
+            if (list.Count == 0)
+                _categories.Remove(type.Category);
+        }
+
+        if (SelectedType == name)
+            SelectedType = _types.Keys.FirstOrDefault() ?? "General";
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
@@ -326,17 +360,17 @@ public void EditCustomType(string oldName, string newName, string category, stri
         return _types.TryGetValue(key, out var type) ? type : _types["General"];
     }
 
-public void ApplyTypeToRoom(Room room, string? typeName = null)
-{
-    var type = GetRoomType(typeName);
-    room.WallProto = type.WallProto;
-    room.FloorProto = type.FloorProto;
-    room.DoorProto = type.DoorProto;
-    room.GlassDoorProto = type.GlassDoorProto; 
-    room.FillColor = type.FillColor;
-    room.LineColor = type.LineColor;
-    room.RoomType = type.Name;
-}
+    public void ApplyTypeToRoom(Room room, string? typeName = null)
+    {
+        var type = GetRoomType(typeName);
+        room.WallProto = type.WallProto;
+        room.FloorProto = type.FloorProto;
+        room.DoorProto = type.DoorProto;
+        room.GlassDoorProto = type.GlassDoorProto;
+        room.FillColor = type.FillColor;
+        room.LineColor = type.LineColor;
+        room.RoomType = type.Name;
+    }
 
     public void ExportType(string typeName, string filePath)
     {
@@ -351,8 +385,10 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             WallProto = type.WallProto,
             FloorProto = type.FloorProto,
             DoorProto = type.DoorProto,
+            GlassDoorProto = type.GlassDoorProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
-            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}"
+            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+            Priority = GetPriorityForType(type.Name)
         };
 
         var json = JsonSerializer.Serialize(data, _jsonOptions);
@@ -375,8 +411,10 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             WallProto = type.WallProto,
             FloorProto = type.FloorProto,
             DoorProto = type.DoorProto,
+            GlassDoorProto = type.GlassDoorProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
-            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}"
+            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+            Priority = GetPriorityForType(type.Name)
         }).ToList();
 
         var json = JsonSerializer.Serialize(dataList, _jsonOptions);
@@ -402,8 +440,10 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             WallProto = data.WallProto,
             FloorProto = data.FloorProto,
             DoorProto = data.DoorProto,
+            GlassDoorProto = data.GlassDoorProto,
             FillColor = data.FillColor,
-            LineColor = data.LineColor
+            LineColor = data.LineColor,
+            Priority = data.Priority
         };
 
         var type = new CustomRoomType(customData);
@@ -441,8 +481,10 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 WallProto = data.WallProto,
                 FloorProto = data.FloorProto,
                 DoorProto = data.DoorProto,
+                GlassDoorProto = data.GlassDoorProto,
                 FillColor = data.FillColor,
-                LineColor = data.LineColor
+                LineColor = data.LineColor,
+                Priority = data.Priority
             };
 
             var type = new CustomRoomType(customData);

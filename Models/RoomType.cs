@@ -391,7 +391,7 @@ public class CentralCommand : DepartmentalRoomType
 {
     public override string Name => "CentralCommand";
     public override string WallProto => "WallReinforced";
-    public override string DoorProto => "HighSecCentralCommandLocked";
+    public override string DoorProto => "AirlockCentralCommandLocked";
     public override string GlassDoorProto => "AirlockCentralCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 40, 60, 100);
     public override Color LineColor => Color.FromArgb(255, 40, 60, 100);
@@ -476,10 +476,12 @@ public class Nukeop : AntagRoomType
 public class CustomRoomType : RoomType
 {
     public CustomRoomTypeData Data { get; }
+    public int Priority { get; }
 
     public CustomRoomType(CustomRoomTypeData data)
     {
         Data = data;
+        Priority = data.Priority;
     }
 
     public override string Name => Data.Name;
@@ -519,6 +521,7 @@ public class CustomRoomTypeData
     public string GlassDoorProto { get; set; } = "AirlockGlass";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
+    public int Priority { get; set; } = 0;
 }
 
 public class ExportData
@@ -532,4 +535,5 @@ public class ExportData
     public string GlassDoorProto { get; set; } = "AirlockGlass";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
+    public int Priority { get; set; } = 0;
 }
