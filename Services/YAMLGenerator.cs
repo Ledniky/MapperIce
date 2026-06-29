@@ -120,7 +120,6 @@ public class YAMLGenerator
             {
                 for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    // ИНВЕРТИРУЕМ Y (как и в стенах)
                     int invY = -y;
 
                     int cx = x / CHUNK_SIZE;
@@ -128,7 +127,6 @@ public class YAMLGenerator
                     int lx = x % CHUNK_SIZE;
                     int ly = invY % CHUNK_SIZE;
 
-                    // Для отрицательных координат корректируем
                     if (ly < 0)
                     {
                         ly += CHUNK_SIZE;
@@ -174,14 +172,11 @@ public class YAMLGenerator
 
     private int CountEntities(List<Room> rooms)
     {
-        int count = 2; // Map Entity и Grid
+        int count = 2;
         foreach (var room in rooms)
         {
-            // Стены
             count += room.Width * 2 + room.Height * 2 - 4;
-            // Полы (тайлы)
             count += (room.Width - 2) * (room.Height - 2);
-            // Двери
             count += room.Doors.Count;
         }
         return count;
@@ -193,16 +188,32 @@ public class YAMLGenerator
         var entities = new List<string>();
         var wallPositions = new HashSet<(int x, int y)>();
 
+        // Собираем все позиции дверей
+        var doorPositions = new HashSet<(int x, int y)>();
+        foreach (var room in rooms)
+        {
+            foreach (var door in room.Doors)
+            {
+                doorPositions.Add((door.X, door.Y));
+            }
+        }
+
         foreach (var room in rooms)
         {
             for (int x = room.X; x < room.X + room.Width; x++)
             {
                 for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    if (x == room.X || x == room.X + room.Width - 1 ||
-                        y == room.Y || y == room.Y + room.Height - 1)
+                    bool isBorder = x == room.X || x == room.X + room.Width - 1 ||
+                                    y == room.Y || y == room.Y + room.Height - 1;
+                    
+                    if (isBorder)
                     {
-                        wallPositions.Add((x, y));
+                        // Добавляем стену только если там нет двери
+                        if (!doorPositions.Contains((x, y)))
+                        {
+                            wallPositions.Add((x, y));
+                        }
                     }
                 }
             }
@@ -210,10 +221,7 @@ public class YAMLGenerator
 
         foreach (var (x, y) in wallPositions)
         {
-            // Используем ТЕ ЖЕ координаты, что и для тайлов
             int invY = -y;
-
-            // Стены должны быть в центре тайла
             float posX = x + 0.5f;
             float posY = invY + 0.5f;
 
@@ -241,7 +249,6 @@ public class YAMLGenerator
 
     private void GenerateDoors(StringBuilder sb, List<Room> rooms, ref int uid)
     {
-        // Собираем все двери по прототипам
         var doorsByProto = new Dictionary<string, List<(int x, int y)>>();
         
         foreach (var room in rooms)
@@ -255,7 +262,6 @@ public class YAMLGenerator
             }
         }
         
-        // Генерируем YAML для каждой группы дверей
         foreach (var kvp in doorsByProto)
         {
             if (kvp.Value.Count == 0) continue;
