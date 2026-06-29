@@ -451,122 +451,61 @@ public class MainForm : Form
 
     // === Панель инструментов ===
 
-    private void CreateToolPanel()
+private void CreateToolPanel()
+{
+    var panel = new Panel { Dock = DockStyle.Right, Width = 200, BackColor = Color.FromArgb(240,240,240), BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(0) };
+    
+    int leftMargin = 2;
+    int rightMargin = 2;
+    int y = leftMargin;
+    int contentWidth = 200 - leftMargin - rightMargin;
+    
+    var title = new Label { Text = "Инструменты", Font = new Font("Arial",14,FontStyle.Bold), Location = new Point(leftMargin, y), Width = contentWidth, Height = 35, TextAlign = ContentAlignment.MiddleLeft, BackColor = Color.FromArgb(220,220,220) };
+    panel.Controls.Add(title);
+    y += 35 + 2;
+
+    // Первая строка (без отступа между кнопками)
+    _btnCreateRoom = new Button { Text = "🟦 Создать", Location = new Point(leftMargin + 2, y), Width = 149, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
+    _btnCreateRoom.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
+    panel.Controls.Add(_btnCreateRoom);
+
+    _btnRoomSettings = new Button { Text = "⚙", Location = new Point(leftMargin + 151 + 2, y), Width = contentWidth - 155, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, Font = new Font("Segoe UI",12) };
+    _btnRoomSettings.Click += (s,e) => ShowRoomTypeDialog();
+    panel.Controls.Add(_btnRoomSettings);
+    y += 40 + 2;
+
+    // Остальные кнопки с отступом 2px
+    _btnDoor = new Button { Text = "🚪 Создать дверь", Location = new Point(leftMargin + 2, y), Width = contentWidth - 4, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
+    _btnDoor.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.Door);
+    panel.Controls.Add(_btnDoor);
+    y += 40 + 2;
+
+    _btnDelete = new Button { Text = "🗑 Удалить", Location = new Point(leftMargin + 2, y), Width = contentWidth - 4, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Arial",9,FontStyle.Bold) };
+    _btnDelete.Click += (s,e) => _toolManager.SetTool(ToolManager.Tool.Delete);
+    panel.Controls.Add(_btnDelete);
+    y += 40 + 2;
+
+    panel.Controls.Add(new Label { Text = $"Тип: {_roomTypeManager.SelectedType}", Location = new Point(leftMargin, y), Width = contentWidth, Height = 25, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DarkGray, Font = new Font("Arial",8) });
+    y += 25 + 2;
+
+    panel.Controls.Add(new Label { Text = "Повторное нажатие\nсбрасывает инструмент", Location = new Point(leftMargin, y), Width = contentWidth, Height = 45, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.Gray, Font = new Font("Arial",9), BackColor = Color.FromArgb(230,230,230) });
+
+    Controls.Add(panel);
+}
+
+    private Button Btn(string text, Action? onClick = null)
     {
-        var panel = new Panel
-        {
-            Dock = DockStyle.Right,
-            Width = 200,
-            BackColor = Color.FromArgb(240, 240, 240),
-            BorderStyle = BorderStyle.FixedSingle,
-            Padding = new Padding(0, 5, 0, 5)
-        };
-
-        var title = new Label
-        {
-            Text = "Инструменты",
-            Font = new Font("Arial", 14, FontStyle.Bold),
-            Dock = DockStyle.Top,
-            Height = 35,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.FromArgb(220, 220, 220),
-            Margin = new Padding(0, 0, 0, 5)
-        };
-        panel.Controls.Add(title);
-
-        // === СТРОКА: СОЗДАТЬ + НАСТРОЙКА ТИПА ===
-        var rowPanel = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 40,
-            Padding = new Padding(5, 2, 5, 2)
-        };
-
-        _btnCreateRoom = new Button
-        {
-            Text = "🟦 Создать",
-            Location = new Point(5, 2),
-            Width = 130,
-            Height = 32,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Arial", 9, FontStyle.Bold)
-        };
-        _btnCreateRoom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
-        rowPanel.Controls.Add(_btnCreateRoom);
-
-        _btnRoomSettings = new Button
-        {
-            Text = "⚙",
-            Location = new Point(140, 2),
-            Width = 32,
-            Height = 32,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Segoe UI", 12)
-        };
-        _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
-        rowPanel.Controls.Add(_btnRoomSettings);
-
-        panel.Controls.Add(rowPanel);
-
-        // === ДВЕРЬ ===
-        _btnDoor = new Button
-        {
-            Text = "🚪 Дверь",
-            Dock = DockStyle.Top,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(10, 0, 0, 0),
-            Margin = new Padding(5, 2, 5, 2)
-        };
-        _btnDoor.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Door);
-        panel.Controls.Add(_btnDoor);
-
-        // === УДАЛИТЬ ===
-        _btnDelete = new Button
-        {
-            Text = "🗑 Удалить",
-            Dock = DockStyle.Top,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(10, 0, 0, 0),
-            Margin = new Padding(5, 2, 5, 2)
-        };
-        _btnDelete.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Delete);
-        panel.Controls.Add(_btnDelete);
-
-        // === ТИП ===
-        _typeLabel = new Label
-        {
-            Text = $"Тип: {_roomTypeManager.SelectedType}",
-            Dock = DockStyle.Top,
-            Height = 25,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.DarkGray,
-            Font = new Font("Arial", 8)
-        };
-        panel.Controls.Add(_typeLabel);
-
-        var hint = new Label
-        {
-            Text = "Повторное нажатие\nсбрасывает инструмент",
-            Dock = DockStyle.Bottom,
-            Height = 45,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.Gray,
-            Font = new Font("Arial", 9),
-            BackColor = Color.FromArgb(230, 230, 230)
-        };
-        panel.Controls.Add(hint);
-
-        Controls.Add(panel);
+        var btn = new Button { Text = text, Height = 40, FlatStyle = FlatStyle.Flat, BackColor = Color.White, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(0, 0, 0, 2), Font = new Font("Arial", 9, FontStyle.Bold), Width = 196 };
+        if (onClick != null) btn.Click += (s, e) => onClick();
+        return btn;
     }
+
+
+
+
+
+
+
 
     // === Диалог выбора типа комнаты ===
 
