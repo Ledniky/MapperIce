@@ -8,6 +8,7 @@ public class Renderer
     private readonly object _lock = new();
     private PrototypeIndexer? _indexer;
     private string _rootPath = "";
+    public bool HideRoomOverlay { get; set; } = false;
 
     public Renderer(int width, int height, PrototypeIndexer? indexer = null)
     {
@@ -56,7 +57,7 @@ public class Renderer
                     DrawFloorTiles(g, room, tileSize, viewOffset, grid.Position, opacity);
             }
 
-            // 3. СТЕНЫ (под заливкой)
+            // 3. СТЕНЫ
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -74,7 +75,7 @@ public class Renderer
                 DrawRoomWalls(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f, new List<Room>());
             }
 
-            // 4. ДВЕРИ (под заливкой)
+            // 4. ДВЕРИ
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -84,33 +85,29 @@ public class Renderer
                 }
             }
 
-            // 5. ЗАЛИВКА КОМНАТ (поверх стен и дверей)
-            foreach (var grid in map.Grids)
+            // 5. ЗАЛИВКА КОМНАТ И ОБВОДКА (СКРЫВАЕТСЯ если HideRoomOverlay = true)
+            if (!HideRoomOverlay)
             {
-                if (!grid.IsVisible) continue;
-                bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
-                float opacity = isActive ? 1.0f : 0.3f;
-                foreach (var room in grid.Rooms)
-                    DrawRoomFill(g, room, tileSize, viewOffset, grid.Position, opacity);
+                foreach (var grid in map.Grids)
+                {
+                    if (!grid.IsVisible) continue;
+                    bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
+                    float opacity = isActive ? 1.0f : 0.3f;
+                    foreach (var room in grid.Rooms)
+                    {
+                        DrawRoomFill(g, room, tileSize, viewOffset, grid.Position, opacity);
+                        DrawRoomLine(g, room, tileSize, viewOffset, grid.Position, false, opacity);
+                    }
+                }
+
+                if (currentRoom != null && map.ActiveGrid != null)
+                {
+                    DrawRoomFill(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f);
+                    DrawRoomLine(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, true, 1.0f);
+                }
             }
 
-            if (currentRoom != null && map.ActiveGrid != null)
-                DrawRoomFill(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, 1.0f);
-
-            // 6. ЛИНИИ (поверх всего)
-            foreach (var grid in map.Grids)
-            {
-                if (!grid.IsVisible) continue;
-                bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
-                float opacity = isActive ? 1.0f : 0.3f;
-                foreach (var room in grid.Rooms)
-                    DrawRoomLine(g, room, tileSize, viewOffset, grid.Position, false, opacity);
-            }
-
-            if (currentRoom != null && map.ActiveGrid != null)
-                DrawRoomLine(g, currentRoom, tileSize, viewOffset, map.ActiveGrid.Position, true, 1.0f);
-
-            // 7. ИНФОРМАЦИЯ
+            // 6. ИНФОРМАЦИЯ
             DrawInfo(g, scale, toolName, map);
 
             return _buffer;
@@ -188,7 +185,6 @@ public class Renderer
 
     private void DrawRoomWalls(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, List<Room> allRooms)
     {
-        // Получаем путь к текстуре стены
         string? wallPath = null;
         if (_indexer != null)
         {
@@ -197,7 +193,11 @@ public class Renderer
 
         if (string.IsNullOrEmpty(wallPath) || !File.Exists(wallPath))
         {
-            DrawRoomLines(g, room, tileSize, viewOffset, gridOffset, opacity);
+            // Если нет текстуры стены, рисуем линии только если оверлей не скрыт
+            if (!HideRoomOverlay)
+            {
+                DrawRoomLines(g, room, tileSize, viewOffset, gridOffset, opacity);
+            }
             return;
         }
 
@@ -205,13 +205,11 @@ public class Renderer
         try { wallTexture = Image.FromFile(wallPath); }
         catch { return; }
 
-        // Собираем позиции дверей в этой комнате
         var doorPositions = room.Doors.Select(d => (d.X, d.Y)).ToHashSet();
 
         // Верхняя стена
         for (int x = room.X; x < room.X + room.Width; x++)
         {
-            // Пропускаем, если здесь дверь
             if (doorPositions.Contains((x, room.Y))) continue;
 
             float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
@@ -249,7 +247,11 @@ public class Renderer
             g.DrawImage(wallTexture, new Rectangle((int)wx, (int)wy, tileSize, tileSize));
         }
 
-        DrawRoomText(g, room, tileSize, opacity, GetRoomRect(room, tileSize, viewOffset, gridOffset));
+        // Рисуем текст с размером только если оверлей не скрыт
+        if (!HideRoomOverlay)
+        {
+            DrawRoomText(g, room, tileSize, opacity, GetRoomRect(room, tileSize, viewOffset, gridOffset));
+        }
     }
 
     private void DrawRoomLines(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
@@ -263,7 +265,11 @@ public class Renderer
         Color color = Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
         using var pen = new Pen(color, 2);
         g.DrawRectangle(pen, rect);
-        DrawRoomText(g, room, tileSize, opacity, rect);
+        
+        if (!HideRoomOverlay)
+        {
+            DrawRoomText(g, room, tileSize, opacity, rect);
+        }
     }
 
     private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
@@ -280,7 +286,11 @@ public class Renderer
         using var pen = new Pen(color, isCurrent ? 3 : 2);
         g.DrawRectangle(pen, rect);
 
-        DrawRoomText(g, room, tileSize, opacity, rect);
+        // Текст с размером только если оверлей не скрыт
+        if (!HideRoomOverlay)
+        {
+            DrawRoomText(g, room, tileSize, opacity, rect);
+        }
     }
 
     private Rectangle GetRoomRect(Room room, int tileSize, PointF viewOffset, PointF gridOffset)
@@ -316,57 +326,47 @@ public class Renderer
         return brightness < 128 ? Color.White : Color.Black;
     }
 
-    // ===== ДВЕРИ =====
-
-private void DrawDoors(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
-{
-    if (_indexer == null) return;
-    
-    foreach (var door in room.Doors)
+    private void DrawDoors(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        float x = (door.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X - tileSize / 2f;
-        float y = (door.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y - tileSize / 2f;
+        if (_indexer == null) return;
         
-        Image? doorTexture = null;
-        var doorPath = _indexer.GetFullTexturePath(door.Proto);
-        if (doorPath != null && File.Exists(doorPath))
+        foreach (var door in room.Doors)
         {
-            try { doorTexture = Image.FromFile(doorPath); }
-            catch { }
-        }
-        
-        if (doorTexture != null)
-        {
-            g.DrawImage(doorTexture, new Rectangle((int)x, (int)y, tileSize, tileSize));
-        }
-        else
-        {
-            // Заглушка
-            using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
-            g.FillRectangle(brush, (int)x, (int)y, tileSize, tileSize);
-            using var pen = new Pen(Color.DarkBlue, 2);
-            g.DrawRectangle(pen, (int)x, (int)y, tileSize, tileSize);
-            using var font = new Font("Segoe UI", 14);
-            using var textBrush = new SolidBrush(Color.White);
-            g.DrawString("🚪", font, textBrush, (int)x + 4, (int)y + 2);
+            float x = (door.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X - tileSize / 2f;
+            float y = (door.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y - tileSize / 2f;
+            
+            Image? doorTexture = null;
+            var doorPath = _indexer.GetFullTexturePath(door.Proto);
+            if (doorPath != null && File.Exists(doorPath))
+            {
+                try { doorTexture = Image.FromFile(doorPath); }
+                catch { }
+            }
+            
+            if (doorTexture != null)
+            {
+                g.DrawImage(doorTexture, new Rectangle((int)x, (int)y, tileSize, tileSize));
+            }
+            else
+            {
+                using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
+                g.FillRectangle(brush, (int)x, (int)y, tileSize, tileSize);
+                using var pen = new Pen(Color.DarkBlue, 2);
+                g.DrawRectangle(pen, (int)x, (int)y, tileSize, tileSize);
+                using var font = new Font("Segoe UI", 14);
+                using var textBrush = new SolidBrush(Color.White);
+                g.DrawString("🚪", font, textBrush, (int)x + 4, (int)y + 2);
+            }
         }
     }
-}
-
-
-
-
-
-
-
-
 
     private void DrawInfo(Graphics g, float scale, string toolName, MapData map)
     {
         using var font = new Font("Arial", 12, FontStyle.Bold);
         using var brush = new SolidBrush(Color.DarkGray);
         var name = map.ActiveGrid?.Name ?? "Нет";
-        g.DrawString($"Инструмент: {toolName}  Масштаб: {scale:P0}  Активный грид: {name}  Всего: {map.Grids.Count}",
+        string mode = HideRoomOverlay ? " [ОВЕРЛЕЙ СКРЫТ]" : "";
+        g.DrawString($"Инструмент: {toolName}{mode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего: {map.Grids.Count}",
             font, brush, 10, 10);
     }
 }

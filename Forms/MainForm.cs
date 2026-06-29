@@ -44,7 +44,9 @@ public class MainForm : Form
     private CancellationTokenSource? _searchCts;
     private string _currentDoorType = "Airlock";
     private Button? _selectedDoorButton = null;
-
+    private bool _solidRenderMode = false;
+    private bool _hideRoomFill = false;
+    private bool _hideRoomOverlay = false;
     public MainForm()
     {
         Text = "MapperIce";
@@ -72,11 +74,11 @@ public class MainForm : Form
         UpdateGridSelector();
 
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
-        _indexer.OnIndexingComplete += () => 
-        { 
-            UpdatePrototypeList(); 
+        _indexer.OnIndexingComplete += () =>
+        {
+            UpdatePrototypeList();
             UpdateDoorIcons();
-            Render(); 
+            Render();
         };
 
         UpdateRepoSelector();
@@ -1085,7 +1087,7 @@ private void ShowRoomTypeDialog()
         var panel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 40,
+            Height = 55,
             BackColor = Color.FromArgb(230, 230, 230),
             Padding = new Padding(10, 5, 10, 5)
         };
@@ -1159,6 +1161,26 @@ private void ShowRoomTypeDialog()
         };
         panel.Controls.Add(btnRemoveGrid);
 
+// Новая кнопка переключения оверлея комнат
+var btnToggleOverlay = new Button
+{
+    Text = "🎨",
+    Location = new Point(panel.Width -55, 7),
+    Width = 40,
+    Height = 40,
+    BackColor = Color.LightGreen,
+    FlatStyle = FlatStyle.Flat,
+    Font = new Font("Segoe UI", 14),
+    Anchor = AnchorStyles.Top | AnchorStyles.Right
+};
+btnToggleOverlay.Click += (s, e) =>
+{
+    _hideRoomOverlay = !_hideRoomOverlay;
+    btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
+    btnToggleOverlay.Text = _hideRoomOverlay ? "🗺️" : "📐";
+    Render();
+};
+panel.Controls.Add(btnToggleOverlay);
         Controls.Add(panel);
     }
 
@@ -1199,10 +1221,10 @@ private void ShowRoomTypeDialog()
     {
         var menu = new MenuStrip();
         var fileMenu = new ToolStripMenuItem("Файл");
-        fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
+        fileMenu.DropDownItems.Add("Сохранить проект как...", null, (s, e) => SaveProject());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
         fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
-        fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
+        fileMenu.DropDownItems.Add("Импорт из YAML", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
         Controls.Add(menu);
@@ -1264,8 +1286,9 @@ private void ShowRoomTypeDialog()
     }
 
     private void Render()
-    {
-        _canvas.Invalidate();
+{
+    _renderer.HideRoomOverlay = _hideRoomOverlay;
+    _canvas.Invalidate();
     }
 
     private void UpdateBuffer()
