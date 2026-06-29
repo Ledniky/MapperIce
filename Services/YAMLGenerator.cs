@@ -103,7 +103,9 @@ public class YAMLGenerator
         sb.AppendLine("    - type: GasTileOverlay");
         sb.AppendLine("    - type: RadiationGridResistance");
 
-        GenerateWalls(sb, rooms);
+        // Генерируем стены и двери
+        int uid = GenerateWalls(sb, rooms);
+        GenerateDoors(sb, rooms, ref uid);
 
         return sb.ToString();
     }
@@ -172,16 +174,20 @@ public class YAMLGenerator
 
     private int CountEntities(List<Room> rooms)
     {
-        int count = 2;
+        int count = 2; // Map Entity и Grid
         foreach (var room in rooms)
         {
+            // Стены
             count += room.Width * 2 + room.Height * 2 - 4;
+            // Полы (тайлы)
             count += (room.Width - 2) * (room.Height - 2);
+            // Двери
+            count += room.Doors.Count;
         }
         return count;
     }
 
-    private void GenerateWalls(StringBuilder sb, List<Room> rooms)
+    private int GenerateWalls(StringBuilder sb, List<Room> rooms)
     {
         int uid = 3;
         var entities = new List<string>();
@@ -205,12 +211,11 @@ public class YAMLGenerator
         foreach (var (x, y) in wallPositions)
         {
             // Используем ТЕ ЖЕ координаты, что и для тайлов
-            // Тайлы в чанке используют инвертированный Y
             int invY = -y;
 
             // Стены должны быть в центре тайла
             float posX = x + 0.5f;
-            float posY = invY + 0.5f; // НЕ -(y + 0.5), а invY + 0.5!
+            float posY = invY + 0.5f;
 
             string posXStr = posX.ToString("0.0").Replace(',', '.');
             string posYStr = posY.ToString("0.0").Replace(',', '.');
@@ -230,24 +235,43 @@ public class YAMLGenerator
             foreach (var line in entities)
                 sb.AppendLine(line);
         }
+        
+        return uid;
     }
-
-
 
     private void GenerateDoors(StringBuilder sb, List<Room> rooms, ref int uid)
     {
+        // Собираем все двери по прототипам
+        var doorsByProto = new Dictionary<string, List<(int x, int y)>>();
+        
         foreach (var room in rooms)
         {
             foreach (var door in room.Doors)
             {
-                float posX = door.X + 0.5f;
-                float posY = -(door.Y + 0.5f); // Инвертируем Y
-
+                if (!doorsByProto.ContainsKey(door.Proto))
+                    doorsByProto[door.Proto] = new List<(int x, int y)>();
+                
+                doorsByProto[door.Proto].Add((door.X, door.Y));
+            }
+        }
+        
+        // Генерируем YAML для каждой группы дверей
+        foreach (var kvp in doorsByProto)
+        {
+            if (kvp.Value.Count == 0) continue;
+            
+            sb.AppendLine($"- proto: {kvp.Key}");
+            sb.AppendLine("  entities:");
+            
+            foreach (var (x, y) in kvp.Value)
+            {
+                int invY = -y;
+                float posX = x + 0.5f;
+                float posY = invY + 0.5f;
+                
                 string posXStr = posX.ToString("0.0").Replace(',', '.');
                 string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                sb.AppendLine($"- proto: {door.Proto}");
-                sb.AppendLine($"  entities:");
+                
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
@@ -257,6 +281,4 @@ public class YAMLGenerator
             }
         }
     }
-
-
 }
