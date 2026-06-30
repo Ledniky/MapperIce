@@ -38,8 +38,17 @@ public class Brig : SecurityRoomType
 public class Armory : SecurityRoomType
 {
     public override string Name => "Armory";
-    public override string DoorProto => "HighSecArmoryLocked";
+    public override string DoorProto => "AirlockArmoryLocked";
     public override string GlassDoorProto => "AirlockArmoryGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 150, 30, 30);
+    public override Color LineColor => Color.FromArgb(255, 150, 30, 30);
+}
+
+public class ArmoryVault : SecurityRoomType
+{
+    public override string Name => "Armory";
+    public override string DoorProto => "HighSecArmoryLocked";
+    public override string GlassDoorProto => "HighSecArmoryLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 30, 30);
     public override Color LineColor => Color.FromArgb(255, 150, 30, 30);
 }

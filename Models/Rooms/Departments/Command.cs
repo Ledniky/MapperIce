@@ -38,8 +38,8 @@ public class Vault : CommandRoomType
 {
     public override string Name => "Vault";
     public override string WallProto => "WallReinforced";
-    public override string DoorProto => "AirlockVaultLocked";
-    public override string GlassDoorProto => "AirlockVaultLocked";
+    public override string DoorProto => "HighSecCommandLocked";
+    public override string GlassDoorProto => "HighSecCommandLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 180, 50);
     public override Color LineColor => Color.FromArgb(255, 180, 180, 50);
 }
