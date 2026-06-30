@@ -29,12 +29,9 @@ public class RoomTypeManager
         // Общие (самый низкий приоритет)
         { "General", 0 },
         { "Technical", 0 },
-        { "Neutral", 0 },
-        { "Neutral Light", 0 },
         { "BaseRoom", 0 },
 
         // Служебные
-        { "Maintenance", 10 },
         { "External", 10 },
         { "Service", 10 },
         { "Cargo", 10 },
@@ -48,12 +45,12 @@ public class RoomTypeManager
 
         // Средний приоритет
         { "Mining", 30 },
-        { "Salvage", 30 },
+        { "Salvage", 40 },
         { "Atmospherics", 30 },
-        { "Chemistry", 30 },
+        { "Chemistry", 70 },
         { "Morgue", 30 },
-        { "Virology", 30 },
-        { "EVA", 30 },
+        { "Virology", 60 },
+        { "EVA", 140 },
 
         // Медицина и Наука
         { "Medical", 50 },
@@ -75,7 +72,7 @@ public class RoomTypeManager
         // Командование
         { "Command", 150 },
         { "HeadOfPersonnel", 150 },
-        { "CentralCommand", 150 },
+        { "CentralCommand", 160 },
         { "Vault", 150 },
 
         // Высшее командование
@@ -161,7 +158,6 @@ public class RoomTypeManager
             new Science(),
             new Cargo(),
             new Service(),
-            new Neutral()
         };
         
         foreach (var type in minimalTypes)

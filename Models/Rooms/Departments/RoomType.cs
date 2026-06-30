@@ -52,6 +52,8 @@ public class General : CommonRoomType
 public class Technical : CommonRoomType
 {
     public override string Name => "Technical";
+    public override string DoorProto => "AirlockMaintLocked";
+    public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
 }
@@ -63,39 +65,10 @@ public class Hallway : CommonRoomType
     public override Color LineColor => Color.FromArgb(255, 200, 200, 210);
 }
 
-public class Maintenance : CommonRoomType
-{
-    public override string Name => "Maintenance";
-    public override string DoorProto => "AirlockMaintLocked";
-    public override string GlassDoorProto => "AirlockMaintGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 100, 100, 100);
-    public override Color LineColor => Color.FromArgb(255, 100, 100, 100);
-}
-
 public class BaseRoom : CommonRoomType
 {
     public override string Name => "BaseRoom";
     public override bool IsHidden => true;
-}
-
-// ============================================================
-// НЕЙТРАЛЬНЫЕ
-// ============================================================
-
-public class Neutral : RoomType
-{
-    public override string Name => "Neutral";
-    public override string Category => "Neutral";
-    public override Color FillColor => Color.FromArgb(100, 212, 212, 212);
-    public override Color LineColor => Color.FromArgb(255, 212, 212, 212);
-}
-
-public class NeutralLight : RoomType
-{
-    public override string Name => "Neutral Light";
-    public override string Category => "Neutral";
-    public override Color FillColor => Color.FromArgb(180, 212, 212, 212);
-    public override Color LineColor => Color.FromArgb(200, 212, 212, 212);
 }
 
 // ============================================================
