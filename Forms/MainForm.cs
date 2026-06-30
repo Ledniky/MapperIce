@@ -75,11 +75,11 @@ public class MainForm : Form
         UpdateGridSelector();
 
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
-        _indexer.OnIndexingComplete += () => 
-        { 
-            UpdatePrototypeList(); 
+        _indexer.OnIndexingComplete += () =>
+        {
+            UpdatePrototypeList();
             UpdateDoorIcons();
-            Render(); 
+            Render();
         };
 
         UpdateRepoSelector();
@@ -143,8 +143,18 @@ public class MainForm : Form
             Width = 240,
             BackColor = Color.FromArgb(245, 245, 245),
             Padding = new Padding(5),
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
+
+        var rightLine = new Panel
+        {
+            Location = new Point(panel.Width - 1, 0),
+            Width = 1,
+            Height = panel.Height,
+            BackColor = Color.Gray,
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
+        };
+        panel.Controls.Add(rightLine);
 
         var listContainer = new Panel
         {
@@ -328,9 +338,9 @@ public class MainForm : Form
             int count = _indexer.GetPrototypeIds().Count;
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
-            
+
             UpdateDoorIcons();
-            
+
             MessageBox.Show($"Проиндексировано {count} прототипов");
         }
     }
@@ -438,9 +448,18 @@ public class MainForm : Form
             Dock = DockStyle.Right,
             Width = 200,
             BackColor = Color.FromArgb(240, 240, 240),
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Padding = new Padding(0)
         };
+
+        // Только левая граница
+        var leftLine = new Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 1,
+            BackColor = Color.Gray
+        };
+        _toolPanel.Controls.Add(leftLine);
 
         int leftMargin = 2;
         int rightMargin = 2;
@@ -655,7 +674,7 @@ public class MainForm : Form
         {
             System.Diagnostics.Debug.WriteLine($"Ошибка загрузки иконки для {protoId}: {ex.Message}");
         }
-        
+
         return null;
     }
 
@@ -670,7 +689,7 @@ public class MainForm : Form
                 _btnAirlock.Text = "";
             }
         }
-        
+
         if (_btnAirlockGlass != null)
         {
             var icon = GetPrototypeIcon("AirlockGlass");
@@ -686,10 +705,10 @@ public class MainForm : Form
     {
         if (_btnAirlock != null)
             _btnAirlock.BackColor = Color.White;
-        
+
         if (_btnAirlockGlass != null)
             _btnAirlockGlass.BackColor = Color.White;
-        
+
         if (_selectedDoorButton != null && _toolManager.CurrentTool == ToolManager.Tool.Door)
         {
             _selectedDoorButton.BackColor = Color.LightBlue;
@@ -819,7 +838,7 @@ public class MainForm : Form
                     var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
                     var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
                     var priority = int.Parse(txtPriority.Text);
-                    
+
                     _roomTypeManager.CreateCustomType(
                         txtName.Text,
                         txtCategory.Text,
@@ -907,7 +926,7 @@ public class MainForm : Form
                         var fill = txtFill.Text.Split(',').Select(int.Parse).ToArray();
                         var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
                         var priority = int.Parse(txtPriority.Text);
-                        
+
                         _roomTypeManager.EditCustomType(
                             custom.Name,
                             txtName.Text,
@@ -1065,9 +1084,10 @@ public class MainForm : Form
         var panel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 40,
+            Height = 55,
             BackColor = Color.FromArgb(230, 230, 230),
-            Padding = new Padding(10, 5, 10, 5)
+            Padding = new Padding(10, 5, 10, 5),
+            BorderStyle = BorderStyle.FixedSingle
         };
 
         var label = new Label
@@ -1144,8 +1164,8 @@ public class MainForm : Form
         {
             Text = "🗺️",
             Location = new Point(0, 7),
-            Width = 35,
-            Height = 25,
+            Width = 40,
+            Height = 40,
             BackColor = Color.LightGreen,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 14),
@@ -1496,7 +1516,7 @@ public class MainForm : Form
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
                 };
-                
+
                 foreach (var door in room.Doors)
                 {
                     roomData.Doors.Add(new DoorData
@@ -1506,7 +1526,7 @@ public class MainForm : Form
                         Proto = door.Proto
                     });
                 }
-                
+
                 data.Rooms.Add(roomData);
             }
 
@@ -1563,7 +1583,7 @@ public class MainForm : Form
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor)
                     };
-                    
+
                     foreach (var doorData in roomData.Doors)
                     {
                         room.Doors.Add(new Door
@@ -1573,14 +1593,14 @@ public class MainForm : Form
                             Proto = doorData.Proto
                         });
                     }
-                    
+
                     _map.ActiveGrid.Rooms.Add(room);
                 }
 
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
                 SaveState();
                 Render();
-                
+
                 int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
                 MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}");
             }
