@@ -7,7 +7,8 @@ public class ToolManager
         None,
         CreateRoom,
         Delete,
-        Door  
+        Door,
+        Pipe, 
     }
 
     private Tool _currentTool = Tool.None;

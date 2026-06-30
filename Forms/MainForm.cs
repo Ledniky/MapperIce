@@ -46,6 +46,12 @@ public class MainForm : Form
     private string _currentDoorType = "Airlock";
     private Button? _selectedDoorButton = null;
     private bool _hideRoomOverlay = false;
+    private PipeTypeManager _pipeTypeManager = new();
+    private PipeBuilder _pipeBuilder = null!;
+    private string _currentPipeType = "Distra";
+    private Button? _selectedPipeButton = null;
+    private HashSet<(int x, int y)> _pipePositions = new();
+    private bool _isDrawingPipes = false;
 
     public MainForm()
     {
@@ -55,6 +61,7 @@ public class MainForm : Form
 
         _renderer = new Renderer(Width, Height, _indexer);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
+        _pipeBuilder = new PipeBuilder(_pipeTypeManager);
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -135,134 +142,135 @@ public class MainForm : Form
 
     // === Панель репозиториев ===
 
-    private void CreateRepositoryPanel()
+private void CreateRepositoryPanel()
+{
+    var panel = new Panel
     {
-        var panel = new Panel
-        {
-            Dock = DockStyle.Left,
-            Width = 240,
-            BackColor = Color.FromArgb(245, 245, 245),
-            Padding = new Padding(5),
-            BorderStyle = BorderStyle.None
-        };
+        Dock = DockStyle.Left,
+        Width = 240,
+        BackColor = Color.FromArgb(245, 245, 245),
+        Padding = new Padding(5),
+        BorderStyle = BorderStyle.None
+    };
 
-        var rightLine = new Panel
-        {
-            Location = new Point(panel.Width - 1, 0),
-            Width = 1,
-            Height = panel.Height,
-            BackColor = Color.Gray,
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
-        };
-        panel.Controls.Add(rightLine);
+    // Правая граница
+    var rightLine = new Panel
+    {
+        Location = new Point(panel.Width - 1, 0),
+        Width = 1,
+        Height = panel.Height,
+        BackColor = Color.Gray,
+        Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
+    };
+    panel.Controls.Add(rightLine);
 
-        var listContainer = new Panel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(0)
-        };
-        _protoList = new ListBox
-        {
-            Dock = DockStyle.Fill,
-            Font = new Font("Consolas", 9),
-            IntegralHeight = false
-        };
-        _protoList.DoubleClick += OnPrototypeDoubleClick;
-        listContainer.Controls.Add(_protoList);
-        panel.Controls.Add(listContainer);
+    // Список прототипов
+    var listContainer = new Panel
+    {
+        Dock = DockStyle.Fill,
+        Padding = new Padding(0)
+    };
+    _protoList = new ListBox
+    {
+        Dock = DockStyle.Fill,
+        Font = new Font("Consolas", 9),
+        IntegralHeight = false
+    };
+    _protoList.DoubleClick += OnPrototypeDoubleClick;
+    listContainer.Controls.Add(_protoList);
+    panel.Controls.Add(listContainer);
 
-        var searchPanel = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 30,
-            Padding = new Padding(0, 2, 0, 2)
-        };
+    // Панель поиска
+    var searchPanel = new Panel
+    {
+        Dock = DockStyle.Top,
+        Height = 30,
+        Padding = new Padding(0, 2, 0, 2)
+    };
 
-        _searchBox = new TextBox
-        {
-            Location = new Point(3, 2),
-            Width = 155,
-            Height = 22,
-            Text = "Поиск прототипов...",
-            Enabled = false
-        };
-        _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
-        _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
-        _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
-        searchPanel.Controls.Add(_searchBox);
+    _searchBox = new TextBox
+    {
+        Location = new Point(3, 2),
+        Width = 155,
+        Height = 22,
+        Text = "Поиск прототипов...",
+        Enabled = false
+    };
+    _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
+    _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
+    _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
+    searchPanel.Controls.Add(_searchBox);
 
-        _filterCombo = new ComboBox
-        {
-            Location = new Point(163, 2),
-            Width = 65,
-            Height = 22,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = new Font("Segoe UI", 8),
-            Enabled = false
-        };
-        _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер" });
-        _filterCombo.SelectedIndex = 0;
-        _filterCombo.SelectedIndexChanged += (s, e) =>
-        {
-            _currentFilter = _filterCombo.SelectedItem?.ToString()?.ToLower() ?? "all";
-            UpdatePrototypeList(_searchBox.Text);
-        };
-        searchPanel.Controls.Add(_filterCombo);
+    _filterCombo = new ComboBox
+    {
+        Location = new Point(163, 2),
+        Width = 65,
+        Height = 22,
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Font = new Font("Segoe UI", 8),
+        Enabled = false
+    };
+    _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер" });
+    _filterCombo.SelectedIndex = 0;
+    _filterCombo.SelectedIndexChanged += (s, e) =>
+    {
+        _currentFilter = _filterCombo.SelectedItem?.ToString()?.ToLower() ?? "all";
+        UpdatePrototypeList(_searchBox.Text);
+    };
+    searchPanel.Controls.Add(_filterCombo);
 
-        panel.Controls.Add(searchPanel);
+    panel.Controls.Add(searchPanel);
 
-        var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
+    // Панель кнопок
+    var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
 
-        _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
-        _btnAddRepo.Click += (s, e) => AddRepository();
-        btnPanel.Controls.Add(_btnAddRepo);
+    _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
+    _btnAddRepo.Click += (s, e) => AddRepository();
+    btnPanel.Controls.Add(_btnAddRepo);
 
-        _btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
-        _btnRemoveRepo.Click += (s, e) => RemoveRepository();
-        btnPanel.Controls.Add(_btnRemoveRepo);
+    _btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
+    _btnRemoveRepo.Click += (s, e) => RemoveRepository();
+    btnPanel.Controls.Add(_btnRemoveRepo);
 
-        _btnIndexRepo = new Button { Text = "⚙", Location = new Point(75, 5), Width = 30, Height = 25, Enabled = false };
-        _btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
-        btnPanel.Controls.Add(_btnIndexRepo);
+    _btnIndexRepo = new Button
+    {
+        Text = "🔄 Обновить",
+        Location = new Point(75, 5),
+        Width = 40,
+        Height = 25,
+        Enabled = false,
+        BackColor = Color.LightGreen,
+        FlatStyle = FlatStyle.Flat
+    };
+    _btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
+    btnPanel.Controls.Add(_btnIndexRepo);
 
-        var btnRefresh = new Button
-        {
-            Name = "btnRefresh",
-            Text = "🔄 Обновить",
-            Location = new Point(110, 5),
-            Width = 80,
-            Height = 25,
-            Enabled = false,
-            BackColor = Color.LightGreen,
-            FlatStyle = FlatStyle.Flat
-        };
-        btnRefresh.Click += (s, e) => IndexSelectedRepository();
-        btnPanel.Controls.Add(btnRefresh);
+    panel.Controls.Add(btnPanel);
 
-        panel.Controls.Add(btnPanel);
+    // Выбор репозитория
+    _repoSelector = new ComboBox
+    {
+        Dock = DockStyle.Top,
+        Height = 30,
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Margin = new Padding(0, 5, 0, 5)
+    };
+    _repoSelector.SelectedIndexChanged += OnRepoSelected;
+    panel.Controls.Add(_repoSelector);
 
-        _repoSelector = new ComboBox
-        {
-            Dock = DockStyle.Top,
-            Height = 30,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Margin = new Padding(0, 5, 0, 5)
-        };
-        _repoSelector.SelectedIndexChanged += OnRepoSelected;
-        panel.Controls.Add(_repoSelector);
+    // Заголовок
+    var title = new Label
+    {
+        Text = "Репозитории",
+        Font = new Font("Arial", 12, FontStyle.Bold),
+        Dock = DockStyle.Top,
+        Height = 30,
+        TextAlign = ContentAlignment.MiddleCenter
+    };
+    panel.Controls.Add(title);
 
-        var title = new Label
-        {
-            Text = "Репозитории",
-            Font = new Font("Arial", 12, FontStyle.Bold),
-            Dock = DockStyle.Top,
-            Height = 30,
-            TextAlign = ContentAlignment.MiddleCenter
-        };
-        panel.Controls.Add(title);
-
-        Controls.Add(panel);
-    }
+    Controls.Add(panel);
+}
 
     private void UpdateRepoSelector()
     {
@@ -303,8 +311,9 @@ public class MainForm : Form
         else if (hasRepo)
         {
             _protoList.Items.Clear();
-            _protoList.Items.Add("⚠️ Репозиторий не проиндексирован");
-            _protoList.Items.Add("Нажмите 'Обновить' для загрузки");
+            _protoList.Items.Add("⚠️ Репозиторий не \nпроиндексирован");
+
+            _protoList.Items.Add("Нажмите 'Обновить' \nдля загрузки");
         }
     }
 
@@ -491,7 +500,16 @@ public class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Arial", 9, FontStyle.Bold)
         };
-        _btnCreateRoom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.CreateRoom);
+        _btnCreateRoom.Click += (s, e) =>
+        {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                return;
+            }
+            _toolManager.SetTool(ToolManager.Tool.CreateRoom);
+        };
         _toolPanel.Controls.Add(_btnCreateRoom);
 
         _btnRoomSettings = new Button
@@ -532,6 +550,14 @@ public class MainForm : Form
         };
         _btnAirlock.Click += (s, e) =>
         {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Door && _currentDoorType == "Airlock")
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                _selectedDoorButton = null;
+                UpdateDoorButtons();
+                return;
+            }
             _toolManager.SetTool(ToolManager.Tool.Door);
             _currentDoorType = "Airlock";
             _selectedDoorButton = _btnAirlock;
@@ -554,6 +580,14 @@ public class MainForm : Form
         };
         _btnAirlockGlass.Click += (s, e) =>
         {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Door && _currentDoorType == "AirlockGlass")
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                _selectedDoorButton = null;
+                UpdateDoorButtons();
+                return;
+            }
             _toolManager.SetTool(ToolManager.Tool.Door);
             _currentDoorType = "AirlockGlass";
             _selectedDoorButton = _btnAirlockGlass;
@@ -572,6 +606,134 @@ public class MainForm : Form
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
+        // Четвёртая строка: Трубы (Distra, Waste, Normal)
+        var pipeLabel = new Label
+        {
+            Text = "Трубы:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(pipeLabel);
+        y += 20 + 2;
+
+        var pipePanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        // Кнопка Distra
+        var btnPipeDistra = new Button
+        {
+            Location = new Point(0, 0),
+            Width = (pipePanel.Width / 3) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Distra",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        btnPipeDistra.Click += (s, e) =>
+        {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Distra")
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                _selectedPipeButton = null;
+                UpdatePipeButtons();
+                return;
+            }
+            _toolManager.SetTool(ToolManager.Tool.Pipe);
+            _currentPipeType = "Distra";
+            _selectedPipeButton = btnPipeDistra;
+            UpdatePipeButtons();
+        };
+        pipePanel.Controls.Add(btnPipeDistra);
+
+        // Кнопка Waste
+        var btnPipeWaste = new Button
+        {
+            Location = new Point((pipePanel.Width / 3) + 1, 0),
+            Width = (pipePanel.Width / 3) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Waste",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        btnPipeWaste.Click += (s, e) =>
+        {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Waste")
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                _selectedPipeButton = null;
+                UpdatePipeButtons();
+                return;
+            }
+            _toolManager.SetTool(ToolManager.Tool.Pipe);
+            _currentPipeType = "Waste";
+            _selectedPipeButton = btnPipeWaste;
+            UpdatePipeButtons();
+        };
+        pipePanel.Controls.Add(btnPipeWaste);
+
+        // Кнопка Normal
+        var btnPipeNormal = new Button
+        {
+            Location = new Point(((pipePanel.Width / 3) * 2) + 2, 0),
+            Width = (pipePanel.Width / 3) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Normal",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "",
+            Padding = new Padding(0)
+        };
+        btnPipeNormal.Click += (s, e) =>
+        {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Normal")
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                _selectedPipeButton = null;
+                UpdatePipeButtons();
+                return;
+            }
+            _toolManager.SetTool(ToolManager.Tool.Pipe);
+            _currentPipeType = "Normal";
+            _selectedPipeButton = btnPipeNormal;
+            UpdatePipeButtons();
+        };
+        pipePanel.Controls.Add(btnPipeNormal);
+
+        pipePanel.Resize += (s, e) =>
+        {
+            int thirdWidth = pipePanel.Width / 3;
+            btnPipeDistra.Width = thirdWidth - 1;
+            btnPipeWaste.Location = new Point(thirdWidth + 1, 0);
+            btnPipeWaste.Width = thirdWidth - 1;
+            btnPipeNormal.Location = new Point((thirdWidth * 2) + 2, 0);
+            btnPipeNormal.Width = thirdWidth - 1;
+        };
+
+        _toolPanel.Controls.Add(pipePanel);
+        y += 40 + 2;
+
         // Третья строка: Удалить
         _btnDelete = new Button
         {
@@ -584,7 +746,16 @@ public class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Arial", 9, FontStyle.Bold)
         };
-        _btnDelete.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.Delete);
+        _btnDelete.Click += (s, e) =>
+        {
+            // Если уже выбран этот инструмент - снимаем выделение
+            if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+            {
+                _toolManager.SetTool(ToolManager.Tool.None);
+                return;
+            }
+            _toolManager.SetTool(ToolManager.Tool.Delete);
+        };
         _toolPanel.Controls.Add(_btnDelete);
         y += 40 + 2;
 
@@ -615,6 +786,7 @@ public class MainForm : Form
 
         Controls.Add(_toolPanel);
     }
+
 
     private void LoadDoorIcons()
     {
@@ -1621,5 +1793,55 @@ public class MainForm : Form
         }
         catch { }
         return Color.FromArgb(200, 230, 230, 230);
+    }
+
+    private void UpdatePipeButtons()
+    {
+        // Сбрасываем подсветку всех кнопок труб
+        foreach (Control ctrl in _toolPanel.Controls)
+        {
+            if (ctrl is Button btn && btn.Tag is string tag &&
+                (tag == "Distra" || tag == "Waste" || tag == "Normal"))
+            {
+                btn.BackColor = Color.White;
+            }
+        }
+
+        if (_selectedPipeButton != null && _toolManager.CurrentTool == ToolManager.Tool.Pipe)
+        {
+            _selectedPipeButton.BackColor = Color.LightBlue;
+        }
+    }
+
+    // Загрузка иконок для труб
+    private void LoadPipeIcons()
+    {
+        foreach (Control ctrl in _toolPanel.Controls)
+        {
+            if (ctrl is Panel panel)
+            {
+                foreach (Control ctrl2 in panel.Controls)
+                {
+                    if (ctrl2 is Button btn && btn.Tag is string tag &&
+                        (tag == "Distra" || tag == "Waste" || tag == "Normal"))
+                    {
+                        var pipeType = _pipeTypeManager.GetPipeType(tag);
+                        var icon = GetPrototypeIcon(pipeType.IconPath);
+                        if (icon != null)
+                        {
+                            btn.Image = icon;
+                            btn.ImageAlign = ContentAlignment.MiddleCenter;
+                            btn.Text = "";
+                        }
+                        else
+                        {
+                            btn.Text = tag == "Distra" ? "🔵" :
+                                       tag == "Waste" ? "🔴" : "⚪";
+                            btn.Font = new Font("Segoe UI", 16);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
