@@ -7,6 +7,18 @@ public class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
+    // Приоритеты стен: 0 - самый низкий, больше - выше
+    private static readonly Dictionary<string, int> _wallPriority = new()
+    {
+        { "WallSolid", 0 },
+        { "WallReinforced", 1 },
+        // Все остальные стены имеют приоритет 2
+    };
+
+    private int GetPriority(string wall) => _wallPriority.GetValueOrDefault(wall, 2);
+    private string BestWall(string a, string b) => GetPriority(a) >= GetPriority(b) ? a : b;
+    private Room? GetRoomAt(List<Room> rooms, int x, int y) => rooms.FirstOrDefault(r => x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height);
+
     public string Generate(List<Room> rooms)
     {
         var sb = new StringBuilder();
@@ -103,7 +115,7 @@ public class YAMLGenerator
         sb.AppendLine("    - type: GasTileOverlay");
         sb.AppendLine("    - type: RadiationGridResistance");
 
-        // Генерируем стены и двери
+        // Генерируем стены с приоритетами
         int uid = GenerateWalls(sb, rooms);
         GenerateDoors(sb, rooms, ref uid);
 
@@ -185,8 +197,6 @@ public class YAMLGenerator
     private int GenerateWalls(StringBuilder sb, List<Room> rooms)
     {
         int uid = 3;
-        var entities = new List<string>();
-        var wallPositions = new HashSet<(int x, int y)>();
 
         // Собираем все позиции дверей
         var doorPositions = new HashSet<(int x, int y)>();
@@ -198,52 +208,101 @@ public class YAMLGenerator
             }
         }
 
+        // Собираем стены с учётом приоритетов
+        var wallMap = new Dictionary<(int x, int y), string>();
+
         foreach (var room in rooms)
         {
+            // Верхняя стена
             for (int x = room.X; x < room.X + room.Width; x++)
             {
-                for (int y = room.Y; y < room.Y + room.Height; y++)
-                {
-                    bool isBorder = x == room.X || x == room.X + room.Width - 1 ||
-                                    y == room.Y || y == room.Y + room.Height - 1;
-                    
-                    if (isBorder)
-                    {
-                        // Добавляем стену только если там нет двери
-                        if (!doorPositions.Contains((x, y)))
-                        {
-                            wallPositions.Add((x, y));
-                        }
-                    }
-                }
+                int y = room.Y;
+                if (doorPositions.Contains((x, y))) continue;
+
+                var neighbor = GetRoomAt(rooms, x, y - 1);
+                string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
+                
+                var key = (x, y);
+                if (!wallMap.ContainsKey(key) || GetPriority(wall) > GetPriority(wallMap[key]))
+                    wallMap[key] = wall;
+            }
+
+            // Нижняя стена
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                int y = room.Y + room.Height - 1;
+                if (doorPositions.Contains((x, y))) continue;
+
+                var neighbor = GetRoomAt(rooms, x, y + 1);
+                string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
+                
+                var key = (x, y);
+                if (!wallMap.ContainsKey(key) || GetPriority(wall) > GetPriority(wallMap[key]))
+                    wallMap[key] = wall;
+            }
+
+            // Левая стена (без углов)
+            for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
+            {
+                int x = room.X;
+                if (doorPositions.Contains((x, y))) continue;
+
+                var neighbor = GetRoomAt(rooms, x - 1, y);
+                string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
+                
+                var key = (x, y);
+                if (!wallMap.ContainsKey(key) || GetPriority(wall) > GetPriority(wallMap[key]))
+                    wallMap[key] = wall;
+            }
+
+            // Правая стена (без углов)
+            for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
+            {
+                int x = room.X + room.Width - 1;
+                if (doorPositions.Contains((x, y))) continue;
+
+                var neighbor = GetRoomAt(rooms, x + 1, y);
+                string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
+                
+                var key = (x, y);
+                if (!wallMap.ContainsKey(key) || GetPriority(wall) > GetPriority(wallMap[key]))
+                    wallMap[key] = wall;
             }
         }
 
-        foreach (var (x, y) in wallPositions)
+        // Группируем стены по прототипу
+        var wallsByProto = new Dictionary<string, List<(int x, int y)>>();
+        foreach (var kvp in wallMap)
         {
-            int invY = -y;
-            float posX = x + 0.5f;
-            float posY = invY + 0.5f;
-
-            string posXStr = posX.ToString("0.0").Replace(',', '.');
-            string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-            entities.Add($"  - uid: {uid}");
-            entities.Add($"    components:");
-            entities.Add($"    - type: Transform");
-            entities.Add($"      pos: {posXStr},{posYStr}");
-            entities.Add($"      parent: 2");
-            uid++;
+            if (!wallsByProto.ContainsKey(kvp.Value))
+                wallsByProto[kvp.Value] = new List<(int x, int y)>();
+            wallsByProto[kvp.Value].Add(kvp.Key);
         }
 
-        if (entities.Count > 0)
+        // Выводим стены сгруппированными
+        foreach (var group in wallsByProto)
         {
-            sb.AppendLine("- proto: WallSolid");
+            sb.AppendLine($"- proto: {group.Key}");
             sb.AppendLine("  entities:");
-            foreach (var line in entities)
-                sb.AppendLine(line);
+            
+            foreach (var (x, y) in group.Value)
+            {
+                int invY = -y;
+                float posX = x + 0.5f;
+                float posY = invY + 0.5f;
+
+                string posXStr = posX.ToString("0.0").Replace(',', '.');
+                string posYStr = posY.ToString("0.0").Replace(',', '.');
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posXStr},{posYStr}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
         }
-        
+
         return uid;
     }
 

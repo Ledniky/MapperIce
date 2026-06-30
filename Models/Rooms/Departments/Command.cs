@@ -12,11 +12,6 @@ public abstract class CommandRoomType : RoomType
     public override string FloorProto => "FloorSteel";
 }
 
-public abstract class CommandOfficeType : CommandRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ КОМАНДОВАНИЯ
 // ============================================================
@@ -53,17 +48,17 @@ public class Vault : CommandRoomType
 // КАБИНЕТЫ КОМАНДОВАНИЯ
 // ============================================================
 
-public class Captain : CommandOfficeType
+public class Captain : CommandRoomType
 {
     public override string Name => "Captain";
     public override string WallProto => "WallReinforced";
-    public override string DoorProto => "HighSecCaptainLocked";
+    public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 80);
     public override Color LineColor => Color.FromArgb(255, 30, 50, 80);
 }
 
-public class HeadOfPersonnel : CommandOfficeType
+public class HeadOfPersonnel : CommandRoomType
 {
     public override string Name => "HeadOfPersonnel";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
@@ -72,7 +67,7 @@ public class HeadOfPersonnel : CommandOfficeType
     public override Color LineColor => Color.FromArgb(255, 70, 90, 130);
 }
 
-public class CentralCommand : CommandOfficeType
+public class CentralCommand : CommandRoomType
 {
     public override string Name => "CentralCommand";
     public override string WallProto => "WallReinforced";

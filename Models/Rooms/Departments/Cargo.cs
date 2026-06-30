@@ -12,11 +12,6 @@ public abstract class CargoRoomType : RoomType
     public override string FloorProto => "FloorSteel";
 }
 
-public abstract class CargoOfficeType : CargoRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ СНАБЖЕНИЯ
 // ============================================================
@@ -52,7 +47,7 @@ public class Mining : CargoRoomType
 // КАБИНЕТЫ СНАБЖЕНИЯ
 // ============================================================
 
-public class Quartermaster : CargoOfficeType
+public class Quartermaster : CargoRoomType
 {
     public override string Name => "Quartermaster";
     public override string DoorProto => "AirlockQuartermasterLocked";

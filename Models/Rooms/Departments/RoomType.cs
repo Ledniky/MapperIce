@@ -18,7 +18,6 @@ public abstract class RoomType
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
     public virtual bool IsHidden => false;
-    public virtual bool IsOffice => false;
 }
 
 // ============================================================
@@ -28,16 +27,6 @@ public abstract class RoomType
 public abstract class CommonRoomType : RoomType
 {
     public override string Category => "Common";
-}
-
-// ============================================================
-// БАЗОВЫЙ ДЛЯ КАБИНЕТОВ (Offices)
-// ============================================================
-
-public abstract class OfficeRoomType : RoomType
-{
-    public override bool IsOffice => true;
-    public override string FloorProto => "FloorSteel";
 }
 
 // ============================================================
@@ -155,7 +144,6 @@ public class CustomRoomType : RoomType
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
-    public override bool IsOffice => Data.IsOffice;
 
     private static Color ParseColor(string value)
     {
@@ -185,7 +173,6 @@ public class CustomRoomTypeData
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;
-    public bool IsOffice { get; set; } = false;
 }
 
 public class ExportData
@@ -200,5 +187,4 @@ public class ExportData
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;
-    public bool IsOffice { get; set; } = false;
 }

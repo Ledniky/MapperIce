@@ -12,11 +12,6 @@ public abstract class ScienceRoomType : RoomType
     public override string FloorProto => "FloorSteel";
 }
 
-public abstract class ScienceOfficeType : ScienceRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ НАУКИ
 // ============================================================
@@ -34,7 +29,7 @@ public class Science : ScienceRoomType
 // КАБИНЕТЫ НАУКИ
 // ============================================================
 
-public class ResearchDirector : ScienceOfficeType
+public class ResearchDirector : ScienceRoomType
 {
     public override string Name => "ResearchDirector";
     public override string DoorProto => "AirlockResearchDirectorLocked";

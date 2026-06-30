@@ -12,11 +12,6 @@ public abstract class MedicalRoomType : RoomType
     public override string FloorProto => "FloorWhite";
 }
 
-public abstract class MedicalOfficeType : MedicalRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ МЕДИЦИНЫ
 // ============================================================
@@ -62,7 +57,7 @@ public class Morgue : MedicalRoomType
 // КАБИНЕТЫ МЕДИЦИНЫ
 // ============================================================
 
-public class ChiefMedicalOfficer : MedicalOfficeType
+public class ChiefMedicalOfficer : MedicalRoomType
 {
     public override string Name => "ChiefMedicalOfficer";
     public override string DoorProto => "AirlockChiefMedicalOfficerLocked";

@@ -13,11 +13,6 @@ public abstract class SecurityRoomType : RoomType
     public override string WallProto => "WallReinforced";
 }
 
-public abstract class SecurityOfficeType : SecurityRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ БЕЗОПАСНОСТИ
 // ============================================================
@@ -53,7 +48,7 @@ public class Armory : SecurityRoomType
 // КАБИНЕТЫ БЕЗОПАСНОСТИ
 // ============================================================
 
-public class Detective : SecurityOfficeType
+public class Detective : SecurityRoomType
 {
     public override string Name => "Detective";
     public override string DoorProto => "AirlockDetectiveLocked";
@@ -62,7 +57,7 @@ public class Detective : SecurityOfficeType
     public override Color LineColor => Color.FromArgb(255, 200, 150, 100);
 }
 
-public class Warden : SecurityOfficeType
+public class Warden : Armory
 {
     public override string Name => "Warden";
     public override string DoorProto => "AirlockWardenLocked";
@@ -72,7 +67,7 @@ public class Warden : SecurityOfficeType
     public override Color LineColor => Color.FromArgb(255, 180, 50, 50);
 }
 
-public class HeadOfSecurity : SecurityOfficeType
+public class HeadOfSecurity : SecurityRoomType
 {
     public override string Name => "HeadOfSecurity";
     public override string DoorProto => "AirlockHeadOfSecurityLocked";

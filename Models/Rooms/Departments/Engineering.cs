@@ -13,11 +13,6 @@ public abstract class EngineeringRoomType : RoomType
     public override string WallProto => "WallReinforced";
 }
 
-public abstract class EngineeringOfficeType : EngineeringRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ ИНЖЕНЕРИИ
 // ============================================================
@@ -53,7 +48,7 @@ public class External : EngineeringRoomType
 // КАБИНЕТЫ ИНЖЕНЕРИИ
 // ============================================================
 
-public class ChiefEngineer : EngineeringOfficeType
+public class ChiefEngineer : EngineeringRoomType
 {
     public override string Name => "ChiefEngineer";
     public override string DoorProto => "AirlockChiefEngineerLocked";

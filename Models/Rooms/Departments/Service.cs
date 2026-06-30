@@ -12,11 +12,6 @@ public abstract class ServiceRoomType : RoomType
     public override string FloorProto => "FloorSteel";
 }
 
-public abstract class ServiceOfficeType : ServiceRoomType
-{
-    public override bool IsOffice => true;
-}
-
 // ============================================================
 // КОМНАТЫ СЕРВИСА
 // ============================================================
@@ -88,7 +83,7 @@ public class Theatre : ServiceRoomType
 // КАБИНЕТЫ СЕРВИСА
 // ============================================================
 
-public class Lawyer : ServiceOfficeType
+public class Lawyer : ServiceRoomType
 {
     public override string Name => "Lawyer";
     public override string DoorProto => "AirlockLawyerLocked";
