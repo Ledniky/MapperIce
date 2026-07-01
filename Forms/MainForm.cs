@@ -14,6 +14,10 @@ public class MainForm : Form
     private PrototypeIndexer _indexer = new();
     private RoomTypeManager _roomTypeManager = new();
     private DoorUpdater _doorUpdater = null!;
+    private TileBuilder _tileBuilder = null!;
+    private TileGrid _tileGrid = new();
+    private PipeBuilder _pipeBuilder = null!;
+    private PipeTypeManager _pipeTypeManager = new();
 
     private Point _startPoint;
     private bool _isDrawing = false;
@@ -30,6 +34,9 @@ public class MainForm : Form
     private Button _btnRoomSettings = null!;
     private Button _btnAirlock = null!;
     private Button _btnAirlockGlass = null!;
+    private Button _btnPipeDistra = null!;
+    private Button _btnPipeWaste = null!;
+    private Button _btnPipeNormal = null!;
     private ComboBox _gridSelector = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
@@ -43,17 +50,7 @@ public class MainForm : Form
     private Form? _roomTypeForm = null;
     private Label _typeLabel = null!;
     private CancellationTokenSource? _searchCts;
-    private string _currentDoorType = "Airlock";
-    private Button? _selectedDoorButton = null;
     private bool _hideRoomOverlay = false;
-    private PipeTypeManager _pipeTypeManager = new();
-    private PipeBuilder _pipeBuilder = null!;
-    private string _currentPipeType = "Distra";
-    private Button? _selectedPipeButton = null;
-    private HashSet<(int x, int y)> _pipePositions = new();
-    private bool _isDrawingPipes = false;
-    private TileBuilder _tileBuilder = null!;
-    private TileGrid _tileGrid = new();
 
     public MainForm()
     {
@@ -61,13 +58,11 @@ public class MainForm : Form
         Size = new Size(1024, 768);
         WindowState = FormWindowState.Maximized;
 
-        _doorUpdater = new DoorUpdater(_roomTypeManager);
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
+        _doorUpdater = new DoorUpdater(_roomTypeManager);
         _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater);
         _tileGrid = new TileGrid();
         _renderer = new Renderer(Width, Height, _indexer, _tileBuilder);
-
-        // _yamlGenerator убираем
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -101,7 +96,7 @@ public class MainForm : Form
         UpdateBuffer();
     }
 
-    // === Undo/Redo ===
+    // === UNDO/REDO ===
 
     private void SaveState()
     {
@@ -116,10 +111,11 @@ public class MainForm : Form
         _map.ActiveGrid.Rooms.Clear();
         foreach (var room in state)
             _map.ActiveGrid.Rooms.Add(room);
+        UpdateTileGrid();
         Render();
     }
 
-    // === Обработка клавиш ===
+    // === ОБРАБОТКА КЛАВИШ ===
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -146,7 +142,17 @@ public class MainForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    // === Панель репозиториев ===
+    // === TILE GRID ===
+
+    private void UpdateTileGrid()
+    {
+        if (_map.ActiveGrid != null)
+        {
+            _tileBuilder.UpdateTileGrid(_map.ActiveGrid, _tileGrid);
+        }
+    }
+
+    // === ПАНЕЛЬ РЕПОЗИТОРИЕВ ===
 
     private void CreateRepositoryPanel()
     {
@@ -159,7 +165,6 @@ public class MainForm : Form
             BorderStyle = BorderStyle.None
         };
 
-        // Правая граница
         var rightLine = new Panel
         {
             Location = new Point(panel.Width - 1, 0),
@@ -170,7 +175,6 @@ public class MainForm : Form
         };
         panel.Controls.Add(rightLine);
 
-        // Список прототипов
         var listContainer = new Panel
         {
             Dock = DockStyle.Fill,
@@ -186,7 +190,6 @@ public class MainForm : Form
         listContainer.Controls.Add(_protoList);
         panel.Controls.Add(listContainer);
 
-        // Панель поиска
         var searchPanel = new Panel
         {
             Dock = DockStyle.Top,
@@ -224,10 +227,8 @@ public class MainForm : Form
             UpdatePrototypeList(_searchBox.Text);
         };
         searchPanel.Controls.Add(_filterCombo);
-
         panel.Controls.Add(searchPanel);
 
-        // Панель кнопок
         var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
 
         _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
@@ -253,7 +254,6 @@ public class MainForm : Form
 
         panel.Controls.Add(btnPanel);
 
-        // Выбор репозитория
         _repoSelector = new ComboBox
         {
             Dock = DockStyle.Top,
@@ -264,7 +264,6 @@ public class MainForm : Form
         _repoSelector.SelectedIndexChanged += OnRepoSelected;
         panel.Controls.Add(_repoSelector);
 
-        // Заголовок
         var title = new Label
         {
             Text = "Репозитории",
@@ -300,14 +299,6 @@ public class MainForm : Form
         }
     }
 
-    private void UpdateTileGrid()
-    {
-        if (_map.ActiveGrid != null)
-        {
-            _tileBuilder.UpdateTileGrid(_map.ActiveGrid, _tileGrid);
-        }
-    }
-
     private void OnRepoSelected(object? sender, EventArgs e)
     {
         var repo = _repoSelector.SelectedItem as Repository;
@@ -326,7 +317,6 @@ public class MainForm : Form
         {
             _protoList.Items.Clear();
             _protoList.Items.Add("⚠️ Репозиторий не \nпроиндексирован");
-
             _protoList.Items.Add("Нажмите 'Обновить' \nдля загрузки");
         }
     }
@@ -462,7 +452,7 @@ public class MainForm : Form
         MessageBox.Show(message, "Информация о прототипе");
     }
 
-    // === Панель инструментов ===
+    // === ПАНЕЛЬ ИНСТРУМЕНТОВ ===
 
     private void CreateToolPanel()
     {
@@ -475,7 +465,6 @@ public class MainForm : Form
             Padding = new Padding(0)
         };
 
-        // Только левая граница
         var leftLine = new Panel
         {
             Dock = DockStyle.Left,
@@ -502,7 +491,7 @@ public class MainForm : Form
         _toolPanel.Controls.Add(title);
         y += 35 + 2;
 
-        // Первая строка: Создать + Настройки
+        // Создать комнату
         _btnCreateRoom = new Button
         {
             Text = "🟦 Создать",
@@ -516,12 +505,6 @@ public class MainForm : Form
         };
         _btnCreateRoom.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                return;
-            }
             _toolManager.SetTool(ToolManager.Tool.CreateRoom);
         };
         _toolPanel.Controls.Add(_btnCreateRoom);
@@ -540,7 +523,7 @@ public class MainForm : Form
         _toolPanel.Controls.Add(_btnRoomSettings);
         y += 40 + 2;
 
-        // Вторая строка: Две кнопки дверей (Airlock и AirlockGlass)
+        // ДВЕРИ
         var doorPanel = new Panel
         {
             Location = new Point(leftMargin + 2, y),
@@ -564,18 +547,7 @@ public class MainForm : Form
         };
         _btnAirlock.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Door && _currentDoorType == "Airlock")
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                _selectedDoorButton = null;
-                UpdateDoorButtons();
-                return;
-            }
             _toolManager.SetTool(ToolManager.Tool.Door);
-            _currentDoorType = "Airlock";
-            _selectedDoorButton = _btnAirlock;
-            UpdateDoorButtons();
         };
         doorPanel.Controls.Add(_btnAirlock);
 
@@ -594,18 +566,7 @@ public class MainForm : Form
         };
         _btnAirlockGlass.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Door && _currentDoorType == "AirlockGlass")
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                _selectedDoorButton = null;
-                UpdateDoorButtons();
-                return;
-            }
-            _toolManager.SetTool(ToolManager.Tool.Door);
-            _currentDoorType = "AirlockGlass";
-            _selectedDoorButton = _btnAirlockGlass;
-            UpdateDoorButtons();
+            _toolManager.SetTool(ToolManager.Tool.DoorGlass);
         };
         doorPanel.Controls.Add(_btnAirlockGlass);
 
@@ -620,7 +581,7 @@ public class MainForm : Form
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
-        // Четвёртая строка: Трубы (Distra, Waste, Normal)
+        // ТРУБЫ
         var pipeLabel = new Label
         {
             Text = "Трубы:",
@@ -642,8 +603,7 @@ public class MainForm : Form
             BackColor = Color.Transparent
         };
 
-        // Кнопка Distra
-        var btnPipeDistra = new Button
+        _btnPipeDistra = new Button
         {
             Location = new Point(0, 0),
             Width = (pipePanel.Width / 3) - 1,
@@ -656,25 +616,13 @@ public class MainForm : Form
             Text = "",
             Padding = new Padding(0)
         };
-        btnPipeDistra.Click += (s, e) =>
+        _btnPipeDistra.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Distra")
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                _selectedPipeButton = null;
-                UpdatePipeButtons();
-                return;
-            }
-            _toolManager.SetTool(ToolManager.Tool.Pipe);
-            _currentPipeType = "Distra";
-            _selectedPipeButton = btnPipeDistra;
-            UpdatePipeButtons();
+            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
         };
-        pipePanel.Controls.Add(btnPipeDistra);
+        pipePanel.Controls.Add(_btnPipeDistra);
 
-        // Кнопка Waste
-        var btnPipeWaste = new Button
+        _btnPipeWaste = new Button
         {
             Location = new Point((pipePanel.Width / 3) + 1, 0),
             Width = (pipePanel.Width / 3) - 1,
@@ -687,25 +635,13 @@ public class MainForm : Form
             Text = "",
             Padding = new Padding(0)
         };
-        btnPipeWaste.Click += (s, e) =>
+        _btnPipeWaste.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Waste")
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                _selectedPipeButton = null;
-                UpdatePipeButtons();
-                return;
-            }
-            _toolManager.SetTool(ToolManager.Tool.Pipe);
-            _currentPipeType = "Waste";
-            _selectedPipeButton = btnPipeWaste;
-            UpdatePipeButtons();
+            _toolManager.SetTool(ToolManager.Tool.PipeWaste);
         };
-        pipePanel.Controls.Add(btnPipeWaste);
+        pipePanel.Controls.Add(_btnPipeWaste);
 
-        // Кнопка Normal
-        var btnPipeNormal = new Button
+        _btnPipeNormal = new Button
         {
             Location = new Point(((pipePanel.Width / 3) * 2) + 2, 0),
             Width = (pipePanel.Width / 3) - 1,
@@ -718,37 +654,26 @@ public class MainForm : Form
             Text = "",
             Padding = new Padding(0)
         };
-        btnPipeNormal.Click += (s, e) =>
+        _btnPipeNormal.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Pipe && _currentPipeType == "Normal")
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                _selectedPipeButton = null;
-                UpdatePipeButtons();
-                return;
-            }
-            _toolManager.SetTool(ToolManager.Tool.Pipe);
-            _currentPipeType = "Normal";
-            _selectedPipeButton = btnPipeNormal;
-            UpdatePipeButtons();
+            _toolManager.SetTool(ToolManager.Tool.PipeNormal);
         };
-        pipePanel.Controls.Add(btnPipeNormal);
+        pipePanel.Controls.Add(_btnPipeNormal);
 
         pipePanel.Resize += (s, e) =>
         {
             int thirdWidth = pipePanel.Width / 3;
-            btnPipeDistra.Width = thirdWidth - 1;
-            btnPipeWaste.Location = new Point(thirdWidth + 1, 0);
-            btnPipeWaste.Width = thirdWidth - 1;
-            btnPipeNormal.Location = new Point((thirdWidth * 2) + 2, 0);
-            btnPipeNormal.Width = thirdWidth - 1;
+            _btnPipeDistra.Width = thirdWidth - 1;
+            _btnPipeWaste.Location = new Point(thirdWidth + 1, 0);
+            _btnPipeWaste.Width = thirdWidth - 1;
+            _btnPipeNormal.Location = new Point((thirdWidth * 2) + 2, 0);
+            _btnPipeNormal.Width = thirdWidth - 1;
         };
 
         _toolPanel.Controls.Add(pipePanel);
         y += 40 + 2;
 
-        // Третья строка: Удалить
+        // Удалить
         _btnDelete = new Button
         {
             Text = "🗑 Удалить",
@@ -762,12 +687,6 @@ public class MainForm : Form
         };
         _btnDelete.Click += (s, e) =>
         {
-            // Если уже выбран этот инструмент - снимаем выделение
-            if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
-            {
-                _toolManager.SetTool(ToolManager.Tool.None);
-                return;
-            }
             _toolManager.SetTool(ToolManager.Tool.Delete);
         };
         _toolPanel.Controls.Add(_btnDelete);
@@ -801,7 +720,6 @@ public class MainForm : Form
         Controls.Add(_toolPanel);
     }
 
-
     private void LoadDoorIcons()
     {
         if (_btnAirlock != null)
@@ -810,7 +728,6 @@ public class MainForm : Form
             if (icon != null)
             {
                 _btnAirlock.Image = icon;
-                _btnAirlock.ImageAlign = ContentAlignment.MiddleCenter;
                 _btnAirlock.Text = "";
             }
             else
@@ -827,7 +744,6 @@ public class MainForm : Form
             if (icon != null)
             {
                 _btnAirlockGlass.Image = icon;
-                _btnAirlockGlass.ImageAlign = ContentAlignment.MiddleCenter;
                 _btnAirlockGlass.Text = "";
             }
             else
@@ -887,21 +803,12 @@ public class MainForm : Form
         }
     }
 
-    private void UpdateDoorButtons()
+    private void LoadPipeIcons()
     {
-        if (_btnAirlock != null)
-            _btnAirlock.BackColor = Color.White;
-
-        if (_btnAirlockGlass != null)
-            _btnAirlockGlass.BackColor = Color.White;
-
-        if (_selectedDoorButton != null && _toolManager.CurrentTool == ToolManager.Tool.Door)
-        {
-            _selectedDoorButton.BackColor = Color.LightBlue;
-        }
+        // Загрузка иконок для труб
     }
 
-    // === Диалог выбора типа комнаты ===
+    // === ДИАЛОГ ВЫБОРА ТИПА КОМНАТЫ ===
 
     private void ShowRoomTypeDialog()
     {
@@ -1263,7 +1170,7 @@ public class MainForm : Form
         }
     }
 
-    // === Панель гридов ===
+    // === ПАНЕЛЬ ГРИДОВ ===
 
     private void CreateGridPanel()
     {
@@ -1295,6 +1202,7 @@ public class MainForm : Form
             if (_gridSelector.SelectedItem is Grid grid)
             {
                 _map.ActiveGridUid = grid.Uid;
+                UpdateTileGrid();
                 Render();
             }
         };
@@ -1323,6 +1231,7 @@ public class MainForm : Form
             };
             _map.AddGrid(grid);
             UpdateGridSelector();
+            UpdateTileGrid();
             Render();
         };
         panel.Controls.Add(btnAddGrid);
@@ -1340,12 +1249,12 @@ public class MainForm : Form
             {
                 _map.RemoveGrid(_map.ActiveGrid.Uid);
                 UpdateGridSelector();
+                UpdateTileGrid();
                 Render();
             }
         };
         panel.Controls.Add(btnRemoveGrid);
 
-        // Кнопка переключения оверлея комнат
         var btnToggleOverlay = new Button
         {
             Text = "🗺️",
@@ -1382,7 +1291,7 @@ public class MainForm : Form
         }
     }
 
-    // === Холст ===
+    // === ХОЛСТ ===
 
     private void CreateCanvas()
     {
@@ -1400,7 +1309,7 @@ public class MainForm : Form
         Controls.Add(_canvas);
     }
 
-    // === Меню ===
+    // === МЕНЮ ===
 
     private void CreateMenu()
     {
@@ -1425,30 +1334,53 @@ public class MainForm : Form
         Controls.Add(toolStrip);
     }
 
-    // === Отрисовка ===
+    // === ОТРИСОВКА ===
 
     private void OnToolChanged(ToolManager.Tool tool)
     {
-        _btnCreateRoom.BackColor = tool == ToolManager.Tool.CreateRoom ? Color.LightBlue : Color.White;
-        _btnDelete.BackColor = tool == ToolManager.Tool.Delete ? Color.LightBlue : Color.White;
+        // Сброс подсветки всех кнопок
+        _btnCreateRoom.BackColor = Color.White;
+        _btnDelete.BackColor = Color.White;
+        _btnAirlock.BackColor = Color.White;
+        _btnAirlockGlass.BackColor = Color.White;
+        _btnPipeDistra.BackColor = Color.White;
+        _btnPipeWaste.BackColor = Color.White;
+        _btnPipeNormal.BackColor = Color.White;
 
-        if (tool == ToolManager.Tool.Door)
+        // Подсветка активного инструмента
+        switch (tool)
         {
-            UpdateDoorButtons();
-        }
-        else
-        {
-            _selectedDoorButton = null;
-            if (_btnAirlock != null)
-                _btnAirlock.BackColor = Color.White;
-            if (_btnAirlockGlass != null)
-                _btnAirlockGlass.BackColor = Color.White;
+            case ToolManager.Tool.CreateRoom:
+                _btnCreateRoom.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.Delete:
+                _btnDelete.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.Door:
+                _btnAirlock.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.DoorGlass:
+                _btnAirlockGlass.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PipeDistra:
+                _btnPipeDistra.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PipeWaste:
+                _btnPipeWaste.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PipeNormal:
+                _btnPipeNormal.BackColor = Color.LightBlue;
+                break;
         }
 
-        Cursor = tool == ToolManager.Tool.CreateRoom ? Cursors.Cross :
-                 tool == ToolManager.Tool.Delete ? Cursors.Hand :
-                 tool == ToolManager.Tool.Door ? Cursors.Help :
-                         Cursors.Default;
+        Cursor = tool switch
+        {
+            ToolManager.Tool.CreateRoom => Cursors.Cross,
+            ToolManager.Tool.Delete => Cursors.Hand,
+            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
+            ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+            _ => Cursors.Default
+        };
 
         Render();
     }
@@ -1479,7 +1411,7 @@ public class MainForm : Form
         _renderer.Resize(_canvas.Width, _canvas.Height);
     }
 
-    // === Обработка мыши ===
+    // === ОБРАБОТКА МЫШИ ===
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
@@ -1517,15 +1449,14 @@ public class MainForm : Form
             {
                 var grid = _map.ActiveGrid;
 
-                // Проверяем дверь
                 if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
                 {
                     SaveState();
+                    UpdateTileGrid();
                     Render();
                     return;
                 }
 
-                // Проверяем комнату
                 var roomToDelete = grid.Rooms.FirstOrDefault(r =>
                     tileX >= r.X && tileX < r.X + r.Width &&
                     tileY >= r.Y && tileY < r.Y + r.Height);
@@ -1533,18 +1464,58 @@ public class MainForm : Form
                 {
                     grid.Rooms.Remove(roomToDelete);
                     SaveState();
+                    UpdateTileGrid();
                     Render();
                 }
             }
 
-            // === ДВЕРЬ ===
+            // === ДВЕРЬ ОБЫЧНАЯ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, _currentDoorType, out var newDoor))
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
                 {
                     SaveState();
+                    UpdateTileGrid();
                     Render();
                 }
+            }
+
+            // === ДВЕРЬ СТЕКЛЯННАЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+            {
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
+                {
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ТРУБА DISTRA ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra)
+            {
+                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Distra");
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+
+            // === ТРУБА WASTE ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeWaste)
+            {
+                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Waste");
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+
+            // === ТРУБА NORMAL ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+            {
+                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Normal");
+                SaveState();
+                UpdateTileGrid();
+                Render();
             }
         }
     }
@@ -1589,7 +1560,14 @@ public class MainForm : Form
         if (e.Button == MouseButtons.Right && _isPanning)
         {
             _isPanning = false;
-            Cursor = _toolManager.CurrentTool == ToolManager.Tool.CreateRoom ? Cursors.Cross : Cursors.Default;
+            Cursor = _toolManager.CurrentTool switch
+            {
+                ToolManager.Tool.CreateRoom => Cursors.Cross,
+                ToolManager.Tool.Delete => Cursors.Hand,
+                ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
+                ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+                _ => Cursors.Default
+            };
             return;
         }
 
@@ -1599,11 +1577,8 @@ public class MainForm : Form
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
-
-                // Обновляем все двери в гриде (а не только на границах комнаты)
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
-
-                UpdateTileGrid(); // <-- Добавить
+                UpdateTileGrid();
                 SaveState();
             }
 
@@ -1626,13 +1601,42 @@ public class MainForm : Form
             _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}  Приоритет: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
     }
 
+    // === ФАЙЛОВЫЕ ОПЕРАЦИИ ===
+
     private void LoadMapFromYAML()
     {
         MessageBox.Show("Загрузка карт из YAML пока не реализована");
     }
 
+    private void ExportToYAML()
+    {
+        if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
+        {
+            MessageBox.Show("Нет комнат для экспорта");
+            return;
+        }
 
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "YAML files (*.yml)|*.yml",
+            DefaultExt = "yml",
+            FileName = "map.yml"
+        };
 
+        if (dialog.ShowDialog() == DialogResult.OK)
+        {
+            try
+            {
+                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder);
+                File.WriteAllText(dialog.FileName, yaml);
+                MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка экспорта: {ex.Message}");
+            }
+        }
+    }
 
     private void SaveProject()
     {
@@ -1782,85 +1786,4 @@ public class MainForm : Form
         catch { }
         return Color.FromArgb(200, 230, 230, 230);
     }
-
-    private void UpdatePipeButtons()
-    {
-        // Сбрасываем подсветку всех кнопок труб
-        foreach (Control ctrl in _toolPanel.Controls)
-        {
-            if (ctrl is Button btn && btn.Tag is string tag &&
-                (tag == "Distra" || tag == "Waste" || tag == "Normal"))
-            {
-                btn.BackColor = Color.White;
-            }
-        }
-
-        if (_selectedPipeButton != null && _toolManager.CurrentTool == ToolManager.Tool.Pipe)
-        {
-            _selectedPipeButton.BackColor = Color.LightBlue;
-        }
-    }
-
-    // Загрузка иконок для труб
-    private void LoadPipeIcons()
-    {
-        foreach (Control ctrl in _toolPanel.Controls)
-        {
-            if (ctrl is Panel panel)
-            {
-                foreach (Control ctrl2 in panel.Controls)
-                {
-                    if (ctrl2 is Button btn && btn.Tag is string tag &&
-                        (tag == "Distra" || tag == "Waste" || tag == "Normal"))
-                    {
-                        var pipeType = _pipeTypeManager.GetPipeType(tag);
-                        var icon = GetPrototypeIcon(pipeType.IconPath);
-                        if (icon != null)
-                        {
-                            btn.Image = icon;
-                            btn.ImageAlign = ContentAlignment.MiddleCenter;
-                            btn.Text = "";
-                        }
-                        else
-                        {
-                            btn.Text = tag == "Distra" ? "🔵" :
-                                       tag == "Waste" ? "🔴" : "⚪";
-                            btn.Font = new Font("Segoe UI", 16);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-
-    private void ExportToYAML()
-{
-    if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
-    {
-        MessageBox.Show("Нет комнат для экспорта");
-        return;
-    }
-
-    using var dialog = new SaveFileDialog
-    {
-        Filter = "YAML files (*.yml)|*.yml",
-        DefaultExt = "yml",
-        FileName = "map.yml"
-    };
-
-    if (dialog.ShowDialog() == DialogResult.OK)
-    {
-        try
-        {
-            var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder);
-            File.WriteAllText(dialog.FileName, yaml);
-            MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Ошибка экспорта: {ex.Message}");
-        }
-    }
-}
 }

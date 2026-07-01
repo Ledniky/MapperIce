@@ -1,3 +1,6 @@
+// Services/ToolManager.cs
+using System;
+
 namespace MapperIce.Services;
 
 public class ToolManager
@@ -8,22 +11,35 @@ public class ToolManager
         CreateRoom,
         Delete,
         Door,
-        Pipe, 
+        DoorGlass,
+        PipeDistra,
+        PipeWaste,
+        PipeNormal
     }
 
     private Tool _currentTool = Tool.None;
-    // В ToolManager.cs добавьте:
-    public string DoorProto { get; set; } = "Airlock";
+    
     public Tool CurrentTool => _currentTool;
+    
     public event Action<Tool>? ToolChanged;
 
     public void SetTool(Tool tool)
     {
         if (_currentTool == tool)
+        {
             _currentTool = Tool.None;
+        }
         else
+        {
             _currentTool = tool;
+        }
         
+        ToolChanged?.Invoke(_currentTool);
+    }
+
+    public void ResetTool()
+    {
+        _currentTool = Tool.None;
         ToolChanged?.Invoke(_currentTool);
     }
 }
