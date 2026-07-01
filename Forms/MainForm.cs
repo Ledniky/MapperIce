@@ -52,6 +52,8 @@ public class MainForm : Form
     private Button? _selectedPipeButton = null;
     private HashSet<(int x, int y)> _pipePositions = new();
     private bool _isDrawingPipes = false;
+    private TileBuilder _tileBuilder = null!;
+    private TileGrid _tileGrid = new();
 
     public MainForm()
     {
@@ -59,9 +61,13 @@ public class MainForm : Form
         Size = new Size(1024, 768);
         WindowState = FormWindowState.Maximized;
 
-        _renderer = new Renderer(Width, Height, _indexer);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
+        _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater);
+        _tileGrid = new TileGrid();
+        _renderer = new Renderer(Width, Height, _indexer, _tileBuilder);
+
+        // _yamlGenerator убираем
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -142,135 +148,135 @@ public class MainForm : Form
 
     // === Панель репозиториев ===
 
-private void CreateRepositoryPanel()
-{
-    var panel = new Panel
+    private void CreateRepositoryPanel()
     {
-        Dock = DockStyle.Left,
-        Width = 240,
-        BackColor = Color.FromArgb(245, 245, 245),
-        Padding = new Padding(5),
-        BorderStyle = BorderStyle.None
-    };
+        var panel = new Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 240,
+            BackColor = Color.FromArgb(245, 245, 245),
+            Padding = new Padding(5),
+            BorderStyle = BorderStyle.None
+        };
 
-    // Правая граница
-    var rightLine = new Panel
-    {
-        Location = new Point(panel.Width - 1, 0),
-        Width = 1,
-        Height = panel.Height,
-        BackColor = Color.Gray,
-        Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
-    };
-    panel.Controls.Add(rightLine);
+        // Правая граница
+        var rightLine = new Panel
+        {
+            Location = new Point(panel.Width - 1, 0),
+            Width = 1,
+            Height = panel.Height,
+            BackColor = Color.Gray,
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
+        };
+        panel.Controls.Add(rightLine);
 
-    // Список прототипов
-    var listContainer = new Panel
-    {
-        Dock = DockStyle.Fill,
-        Padding = new Padding(0)
-    };
-    _protoList = new ListBox
-    {
-        Dock = DockStyle.Fill,
-        Font = new Font("Consolas", 9),
-        IntegralHeight = false
-    };
-    _protoList.DoubleClick += OnPrototypeDoubleClick;
-    listContainer.Controls.Add(_protoList);
-    panel.Controls.Add(listContainer);
+        // Список прототипов
+        var listContainer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0)
+        };
+        _protoList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 9),
+            IntegralHeight = false
+        };
+        _protoList.DoubleClick += OnPrototypeDoubleClick;
+        listContainer.Controls.Add(_protoList);
+        panel.Controls.Add(listContainer);
 
-    // Панель поиска
-    var searchPanel = new Panel
-    {
-        Dock = DockStyle.Top,
-        Height = 30,
-        Padding = new Padding(0, 2, 0, 2)
-    };
+        // Панель поиска
+        var searchPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 30,
+            Padding = new Padding(0, 2, 0, 2)
+        };
 
-    _searchBox = new TextBox
-    {
-        Location = new Point(3, 2),
-        Width = 155,
-        Height = 22,
-        Text = "Поиск прототипов...",
-        Enabled = false
-    };
-    _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
-    _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
-    _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
-    searchPanel.Controls.Add(_searchBox);
+        _searchBox = new TextBox
+        {
+            Location = new Point(3, 2),
+            Width = 155,
+            Height = 22,
+            Text = "Поиск прототипов...",
+            Enabled = false
+        };
+        _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
+        _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
+        _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
+        searchPanel.Controls.Add(_searchBox);
 
-    _filterCombo = new ComboBox
-    {
-        Location = new Point(163, 2),
-        Width = 65,
-        Height = 22,
-        DropDownStyle = ComboBoxStyle.DropDownList,
-        Font = new Font("Segoe UI", 8),
-        Enabled = false
-    };
-    _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер" });
-    _filterCombo.SelectedIndex = 0;
-    _filterCombo.SelectedIndexChanged += (s, e) =>
-    {
-        _currentFilter = _filterCombo.SelectedItem?.ToString()?.ToLower() ?? "all";
-        UpdatePrototypeList(_searchBox.Text);
-    };
-    searchPanel.Controls.Add(_filterCombo);
+        _filterCombo = new ComboBox
+        {
+            Location = new Point(163, 2),
+            Width = 65,
+            Height = 22,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Segoe UI", 8),
+            Enabled = false
+        };
+        _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер" });
+        _filterCombo.SelectedIndex = 0;
+        _filterCombo.SelectedIndexChanged += (s, e) =>
+        {
+            _currentFilter = _filterCombo.SelectedItem?.ToString()?.ToLower() ?? "all";
+            UpdatePrototypeList(_searchBox.Text);
+        };
+        searchPanel.Controls.Add(_filterCombo);
 
-    panel.Controls.Add(searchPanel);
+        panel.Controls.Add(searchPanel);
 
-    // Панель кнопок
-    var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
+        // Панель кнопок
+        var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
 
-    _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
-    _btnAddRepo.Click += (s, e) => AddRepository();
-    btnPanel.Controls.Add(_btnAddRepo);
+        _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
+        _btnAddRepo.Click += (s, e) => AddRepository();
+        btnPanel.Controls.Add(_btnAddRepo);
 
-    _btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
-    _btnRemoveRepo.Click += (s, e) => RemoveRepository();
-    btnPanel.Controls.Add(_btnRemoveRepo);
+        _btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
+        _btnRemoveRepo.Click += (s, e) => RemoveRepository();
+        btnPanel.Controls.Add(_btnRemoveRepo);
 
-    _btnIndexRepo = new Button
-    {
-        Text = "🔄 Обновить",
-        Location = new Point(75, 5),
-        Width = 40,
-        Height = 25,
-        Enabled = false,
-        BackColor = Color.LightGreen,
-        FlatStyle = FlatStyle.Flat
-    };
-    _btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
-    btnPanel.Controls.Add(_btnIndexRepo);
+        _btnIndexRepo = new Button
+        {
+            Text = "🔄 Обновить",
+            Location = new Point(75, 5),
+            Width = 40,
+            Height = 25,
+            Enabled = false,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat
+        };
+        _btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
+        btnPanel.Controls.Add(_btnIndexRepo);
 
-    panel.Controls.Add(btnPanel);
+        panel.Controls.Add(btnPanel);
 
-    // Выбор репозитория
-    _repoSelector = new ComboBox
-    {
-        Dock = DockStyle.Top,
-        Height = 30,
-        DropDownStyle = ComboBoxStyle.DropDownList,
-        Margin = new Padding(0, 5, 0, 5)
-    };
-    _repoSelector.SelectedIndexChanged += OnRepoSelected;
-    panel.Controls.Add(_repoSelector);
+        // Выбор репозитория
+        _repoSelector = new ComboBox
+        {
+            Dock = DockStyle.Top,
+            Height = 30,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Margin = new Padding(0, 5, 0, 5)
+        };
+        _repoSelector.SelectedIndexChanged += OnRepoSelected;
+        panel.Controls.Add(_repoSelector);
 
-    // Заголовок
-    var title = new Label
-    {
-        Text = "Репозитории",
-        Font = new Font("Arial", 12, FontStyle.Bold),
-        Dock = DockStyle.Top,
-        Height = 30,
-        TextAlign = ContentAlignment.MiddleCenter
-    };
-    panel.Controls.Add(title);
+        // Заголовок
+        var title = new Label
+        {
+            Text = "Репозитории",
+            Font = new Font("Arial", 12, FontStyle.Bold),
+            Dock = DockStyle.Top,
+            Height = 30,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        panel.Controls.Add(title);
 
-    Controls.Add(panel);
-}
+        Controls.Add(panel);
+    }
 
     private void UpdateRepoSelector()
     {
@@ -291,6 +297,14 @@ private void CreateRepositoryPanel()
             _filterCombo.Enabled = false;
             _btnRemoveRepo.Enabled = false;
             _btnIndexRepo.Enabled = false;
+        }
+    }
+
+    private void UpdateTileGrid()
+    {
+        if (_map.ActiveGrid != null)
+        {
+            _tileBuilder.UpdateTileGrid(_map.ActiveGrid, _tileGrid);
         }
     }
 
@@ -1589,6 +1603,7 @@ private void CreateRepositoryPanel()
                 // Обновляем все двери в гриде (а не только на границах комнаты)
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
 
+                UpdateTileGrid(); // <-- Добавить
                 SaveState();
             }
 
@@ -1616,36 +1631,8 @@ private void CreateRepositoryPanel()
         MessageBox.Show("Загрузка карт из YAML пока не реализована");
     }
 
-    private void ExportToYAML()
-    {
-        if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
-        {
-            MessageBox.Show("Нет комнат для экспорта");
-            return;
-        }
 
-        using var dialog = new SaveFileDialog
-        {
-            Filter = "YAML files (*.yml)|*.yml",
-            DefaultExt = "yml",
-            FileName = "map.yml"
-        };
 
-        if (dialog.ShowDialog() == DialogResult.OK)
-        {
-            try
-            {
-                var generator = new YAMLGenerator();
-                var yaml = generator.Generate(_map.ActiveGrid.Rooms);
-                File.WriteAllText(dialog.FileName, yaml);
-                MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка экспорта: {ex.Message}");
-            }
-        }
-    }
 
     private void SaveProject()
     {
@@ -1770,6 +1757,7 @@ private void CreateRepositoryPanel()
                 }
 
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
+                UpdateTileGrid();
                 SaveState();
                 Render();
 
@@ -1844,4 +1832,35 @@ private void CreateRepositoryPanel()
             }
         }
     }
+    
+
+    private void ExportToYAML()
+{
+    if (_map.ActiveGrid == null || _map.ActiveGrid.Rooms.Count == 0)
+    {
+        MessageBox.Show("Нет комнат для экспорта");
+        return;
+    }
+
+    using var dialog = new SaveFileDialog
+    {
+        Filter = "YAML files (*.yml)|*.yml",
+        DefaultExt = "yml",
+        FileName = "map.yml"
+    };
+
+    if (dialog.ShowDialog() == DialogResult.OK)
+    {
+        try
+        {
+            var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder);
+            File.WriteAllText(dialog.FileName, yaml);
+            MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка экспорта: {ex.Message}");
+        }
+    }
+}
 }
