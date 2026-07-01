@@ -9,15 +9,18 @@ public class Renderer
     private readonly object _lock = new();
     private readonly PrototypeIndexer? _indexer;
     private readonly TileBuilder _tileBuilder;
+    private readonly PipeBuilder _pipeBuilder;
     private readonly string _rootPath = "";
     public bool HideRoomOverlay { get; set; } = false;
     private MapData? _currentMap;
+    public bool ShowPipeOverlay { get; set; } = true;
 
-    public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder)
+    public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
         _buffer = new Bitmap(Math.Max(1, width), Math.Max(1, height));
         _indexer = indexer;
         _tileBuilder = tileBuilder;
+        _pipeBuilder = pipeBuilder;
         if (_indexer != null)
             _rootPath = _indexer.GetRootPath();
     }
@@ -52,7 +55,6 @@ public class Renderer
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
-                // Строим TileGrid для этого грида
                 var tileGrid = _tileBuilder.BuildFromRooms(grid);
 
                 // 1. Сетка
@@ -77,7 +79,7 @@ public class Renderer
                     DrawDoorAt(g, tile, tileSize, viewOffset, grid.Position);
                 }
 
-                // 5. Оверлей комнат (если включен)
+                // 5. Оверлей комнат
                 if (!HideRoomOverlay)
                 {
                     foreach (var room in grid.Rooms)
@@ -87,20 +89,115 @@ public class Renderer
                     }
                 }
 
-                // Текущая комната (при создании)
                 if (currentRoom != null && isActive)
                 {
                     DrawRoomFill(g, currentRoom, tileSize, viewOffset, grid.Position, 1.0f);
                     DrawRoomLine(g, currentRoom, tileSize, viewOffset, grid.Position, true, 1.0f);
                 }
+
+                // 6. ТРУБЫ
+                if (ShowPipeOverlay)
+                {
+                    foreach (var entity in grid.Entities)
+                    {
+                        if (entity is PipeEntity pipe)
+                        {
+                            DrawPipeAt(g, pipe, tileSize, viewOffset, grid.Position);
+                        }
+                    }
+
+                    if (_pipeBuilder != null && _pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
+                    {
+                        var start = _pipeBuilder.StartPoint.Value;
+                        var end = _pipeBuilder.EndPoint ?? start;
+                        
+                        var path = CalculatePipePath(start, end);
+                        foreach (var pos in path)
+                        {
+                            DrawTempPipeAt(g, pos.x, pos.y, tileSize, viewOffset, grid.Position);
+                        }
+                    }
+                }
             }
 
-            // Информация
             DrawInfo(g, scale, toolName, map);
 
             return _buffer;
         }
     }
+
+    // ============ МЕТОДЫ ДЛЯ ТРУБ ============
+
+    private void DrawPipeAt(Graphics g, PipeEntity pipe, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        float x = (pipe.X + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (pipe.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+        var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+
+        Color color = pipe.PipeType switch
+        {
+            "Distra" => Color.FromArgb(200, 0, 100, 255),
+            "Waste" => Color.FromArgb(200, 255, 50, 50),
+            "Normal" => Color.FromArgb(200, 200, 200, 200),
+            _ => Color.FromArgb(200, 100, 100, 100)
+        };
+
+        using var brush = new SolidBrush(color);
+        g.FillRectangle(brush, rect);
+
+        using var pen = new Pen(Color.FromArgb(255, color.R, color.G, color.B), 1);
+        g.DrawRectangle(pen, rect);
+
+        using var font = new Font("Segoe UI", 10, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Color.White);
+        string label = pipe.PipeType switch
+        {
+            "Distra" => "D",
+            "Waste" => "W",
+            "Normal" => "N",
+            _ => "?"
+        };
+        g.DrawString(label, font, textBrush, rect.X + rect.Width / 2 - 5, rect.Y + rect.Height / 2 - 7);
+    }
+
+    private void DrawTempPipeAt(Graphics g, int x, int y, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
+        float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
+        var rect = new Rectangle((int)wx, (int)wy, tileSize, tileSize);
+
+        using var brush = new SolidBrush(Color.FromArgb(100, 0, 255, 100));
+        g.FillRectangle(brush, rect);
+        using var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2);
+        g.DrawRectangle(pen, rect);
+    }
+
+    private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
+    {
+        var positions = new List<(int x, int y)>();
+        
+        int startX = start.x;
+        int startY = start.y;
+        int endX = end.x;
+        int endY = end.y;
+
+        int stepY = startY <= endY ? 1 : -1;
+        for (int y = startY; y != endY + stepY; y += stepY)
+        {
+            positions.Add((startX, y));
+        }
+
+        int stepX = startX <= endX ? 1 : -1;
+        int startXPos = startX + stepX;
+        for (int x = startXPos; x != endX + stepX; x += stepX)
+        {
+            positions.Add((x, endY));
+        }
+
+        return positions;
+    }
+
+    // ============ ОСТАЛЬНЫЕ МЕТОДЫ ============
 
     private Rectangle GetSourceRect(Image img)
     {
@@ -288,7 +385,8 @@ public class Renderer
         using var brush = new SolidBrush(Color.DarkGray);
         var name = map.ActiveGrid?.Name ?? "Нет";
         string mode = HideRoomOverlay ? " [ОВЕРЛЕЙ СКРЫТ]" : "";
-        g.DrawString($"Инструмент: {toolName}{mode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
+        string pipeMode = ShowPipeOverlay ? "" : " [ТРУБЫ СКРЫТЫ]";
+        g.DrawString($"Инструмент: {toolName}{mode}{pipeMode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
             font, brush, 10, 10);
     }
 }

@@ -51,6 +51,7 @@ public class MainForm : Form
     private Label _typeLabel = null!;
     private CancellationTokenSource? _searchCts;
     private bool _hideRoomOverlay = false;
+    private bool _showPipeOverlay = true;
 
     public MainForm()
     {
@@ -58,11 +59,12 @@ public class MainForm : Form
         Size = new Size(1024, 768);
         WindowState = FormWindowState.Maximized;
 
+        _pipeTypeManager = new PipeTypeManager();
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
         _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater);
         _tileGrid = new TileGrid();
-        _renderer = new Renderer(Width, Height, _indexer, _tileBuilder);
+        _renderer = new Renderer(Width, Height, _indexer, _tileBuilder, _pipeBuilder);
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -114,8 +116,6 @@ public class MainForm : Form
         UpdateTileGrid();
         Render();
     }
-
-    // === ОБРАБОТКА КЛАВИШ ===
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -491,7 +491,6 @@ public class MainForm : Form
         _toolPanel.Controls.Add(title);
         y += 35 + 2;
 
-        // Создать комнату
         _btnCreateRoom = new Button
         {
             Text = "🟦 Создать",
@@ -673,7 +672,6 @@ public class MainForm : Form
         _toolPanel.Controls.Add(pipePanel);
         y += 40 + 2;
 
-        // Удалить
         _btnDelete = new Button
         {
             Text = "🗑 Удалить",
@@ -801,11 +799,6 @@ public class MainForm : Form
                 _btnAirlockGlass.Text = "";
             }
         }
-    }
-
-    private void LoadPipeIcons()
-    {
-        // Загрузка иконок для труб
     }
 
     // === ДИАЛОГ ВЫБОРА ТИПА КОМНАТЫ ===
@@ -1255,25 +1248,47 @@ public class MainForm : Form
         };
         panel.Controls.Add(btnRemoveGrid);
 
+        // Кнопка переключения оверлея комнат
         var btnToggleOverlay = new Button
         {
             Text = "🗺️",
             Location = new Point(0, 7),
-            Width = 40,
+            Width = 35,
             Height = 40,
             BackColor = Color.LightGreen,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 14),
+            Font = new Font("Segoe UI", 12),
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         btnToggleOverlay.Click += (s, e) =>
         {
             _hideRoomOverlay = !_hideRoomOverlay;
             btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
-            btnToggleOverlay.Text = _hideRoomOverlay ? "📍" : "🗺️";
+            btnToggleOverlay.Text = _hideRoomOverlay ? "🚫" : "🗺️";
             Render();
         };
         panel.Controls.Add(btnToggleOverlay);
+
+        // Кнопка переключения оверлея труб
+        var btnTogglePipe = new Button
+        {
+            Text = "🔧",
+            Location = new Point(40, 7),
+            Width = 35,
+            Height = 40,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 12),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnTogglePipe.Click += (s, e) =>
+        {
+            _showPipeOverlay = !_showPipeOverlay;
+            btnTogglePipe.BackColor = _showPipeOverlay ? Color.LightGreen : Color.LightGray;
+            btnTogglePipe.Text = _showPipeOverlay ? "🔧" : "🚫";
+            Render();
+        };
+        panel.Controls.Add(btnTogglePipe);
 
         Controls.Add(panel);
     }
@@ -1338,7 +1353,6 @@ public class MainForm : Form
 
     private void OnToolChanged(ToolManager.Tool tool)
     {
-        // Сброс подсветки всех кнопок
         _btnCreateRoom.BackColor = Color.White;
         _btnDelete.BackColor = Color.White;
         _btnAirlock.BackColor = Color.White;
@@ -1347,7 +1361,6 @@ public class MainForm : Form
         _btnPipeWaste.BackColor = Color.White;
         _btnPipeNormal.BackColor = Color.White;
 
-        // Подсветка активного инструмента
         switch (tool)
         {
             case ToolManager.Tool.CreateRoom:
@@ -1403,6 +1416,7 @@ public class MainForm : Form
     private void Render()
     {
         _renderer.HideRoomOverlay = _hideRoomOverlay;
+        _renderer.ShowPipeOverlay = _showPipeOverlay;
         _canvas.Invalidate();
     }
 
@@ -1412,6 +1426,19 @@ public class MainForm : Form
     }
 
     // === ОБРАБОТКА МЫШИ ===
+
+    private (int x, int y) GetTilePosition(Point mouseLocation)
+    {
+        if (_map.ActiveGrid == null) return (0, 0);
+        
+        int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
+        float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
+        
+        return ((int)Math.Floor(worldX), (int)Math.Floor(worldY));
+    }
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
@@ -1428,13 +1455,9 @@ public class MainForm : Form
 
         if (e.Button == MouseButtons.Left)
         {
-            int tileSize = (int)(Constants.TILE_SIZE * _scale);
-            float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-            float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
-            float worldX = (e.Location.X + _viewOffset.X - gridOffsetX) / tileSize;
-            float worldY = (e.Location.Y + _viewOffset.Y - gridOffsetY) / tileSize;
-            int tileX = (int)Math.Floor(worldX);
-            int tileY = (int)Math.Floor(worldY);
+            var tilePos = GetTilePosition(e.Location);
+            int tileX = tilePos.x;
+            int tileY = tilePos.y;
 
             // === СОЗДАТЬ КОМНАТУ ===
             if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
@@ -1491,31 +1514,29 @@ public class MainForm : Form
                 }
             }
 
-            // === ТРУБА DISTRA ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra)
+            // === ТРУБЫ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
             {
-                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Distra");
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-
-            // === ТРУБА WASTE ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeWaste)
-            {
-                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Waste");
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-
-            // === ТРУБА NORMAL ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
-            {
-                _pipeBuilder.AddPipe(_map.ActiveGrid, tileX, tileY, "Normal");
-                SaveState();
-                UpdateTileGrid();
-                Render();
+                if (!_pipeBuilder.IsDrawing)
+                {
+                    _pipeBuilder.StartDrawing(tileX, tileY);
+                    Render();
+                }
+                else
+                {
+                    string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
+                    var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                    
+                    if (positions.Count == 0)
+                    {
+                        _pipeBuilder.ResetDrawing();
+                    }
+                }
             }
         }
     }
@@ -1531,7 +1552,19 @@ public class MainForm : Form
             return;
         }
 
-        if (!_isDrawing || _currentRoom == null || _map.ActiveGrid == null) return;
+        if (_map.ActiveGrid == null) return;
+
+        // === РИСОВАНИЕ ТРУБ ===
+        if (_pipeBuilder.IsDrawing)
+        {
+            var tilePos = GetTilePosition(e.Location);
+            _pipeBuilder.UpdateEndPoint(tilePos.x, tilePos.y);
+            Render();
+            return;
+        }
+
+        // === РИСОВАНИЕ КОМНАТЫ ===
+        if (!_isDrawing || _currentRoom == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
         float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
@@ -1593,6 +1626,17 @@ public class MainForm : Form
         float delta = e.Delta > 0 ? 0.1f : -0.1f;
         _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
         Render();
+    }
+
+    private string GetPipeTypeFromTool(ToolManager.Tool tool)
+    {
+        return tool switch
+        {
+            ToolManager.Tool.PipeDistra => "Distra",
+            ToolManager.Tool.PipeWaste => "Waste",
+            ToolManager.Tool.PipeNormal => "Normal",
+            _ => "Distra"
+        };
     }
 
     private void UpdateTypeLabel()
