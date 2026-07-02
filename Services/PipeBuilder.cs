@@ -41,14 +41,35 @@ public class PipeBuilder
 
         var positions = CalculatePipePath(_pipeStartPoint.Value, _pipeEndPoint.Value);
         
-        // Фильтруем позиции: оставляем только те, где есть пол
         var validPositions = positions
             .Where(pos => HasFloorAt(grid, pos.x, pos.y))
             .ToList();
 
+        if (validPositions.Count == 0)
+        {
+            ResetDrawing();
+            return validPositions;
+        }
+
+        var firstPos = validPositions.First();
+        var lastPos = validPositions.Last();
+
+        // Проверяем концы
+        if (!CanPlaceEndpoint(grid, firstPos.x, firstPos.y, pipeType) ||
+            !CanPlaceEndpoint(grid, lastPos.x, lastPos.y, pipeType))
+        {
+            ResetDrawing();
+            return new List<(int x, int y)>();
+        }
+
+        // Удаляем старые концы в этих позициях
+        RemoveEndpoint(grid, firstPos.x, firstPos.y);
+        RemoveEndpoint(grid, lastPos.x, lastPos.y);
+
         foreach (var pos in validPositions)
         {
-            AddPipe(grid, pos.x, pos.y, pipeType);
+            bool isEndpoint = pos.Equals(firstPos) || pos.Equals(lastPos);
+            AddPipe(grid, pos.x, pos.y, pipeType, isEndpoint);
         }
 
         ResetDrawing();
@@ -103,20 +124,71 @@ public class PipeBuilder
         return false;
     }
 
-    public void AddPipe(Grid grid, int x, int y, string pipeType)
+    private bool CanPlaceEndpoint(Grid grid, int x, int y, string pipeType)
+    {
+        var existing = grid.Entities
+            .OfType<PipeEntity>()
+            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
+
+        if (existing == null) return true;
+        return existing.PipeType == pipeType;
+    }
+
+    private void RemoveEndpoint(Grid grid, int x, int y)
+    {
+        var endpoint = grid.Entities
+            .OfType<PipeEntity>()
+            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
+
+        if (endpoint != null)
+            grid.Entities.Remove(endpoint);
+    }
+
+    public void AddPipe(Grid grid, int x, int y, string pipeType, bool isEndpoint = false)
     {
         if (grid == null) return;
-
-        // Проверяем, есть ли пол в этой позиции
         if (!HasFloorAt(grid, x, y)) return;
 
-        // Проверяем, есть ли уже труба в этой позиции
-        var existingPipe = grid.Entities.OfType<PipeEntity>()
-            .FirstOrDefault(p => p.X == x && p.Y == y);
+        // Проверяем, есть ли уже конец в этой позиции
+        var existingEndpoint = grid.Entities
+            .OfType<PipeEntity>()
+            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
 
-        if (existingPipe != null)
+        // Если ставим конец, а там уже есть конец другого типа - нельзя
+        if (isEndpoint && existingEndpoint != null && existingEndpoint.PipeType != pipeType)
         {
-            // Если труба уже есть - ничего не делаем (не удаляем!)
+            return;
+        }
+
+        // Если ставим конец, а там уже есть конец того же типа - обновляем
+        if (isEndpoint && existingEndpoint != null && existingEndpoint.PipeType == pipeType)
+        {
+            existingEndpoint.PipeType = pipeType;
+            return;
+        }
+
+        // Если ставим конец, а там есть труба (не конец) - удаляем трубу и ставим конец
+        if (isEndpoint)
+        {
+            var existingPipe = grid.Entities
+                .OfType<PipeEntity>()
+                .FirstOrDefault(p => p.X == x && p.Y == y && !p.IsEndpoint);
+            
+            if (existingPipe != null)
+            {
+                grid.Entities.Remove(existingPipe);
+            }
+        }
+
+        // Проверяем, есть ли уже такая труба (не конец) в этой позиции
+        // Трубы могут накладываться друг на друга (разные слои)
+        var existing = grid.Entities
+            .OfType<PipeEntity>()
+            .FirstOrDefault(p => p.X == x && p.Y == y && p.PipeType == pipeType && !p.IsEndpoint);
+
+        // Если такая труба уже есть - не добавляем дубликат
+        if (!isEndpoint && existing != null)
+        {
             return;
         }
 
@@ -124,7 +196,8 @@ public class PipeBuilder
         {
             X = x,
             Y = y,
-            PipeType = pipeType
+            PipeType = pipeType,
+            IsEndpoint = isEndpoint
         };
 
         grid.Entities.Add(pipe);
@@ -163,5 +236,12 @@ public class PipeBuilder
             .Where(p => p.X == x && p.Y == y)
             .Select(p => p.PipeType)
             .ToList();
+    }
+
+    public bool IsEndpoint(Grid grid, int x, int y)
+    {
+        return grid.Entities
+            .OfType<PipeEntity>()
+            .Any(p => p.X == x && p.Y == y && p.IsEndpoint);
     }
 }

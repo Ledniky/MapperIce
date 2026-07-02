@@ -1439,106 +1439,116 @@ private void RestoreState(GridSnapshot snapshot)
         return ((int)Math.Floor(worldX), (int)Math.Floor(worldY));
     }
 
-    private void OnMouseDown(object? sender, MouseEventArgs e)
-    {
-        if (_canvas.Width == 0 || _canvas.Height == 0) return;
-        if (_map.ActiveGrid == null) return;
+private void OnMouseDown(object? sender, MouseEventArgs e)
+{
+    if (_canvas.Width == 0 || _canvas.Height == 0) return;
+    if (_map.ActiveGrid == null) return;
 
-        if (e.Button == MouseButtons.Right)
+    if (e.Button == MouseButtons.Right)
+    {
+        // Если рисуем трубу - отменяем
+        if (_pipeBuilder.IsDrawing)
         {
-            _isPanning = true;
-            _panStart = new PointF(e.Location.X, e.Location.Y);
-            Cursor = Cursors.SizeAll;
+            _pipeBuilder.ResetDrawing();
+            Render();
             return;
         }
 
-        if (e.Button == MouseButtons.Left)
+        _isPanning = true;
+        _panStart = new PointF(e.Location.X, e.Location.Y);
+        Cursor = Cursors.SizeAll;
+        return;
+    }
+
+    if (e.Button == MouseButtons.Left)
+    {
+        var tilePos = GetTilePosition(e.Location);
+        int tileX = tilePos.x;
+        int tileY = tilePos.y;
+
+        // === СОЗДАТЬ КОМНАТУ ===
+        if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
         {
-            var tilePos = GetTilePosition(e.Location);
-            int tileX = tilePos.x;
-            int tileY = tilePos.y;
+            _isDrawing = true;
+            _startPoint = e.Location;
+            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
+        }
 
-            // === СОЗДАТЬ КОМНАТУ ===
-            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+        // === УДАЛИТЬ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+        {
+            var grid = _map.ActiveGrid;
+
+            if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
             {
-                _isDrawing = true;
-                _startPoint = e.Location;
-                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
+                SaveState();
+                UpdateTileGrid();
+                Render();
+                return;
             }
 
-            // === УДАЛИТЬ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+            var roomToDelete = grid.Rooms.FirstOrDefault(r =>
+                tileX >= r.X && tileX < r.X + r.Width &&
+                tileY >= r.Y && tileY < r.Y + r.Height);
+            if (roomToDelete != null)
             {
-                var grid = _map.ActiveGrid;
-
-                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                    return;
-                }
-
-                var roomToDelete = grid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
-                if (roomToDelete != null)
-                {
-                    grid.Rooms.Remove(roomToDelete);
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
+                grid.Rooms.Remove(roomToDelete);
+                SaveState();
+                UpdateTileGrid();
+                Render();
             }
+        }
 
-            // === ДВЕРЬ ОБЫЧНАЯ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+        // === ДВЕРЬ ОБЫЧНАЯ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+        {
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
+                SaveState();
+                UpdateTileGrid();
+                Render();
             }
+        }
 
-            // === ДВЕРЬ СТЕКЛЯННАЯ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+        // === ДВЕРЬ СТЕКЛЯННАЯ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+        {
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
+                SaveState();
+                UpdateTileGrid();
+                Render();
             }
+        }
 
-            // === ТРУБЫ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+        // === ТРУБЫ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+        {
+            if (!_pipeBuilder.IsDrawing)
             {
-                if (!_pipeBuilder.IsDrawing)
+                _pipeBuilder.StartDrawing(tileX, tileY);
+                Render();
+            }
+            else
+            {
+                string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
+                var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+                
+                if (positions.Count == 0)
                 {
-                    _pipeBuilder.StartDrawing(tileX, tileY);
-                    Render();
-                }
-                else
-                {
-                    string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
-                    var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                    
-                    if (positions.Count == 0)
-                    {
-                        _pipeBuilder.ResetDrawing();
-                    }
+                    _pipeBuilder.ResetDrawing();
                 }
             }
         }
     }
+}
+
+
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {

@@ -32,7 +32,7 @@ public static class YAMLGenerator
         sb.AppendLine("  forkId: \"\"");
         sb.AppendLine("  forkVersion: \"\"");
         sb.AppendLine($"  time: {DateTime.Now:MM/dd/yyyy HH:mm:ss}");
-        sb.AppendLine($"  entityCount: {CountEntities(tileGrid)}");
+        sb.AppendLine($"  entityCount: {CountEntities(tileGrid) + CountPipes(grid)}");
 
         // ==================== MAPS & GRIDS ====================
         sb.AppendLine("maps:");
@@ -50,7 +50,7 @@ public static class YAMLGenerator
 
         // ==================== ENTITIES ====================
         sb.AppendLine("entities:");
-        
+
         // Map Entity
         sb.AppendLine("- proto: \"\"");
         sb.AppendLine("  entities:");
@@ -127,7 +127,18 @@ public static class YAMLGenerator
         // ==================== DOORS ====================
         GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
 
+        // ==================== PIPES ====================
+        GeneratePipesFromEntities(sb, grid, ref uid);
+
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Подсчитывает количество труб
+    /// </summary>
+    private static int CountPipes(Grid grid)
+    {
+        return grid.Entities.OfType<PipeEntity>().Count();
     }
 
     /// <summary>
@@ -209,9 +220,9 @@ public static class YAMLGenerator
     /// Генерирует стены из TileGrid
     /// </summary>
     private static void GenerateWallsFromTileGrid(
-        StringBuilder sb, 
-        TileGrid tileGrid, 
-        TileBuilder tileBuilder, 
+        StringBuilder sb,
+        TileGrid tileGrid,
+        TileBuilder tileBuilder,
         ref int uid)
     {
         var wallsByProto = new Dictionary<string, List<(int x, int y)>>();
@@ -254,8 +265,8 @@ public static class YAMLGenerator
     /// Генерирует двери из TileGrid
     /// </summary>
     private static void GenerateDoorsFromTileGrid(
-        StringBuilder sb, 
-        TileGrid tileGrid, 
+        StringBuilder sb,
+        TileGrid tileGrid,
         ref int uid)
     {
         var doorsByProto = new Dictionary<string, List<(int x, int y)>>();
@@ -281,6 +292,55 @@ public static class YAMLGenerator
             {
                 int invY = -y;
                 float posX = x + 0.5f;
+                float posY = invY + 0.5f;
+
+                string posXStr = posX.ToString("0.0").Replace(',', '.');
+                string posYStr = posY.ToString("0.0").Replace(',', '.');
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posXStr},{posYStr}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерирует трубы из сущностей грида
+    /// </summary>
+    private static void GeneratePipesFromEntities(StringBuilder sb, Grid grid, ref int uid)
+    {
+        if (grid == null) return;
+
+        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
+        if (pipes.Count == 0) return;
+
+        // Группируем трубы по типу
+        var grouped = pipes.GroupBy(p => p.PipeType);
+
+        foreach (var group in grouped)
+        {
+            // Определяем прототип для каждого типа
+            // Distra -> GasPipeStraight (слой Secondary)
+            // Normal -> GasPipeStraightAlt2 (слой Tertiary)  
+            // Waste -> GasPipeStraightAlt1 (слой Waste)
+            string proto = group.Key switch
+            {
+                "Distra" => "GasPipeStraight",
+                "Normal" => "GasPipeStraightAlt2",
+                "Waste" => "GasPipeStraightAlt1",
+                _ => "GasPipeStraight"
+            };
+
+            sb.AppendLine($"- proto: {proto}");
+            sb.AppendLine("  entities:");
+
+            foreach (var pipe in group)
+            {
+                float invY = -pipe.Y;
+                float posX = pipe.X + 0.5f;
                 float posY = invY + 0.5f;
 
                 string posXStr = posX.ToString("0.0").Replace(',', '.');
