@@ -1,4 +1,3 @@
-// Services/PipeBuilder.cs
 using MapperIce.Models;
 
 namespace MapperIce.Services;
@@ -19,9 +18,6 @@ public class PipeBuilder
     public (int x, int y)? StartPoint => _pipeStartPoint;
     public (int x, int y)? EndPoint => _pipeEndPoint;
 
-    /// <summary>
-    /// Начать рисование трубы
-    /// </summary>
     public void StartDrawing(int x, int y)
     {
         _pipeStartPoint = (x, y);
@@ -29,18 +25,12 @@ public class PipeBuilder
         _isDrawingPipe = true;
     }
 
-    /// <summary>
-    /// Обновить конечную точку (при движении мыши)
-    /// </summary>
     public void UpdateEndPoint(int x, int y)
     {
         if (!_isDrawingPipe || _pipeStartPoint == null) return;
         _pipeEndPoint = (x, y);
     }
 
-    /// <summary>
-    /// Завершить рисование и построить трубы
-    /// </summary>
     public List<(int x, int y)> FinishDrawing(Grid grid, string pipeType)
     {
         if (!_isDrawingPipe || _pipeStartPoint == null || _pipeEndPoint == null || grid == null)
@@ -51,19 +41,20 @@ public class PipeBuilder
 
         var positions = CalculatePipePath(_pipeStartPoint.Value, _pipeEndPoint.Value);
         
-        // Добавляем трубы
-        foreach (var pos in positions)
+        // Фильтруем позиции: оставляем только те, где есть пол
+        var validPositions = positions
+            .Where(pos => HasFloorAt(grid, pos.x, pos.y))
+            .ToList();
+
+        foreach (var pos in validPositions)
         {
             AddPipe(grid, pos.x, pos.y, pipeType);
         }
 
         ResetDrawing();
-        return positions;
+        return validPositions;
     }
 
-    /// <summary>
-    /// Сбросить рисование
-    /// </summary>
     public void ResetDrawing()
     {
         _pipeStartPoint = null;
@@ -71,9 +62,6 @@ public class PipeBuilder
         _isDrawingPipe = false;
     }
 
-    /// <summary>
-    /// Рассчитать путь трубы (сначала по Y, потом по X)
-    /// </summary>
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
     {
         var positions = new List<(int x, int y)>();
@@ -83,14 +71,12 @@ public class PipeBuilder
         int endX = end.x;
         int endY = end.y;
 
-        // Сначала идем по Y
         int stepY = startY <= endY ? 1 : -1;
         for (int y = startY; y != endY + stepY; y += stepY)
         {
             positions.Add((startX, y));
         }
 
-        // Потом идем по X (начиная со следующей позиции, чтобы не дублировать угол)
         int stepX = startX <= endX ? 1 : -1;
         int startXPos = startX + stepX;
         for (int x = startXPos; x != endX + stepX; x += stepX)
@@ -101,12 +87,28 @@ public class PipeBuilder
         return positions;
     }
 
-    /// <summary>
-    /// Добавить трубу в позицию (toggle)
-    /// </summary>
+    private bool HasFloorAt(Grid grid, int x, int y)
+    {
+        if (grid == null) return false;
+
+        foreach (var room in grid.Rooms)
+        {
+            if (x >= room.X && x < room.X + room.Width &&
+                y >= room.Y && y < room.Y + room.Height)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public void AddPipe(Grid grid, int x, int y, string pipeType)
     {
         if (grid == null) return;
+
+        // Проверяем, есть ли пол в этой позиции
+        if (!HasFloorAt(grid, x, y)) return;
 
         // Проверяем, есть ли уже труба в этой позиции
         var existingPipe = grid.Entities.OfType<PipeEntity>()
@@ -114,12 +116,10 @@ public class PipeBuilder
 
         if (existingPipe != null)
         {
-            // Если труба уже есть - удаляем её (toggle)
-            grid.Entities.Remove(existingPipe);
+            // Если труба уже есть - ничего не делаем (не удаляем!)
             return;
         }
 
-        // Создаем новую трубу
         var pipe = new PipeEntity
         {
             X = x,
@@ -154,5 +154,14 @@ public class PipeBuilder
     public List<PipeEntity> GetPipes(Grid grid)
     {
         return grid.Entities.OfType<PipeEntity>().ToList();
+    }
+
+    public List<string> GetPipeTypesAt(Grid grid, int x, int y)
+    {
+        return grid.Entities
+            .OfType<PipeEntity>()
+            .Where(p => p.X == x && p.Y == y)
+            .Select(p => p.PipeType)
+            .ToList();
     }
 }

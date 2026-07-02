@@ -47,7 +47,6 @@ public class Renderer
 
             int tileSize = (int)(Constants.TILE_SIZE * scale);
 
-            // Для каждого грида строим TileGrid и рендерим
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
@@ -98,15 +97,20 @@ public class Renderer
                 // 6. ТРУБЫ
                 if (ShowPipeOverlay)
                 {
-                    foreach (var entity in grid.Entities)
+                    // Все трубы на гриде
+                    var allPipes = _pipeBuilder.GetPipes(grid);
+                    
+                    // Рисуем линии между соединёнными трубами
+                    DrawPipeLines(g, allPipes, tileSize, viewOffset, grid.Position);
+                    
+                    // Рисуем точки на каждой трубе
+                    foreach (var pipe in allPipes)
                     {
-                        if (entity is PipeEntity pipe)
-                        {
-                            DrawPipeAt(g, pipe, tileSize, viewOffset, grid.Position);
-                        }
+                        DrawPipeDot(g, pipe, tileSize, viewOffset, grid.Position);
                     }
 
-                    if (_pipeBuilder != null && _pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
+                    // Временные трубы при рисовании
+                    if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
                     {
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
@@ -128,48 +132,80 @@ public class Renderer
 
     // ============ МЕТОДЫ ДЛЯ ТРУБ ============
 
-    private void DrawPipeAt(Graphics g, PipeEntity pipe, int tileSize, PointF viewOffset, PointF gridOffset)
+    private void DrawPipeLines(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        float x = (pipe.X + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (pipe.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-        var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+        if (pipes.Count == 0) return;
+
+        // Группируем трубы по типу для разных цветов
+        var grouped = pipes.GroupBy(p => p.PipeType);
+        
+        foreach (var group in grouped)
+        {
+            Color color = group.Key switch
+            {
+                "Distra" => Color.FromArgb(180, 100, 200, 255),
+                "Waste" => Color.FromArgb(180, 255, 150, 150),
+                "Normal" => Color.FromArgb(180, 200, 200, 200),
+                _ => Color.FromArgb(180, 150, 150, 150)
+            };
+
+            var pipeDict = group.ToDictionary(p => (p.X, p.Y), p => p);
+            
+            using var pen = new Pen(color, Math.Max(2, tileSize / 10));
+
+            foreach (var pipe in group)
+            {
+                // Проверяем соседей (только те, которые есть в той же группе)
+                var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+                
+                float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+                foreach (var (dx, dy) in directions)
+                {
+                    var key = (pipe.X + dx, pipe.Y + dy);
+                    if (pipeDict.ContainsKey(key))
+                    {
+                        float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                        float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                        g.DrawLine(pen, cx, cy, nx, ny);
+                    }
+                }
+            }
+        }
+    }
+
+    private void DrawPipeDot(Graphics g, PipeEntity pipe, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
         Color color = pipe.PipeType switch
         {
-            "Distra" => Color.FromArgb(200, 0, 100, 255),
-            "Waste" => Color.FromArgb(200, 255, 50, 50),
+            "Distra" => Color.FromArgb(200, 100, 200, 255),
+            "Waste" => Color.FromArgb(200, 255, 150, 150),
             "Normal" => Color.FromArgb(200, 200, 200, 200),
-            _ => Color.FromArgb(200, 100, 100, 100)
+            _ => Color.FromArgb(200, 150, 150, 150)
         };
 
+        // Точка
         using var brush = new SolidBrush(color);
-        g.FillRectangle(brush, rect);
+        float dotSize = Math.Max(4, tileSize / 6);
+        g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
 
-        using var pen = new Pen(Color.FromArgb(255, color.R, color.G, color.B), 1);
-        g.DrawRectangle(pen, rect);
-
-        using var font = new Font("Segoe UI", 10, FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.White);
-        string label = pipe.PipeType switch
-        {
-            "Distra" => "D",
-            "Waste" => "W",
-            "Normal" => "N",
-            _ => "?"
-        };
-        g.DrawString(label, font, textBrush, rect.X + rect.Width / 2 - 5, rect.Y + rect.Height / 2 - 7);
+        // Белая обводка для читаемости
+        using var borderPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1);
+        g.DrawEllipse(borderPen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
     }
 
     private void DrawTempPipeAt(Graphics g, int x, int y, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        float wx = (x + gridOffset.X) * tileSize - viewOffset.X;
-        float wy = (y + gridOffset.Y) * tileSize - viewOffset.Y;
-        var rect = new Rectangle((int)wx, (int)wy, tileSize, tileSize);
+        float cx = (x + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+        float cy = (y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-        using var brush = new SolidBrush(Color.FromArgb(100, 0, 255, 100));
-        g.FillRectangle(brush, rect);
-        using var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2);
-        g.DrawRectangle(pen, rect);
+        using var brush = new SolidBrush(Color.FromArgb(120, 0, 255, 100));
+        float dotSize = Math.Max(4, tileSize / 6);
+        g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
     }
 
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
