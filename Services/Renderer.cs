@@ -97,7 +97,6 @@ public class Renderer
                 // 6. ТРУБЫ
                 if (ShowPipeOverlay)
                 {
-                    // Все трубы на гриде
                     var allPipes = _pipeBuilder.GetPipes(grid);
                     
                     // Рисуем линии между соединёнными трубами
@@ -136,9 +135,8 @@ public class Renderer
     {
         if (pipes.Count == 0) return;
 
-        // Группируем трубы по типу для разных цветов
         var grouped = pipes.GroupBy(p => p.PipeType);
-        
+
         foreach (var group in grouped)
         {
             Color color = group.Key switch
@@ -149,23 +147,31 @@ public class Renderer
                 _ => Color.FromArgb(180, 150, 150, 150)
             };
 
-            var pipeDict = group.ToDictionary(p => (p.X, p.Y), p => p);
-            
-            using var pen = new Pen(color, Math.Max(2, tileSize / 10));
-
+            var pipeDict = new Dictionary<(float, float), PipeEntity>();
             foreach (var pipe in group)
             {
-                // Проверяем соседей (только те, которые есть в той же группе)
-                var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-                
+                var key = (pipe.X, pipe.Y);
+                if (!pipeDict.ContainsKey(key))
+                {
+                    pipeDict[key] = pipe;
+                }
+            }
+
+            using var pen = new Pen(color, Math.Max(2, tileSize / 10));
+
+            foreach (var pipe in pipeDict.Values)
+            {
                 float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
                 float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+                var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
 
                 foreach (var (dx, dy) in directions)
                 {
                     var key = (pipe.X + dx, pipe.Y + dy);
                     if (pipeDict.ContainsKey(key))
                     {
+                        // Используем Item1 и Item2
                         float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
                         float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
                         g.DrawLine(pen, cx, cy, nx, ny);
@@ -188,12 +194,10 @@ public class Renderer
             _ => Color.FromArgb(200, 150, 150, 150)
         };
 
-        // Точка
-        using var brush = new SolidBrush(color);
         float dotSize = Math.Max(4, tileSize / 6);
+        using var brush = new SolidBrush(color);
         g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
 
-        // Белая обводка для читаемости
         using var borderPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1);
         g.DrawEllipse(borderPen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
     }

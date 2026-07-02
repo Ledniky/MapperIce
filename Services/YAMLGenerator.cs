@@ -308,7 +308,7 @@ public static class YAMLGenerator
     }
 
     /// <summary>
-    /// Генерирует трубы из сущностей грида
+    /// Генерирует трубы из сущностей грида с определением типа (прямая, поворот, тройник, крестовина)
     /// </summary>
     private static void GeneratePipesFromEntities(StringBuilder sb, Grid grid, ref int uid)
     {
@@ -317,31 +317,35 @@ public static class YAMLGenerator
         var pipes = grid.Entities.OfType<PipeEntity>().ToList();
         if (pipes.Count == 0) return;
 
-        // Группируем трубы по типу
+        // Группируем трубы по типу (Distra, Normal, Waste)
         var grouped = pipes.GroupBy(p => p.PipeType);
 
         foreach (var group in grouped)
         {
-            // Определяем прототип для каждого типа
-            // Distra -> GasPipeStraight (слой Secondary)
-            // Normal -> GasPipeStraightAlt2 (слой Tertiary)  
-            // Waste -> GasPipeStraightAlt1 (слой Waste)
-            string proto = group.Key switch
-            {
-                "Distra" => "GasPipeStraight",
-                "Normal" => "GasPipeStraightAlt2",
-                "Waste" => "GasPipeStraightAlt1",
-                _ => "GasPipeStraight"
-            };
+            var pipeList = group.ToList();
 
-            sb.AppendLine($"- proto: {proto}");
-            sb.AppendLine("  entities:");
-
-            foreach (var pipe in group)
+            // Для каждого типа труб определяем соединения
+            foreach (var pipe in pipeList)
             {
-                float invY = -pipe.Y;
+                // Приводим float к int для поиска соседей
+                int pipeX = (int)pipe.X;
+                int pipeY = (int)pipe.Y;
+
+                // Находим соседей того же типа
+                var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
+
+                // Определяем тип трубы по количеству и направлению соседей
+                string protoType = GetPipeProto(neighbors);
+
+                // Получаем ротацию
+                float rotation = GetPipeRotation(neighbors);
+
+                sb.AppendLine($"- proto: {protoType}");
+                sb.AppendLine("  entities:");
+
+                // Используем float координаты из pipe
                 float posX = pipe.X + 0.5f;
-                float posY = invY + 0.5f;
+                float posY = -pipe.Y + 0.5f;
 
                 string posXStr = posX.ToString("0.0").Replace(',', '.');
                 string posYStr = posY.ToString("0.0").Replace(',', '.');
@@ -349,10 +353,165 @@ public static class YAMLGenerator
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
+
+                // Добавляем ротацию если есть
+                if (rotation != 0)
+                {
+                    string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
                 sb.AppendLine($"      pos: {posXStr},{posYStr}");
                 sb.AppendLine($"      parent: 2");
                 uid++;
             }
         }
     }
+
+    /// <summary>
+    /// Получает соседей для трубы
+    /// </summary>
+    private static List<(int dx, int dy)> GetNeighbors(List<PipeEntity> pipes, int x, int y)
+    {
+        var neighbors = new List<(int dx, int dy)>();
+        var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+
+        foreach (var (dx, dy) in directions)
+        {
+            if (pipes.Any(p => (int)p.X == x + dx && (int)p.Y == y + dy))
+            {
+                neighbors.Add((dx, dy));
+            }
+        }
+
+        return neighbors;
+    }
+
+    /// <summary>
+    /// Определяет прототип трубы по соседям
+    /// </summary>
+    private static string GetPipeProto(List<(int dx, int dy)> neighbors)
+    {
+        int count = neighbors.Count;
+
+        if (count == 0 || count == 1)
+        {
+            return "GasPipeStraight";
+        }
+        else if (count == 2)
+        {
+            var (dx1, dy1) = neighbors[0];
+            var (dx2, dy2) = neighbors[1];
+
+            // Проверяем, противоположны ли направления (прямая)
+            if ((dx1 == -dx2 && dy1 == -dy2) || (dx1 == dx2 && dy1 == dy2))
+            {
+                return "GasPipeStraight";
+            }
+            else
+            {
+                return "GasPipeBend";
+            }
+        }
+        else if (count == 3)
+        {
+            return "GasPipeTJunction";
+        }
+        else
+        {
+            return "GasPipeFourway";
+        }
+    }
+/// <summary>
+/// Вычисляет ротацию для трубы
+/// </summary>
+/// <summary>
+/// Вычисляет ротацию для трубы
+/// </summary>
+/// <summary>
+/// Вычисляет ротацию для трубы
+/// </summary>
+private static float GetPipeRotation(List<(int dx, int dy)> neighbors)
+{
+    if (neighbors.Count == 0) return 0;
+    
+    // Для одного соседа - прямая
+    if (neighbors.Count == 1)
+    {
+        var (dx, dy) = neighbors[0];
+        if (dx != 0) return (float)(Math.PI / 2);
+        if (dy != 0) return 0;
+    }
+    
+    // Для прямой трубы (2 соседа)
+    if (neighbors.Count == 2)
+    {
+        var (dx1, dy1) = neighbors[0];
+        var (dx2, dy2) = neighbors[1];
+        
+        // Горизонтальная прямая
+        if ((dx1 == -1 && dx2 == 1) || (dx1 == 1 && dx2 == -1))
+        {
+            return (float)(Math.PI / 2);
+        }
+        // Вертикальная прямая
+        else if ((dy1 == -1 && dy2 == 1) || (dy1 == 1 && dy2 == -1))
+        {
+            return 0;
+        }
+        // Угол (поворот)
+        else
+        {
+            bool hasUp = neighbors.Any(n => n.dy == -1);
+            bool hasDown = neighbors.Any(n => n.dy == 1);
+            bool hasLeft = neighbors.Any(n => n.dx == -1);
+            bool hasRight = neighbors.Any(n => n.dx == 1);
+            
+            if (hasRight && hasUp)  return (float)Math.PI;
+            if (hasRight && hasDown) return (float)(Math.PI / 2);
+            if (hasLeft && hasUp) return (float)(-Math.PI / 2);
+            if (hasLeft && hasDown) return 0;
+        }
+    }
+    
+    // Для тройника (3 соседа)
+    if (neighbors.Count == 3)
+    {
+        bool hasUp = neighbors.Any(n => n.dy == -1);
+        bool hasDown = neighbors.Any(n => n.dy == 1);
+        bool hasLeft = neighbors.Any(n => n.dx == -1);
+        bool hasRight = neighbors.Any(n => n.dx == 1);
+        
+        if (!hasUp) return 0;
+        if (!hasDown) return (float)Math.PI;
+        if (!hasLeft) return (float)(Math.PI / 2);
+        if (!hasRight) return (float)(-Math.PI / 2);
+    }
+    
+    // Крестовина - без ротации
+    if (neighbors.Count >= 4)
+    {
+        return 0;
+    }
+    
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
