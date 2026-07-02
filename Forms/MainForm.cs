@@ -99,32 +99,31 @@ public class MainForm : Form
     }
 
     // === UNDO/REDO ===
+// Вместо SaveState():
+private void SaveState()
+{
+    if (_map.ActiveGrid == null) return;
+    _undo.AddState(_map.ActiveGrid);
+}
 
-    private void SaveState()
-    {
-        if (_map.ActiveGrid == null) return;
-        var state = _map.ActiveGrid.Rooms.Select(r => r.Clone()).ToList();
-        _undo.AddState(state);
-    }
+// Вместо RestoreState():
+private void RestoreState(GridSnapshot snapshot)
+{
+    if (_map.ActiveGrid == null) return;
+    snapshot.RestoreTo(_map.ActiveGrid);
+    UpdateTileGrid();
+    Render();
+}
 
-    private void RestoreState(List<Room> state)
-    {
-        if (_map.ActiveGrid == null) return;
-        _map.ActiveGrid.Rooms.Clear();
-        foreach (var room in state)
-            _map.ActiveGrid.Rooms.Add(room);
-        UpdateTileGrid();
-        Render();
-    }
-
+    // В ProcessCmdKey:
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == (Keys.Control | Keys.Z))
         {
             if (_undo.CanUndo)
             {
-                var state = _undo.Undo();
-                RestoreState(state);
+                var snapshot = _undo.Undo();
+                RestoreState(snapshot);
             }
             return true;
         }
@@ -133,8 +132,8 @@ public class MainForm : Form
         {
             if (_undo.CanRedo)
             {
-                var state = _undo.Redo();
-                RestoreState(state);
+                var snapshot = _undo.Redo();
+                RestoreState(snapshot);
             }
             return true;
         }
