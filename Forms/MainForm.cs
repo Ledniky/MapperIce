@@ -507,7 +507,7 @@ public class MainForm : Form
         };
         _toolPanel.Controls.Add(_typeLabel);
         y += 25 + 2;
-        
+
         _btnCreateRoom = new Button
         {
             Text = "🟦 Создать",
@@ -731,7 +731,7 @@ public class MainForm : Form
         _toolPanel.Controls.Add(_btnDelete);
         y += 40 + 2;
 
-        
+
 
         _toolPanel.Controls.Add(new Label
         {
@@ -1552,10 +1552,11 @@ public class MainForm : Form
                 }
             }
 
+
             // === ДВЕРЬ ОБЫЧНАЯ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor, _snapToGrid))
                 {
                     SaveState();
                     UpdateTileGrid();
@@ -1566,7 +1567,7 @@ public class MainForm : Form
             // === ДВЕРЬ СТЕКЛЯННАЯ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor, _snapToGrid))
                 {
                     SaveState();
                     UpdateTileGrid();
