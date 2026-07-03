@@ -8,7 +8,7 @@ public static class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
-    public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings> pipeLayers)
+    public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings>? pipeLayers, Dictionary<string, AlarmSettings> alarmSettings)
     {
         if (grid == null)
             throw new ArgumentNullException(nameof(grid));
@@ -115,6 +115,7 @@ public static class YAMLGenerator
         GenerateWallsFromTileGrid(sb, tileGrid, tileBuilder, ref uid);
         GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
         GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
+        GenerateAlarms(sb, grid, ref uid, alarmSettings);
 
         return sb.ToString();
     }
@@ -274,11 +275,48 @@ public static class YAMLGenerator
         }
     }
 
+private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings)
+{
+    foreach (var entity in grid.Entities)
+    {
+        if (entity is AirAlarmEntity airAlarm)
+        {
+            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+            GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid);
+        }
+        else if (entity is FireAlarmEntity fireAlarm)
+        {
+            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+            GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid);
+        }
+    }
+}
+
+private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
+{
+    float posX = x + 0.5f;
+    float posY = -y + 0.5f;
+    sb.AppendLine($"- proto: {protoId}");
+    sb.AppendLine("  entities:");
+    sb.AppendLine($"  - uid: {uid}");
+    sb.AppendLine($"    components:");
+    sb.AppendLine($"    - type: Transform");
+    if (rotation != 0)
+    {
+        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+        sb.AppendLine($"      rot: {rotStr} rad");
+    }
+    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+    sb.AppendLine($"      parent: 2");
+    sb.AppendLine($"    - type: Fixtures");
+    sb.AppendLine($"      fixtures: {{}}");
+    uid++;
+}
     private static void GeneratePipesFromEntities(
         StringBuilder sb,
         Grid grid,
         ref int uid,
-        Dictionary<string, PipeSettings> pipeLayers)
+        Dictionary<string, PipeSettings>? pipeLayers)
     {
         if (grid == null) return;
 
@@ -299,8 +337,8 @@ public static class YAMLGenerator
                 _ => ""
             };
 
-            bool hasColor = pipeLayers != null &&
-                            pipeLayers.TryGetValue(group.Key, out var settings) &&
+            bool hasColor = pipeLayers != null && 
+                            pipeLayers.TryGetValue(group.Key, out var settings) && 
                             settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
@@ -318,7 +356,6 @@ public static class YAMLGenerator
             // Сначала генерируем все трубы, кроме концов
             foreach (var pipe in pipeList)
             {
-                // Пропускаем концы - они будут заменены на вентиляции
                 if (endpoints.Contains(pipe)) continue;
 
                 int pipeX = (int)pipe.X;
@@ -377,7 +414,7 @@ public static class YAMLGenerator
                 }
                 else
                 {
-                    continue; // Normal - без вентиляций
+                    continue;
                 }
 
                 float posX = endpoint.X + 0.5f;
@@ -386,18 +423,16 @@ public static class YAMLGenerator
                 string posXStr = posX.ToString("0.0").Replace(',', '.');
                 string posYStr = posY.ToString("0.0").Replace(',', '.');
 
-                // Получаем направление соседа
                 var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
                 float ventRotation = 0;
-
+                
                 if (neighbors.Count > 0)
                 {
                     var (dx, dy) = neighbors[0];
-                    
-                    if (dx == 1) ventRotation = (float)(Math.PI / 2);         // Сосед справа → смотрим влево   (float)(Math.PI / 2);
-                    else if (dx == -1) ventRotation = (float)(-Math.PI / 2);                    // Сосед слева → смотрим вправо    (float)(-Math.PI / 2);
-                    else if (dy == 1) ventRotation = 0;      // Сосед снизу → смотрим вверх     = 0;     
-                    else if (dy == -1) ventRotation = (float)Math.PI;  // Сосед сверху → смотрим вниз      (float)Math.PI;          
+                    if (dx == 1) ventRotation = (float)Math.PI;
+                    else if (dx == -1) ventRotation = 0;
+                    else if (dy == 1) ventRotation = (float)(-Math.PI / 2);
+                    else if (dy == -1) ventRotation = (float)(Math.PI / 2);
                 }
 
                 sb.AppendLine($"- proto: {ventProto}");
@@ -429,24 +464,7 @@ public static class YAMLGenerator
         }
     }
 
-
-    private static float GetVentRotation(List<PipeEntity> pipes, int x, int y)
-    {
-        var neighbors = GetNeighbors(pipes, x, y);
-        if (neighbors.Count == 0) return 0;
-
-        var (dx, dy) = neighbors[0];
-
-        // Вентиляция смотрит в сторону соседа
-        if (dx == 1) return 0;          // Вправо
-        if (dx == -1) return (float)Math.PI; // Влево
-        if (dy == 1) return (float)(Math.PI / 2); // Вниз
-        if (dy == -1) return (float)(-Math.PI / 2); // Вверх
-
-        return 0;
-    }
-
-    private static string GetPipeHexColor(Dictionary<string, PipeSettings> pipeLayers, string layer)
+    private static string GetPipeHexColor(Dictionary<string, PipeSettings>? pipeLayers, string layer)
     {
         if (pipeLayers != null && pipeLayers.TryGetValue(layer, out var settings))
         {

@@ -53,11 +53,15 @@ public class MainForm : Form
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
     private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
-    private string _currentPipeLayer = "Distra";
     private Form? _pipeSettingsForm = null;
     private Button _btnPipeSettings = null!;
     private bool _snapToGrid = true;
-
+    private Dictionary<string, AlarmSettings> _alarmSettings = new(AlarmSettings.DefaultAlarms);
+    private Form? _alarmSettingsForm = null;
+    private Button _btnAlarmSettings = null!;
+    private string _currentPipeLayer = "Distra";
+    private Button _btnAirAlarm = null!;
+    private Button _btnFireAlarm = null!; 
     public MainForm()
     {
         Text = "MapperIce";
@@ -709,6 +713,96 @@ public class MainForm : Form
         };
 
         _toolPanel.Controls.Add(pipePanel);
+        y += 40 + 2;
+
+
+
+        // === СИГНАЛИЗАЦИЯ ===
+        var alarmLabel = new Label
+        {
+            Text = "Сигнализация:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(alarmLabel);
+        y += 20 + 2;
+
+        var alarmPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        // 3 кнопки одинаковой ширины
+        int alarmButtonWidth = alarmPanel.Width / 3;
+
+        // Кнопка AirAlarm
+        _btnAirAlarm = new Button
+        {
+            Location = new Point(0, 0),
+            Width = alarmButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Text = "🔊",
+            Font = new Font("Segoe UI", 14)
+        };
+        _btnAirAlarm.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.AirAlarm);
+        };
+        alarmPanel.Controls.Add(_btnAirAlarm);
+
+        // Кнопка FireAlarm
+        _btnFireAlarm = new Button
+        {
+            Location = new Point(alarmButtonWidth, 0),
+            Width = alarmButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Text = "🔥",
+            Font = new Font("Segoe UI", 14)
+        };
+        _btnFireAlarm.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.FireAlarm);
+        };
+        alarmPanel.Controls.Add(_btnFireAlarm);
+
+        // Кнопка настроек сигнализации
+        _btnAlarmSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(alarmButtonWidth * 2, 0),
+            Width = alarmButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12)
+        };
+        _btnAlarmSettings.Click += (s, e) => ShowAlarmSettingsDialog();
+        alarmPanel.Controls.Add(_btnAlarmSettings);
+
+        alarmPanel.Resize += (s, e) =>
+        {
+            int bw = alarmPanel.Width / 3;
+            _btnAirAlarm.Width = bw - 1;
+            _btnFireAlarm.Location = new Point(bw, 0);
+            _btnFireAlarm.Width = bw - 1;
+            _btnAlarmSettings.Location = new Point(bw * 2, 0);
+            _btnAlarmSettings.Width = bw - 1;
+        };
+
+        _toolPanel.Controls.Add(alarmPanel);
         y += 40 + 2;
 
 
@@ -1552,7 +1646,6 @@ public class MainForm : Form
                 }
             }
 
-
             // === ДВЕРЬ ОБЫЧНАЯ ===
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
@@ -1599,9 +1692,24 @@ public class MainForm : Form
                     }
                 }
             }
+
+            // === СИГНАЛИЗАЦИЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
+            {
+                AddAirAlarm(_map.ActiveGrid, tileX, tileY);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+            {
+                AddFireAlarm(_map.ActiveGrid, tileX, tileY);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
         }
     }
-
 
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
@@ -1735,7 +1843,7 @@ public class MainForm : Form
             try
             {
                 // Передаём _pipeLayers
-                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers);
+                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings);
                 File.WriteAllText(dialog.FileName, yaml);
                 MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
             }
@@ -2072,6 +2180,141 @@ public class MainForm : Form
             return settings.HexColor;
         return PipeSettings.DefaultLayers.TryGetValue(layer, out var def) ? def.HexColor : "#FFFFFFFF";
     }
+
+    private void AddAirAlarm(Grid grid, int x, int y)
+    {
+        if (grid == null) return;
+        if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
+
+        float rotation = GetAlarmRotation(grid, x, y);
+        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = rotation });
+    }
+
+    private void AddFireAlarm(Grid grid, int x, int y)
+    {
+        if (grid == null) return;
+        if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
+
+        float rotation = GetAlarmRotation(grid, x, y);
+        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = rotation });
+    }
+
+    private float GetAlarmRotation(Grid grid, int x, int y)
+    {
+        var dirs = new[] { (0, -1, 0f), (0, 1, (float)Math.PI), (-1, 0, (float)(Math.PI / 2)), (1, 0, (float)(-Math.PI / 2)) };
+
+        foreach (var (dx, dy, rot) in dirs)
+        {
+            int cx = x + dx, cy = y + dy;
+            bool hasWall = grid.Rooms.Any(r =>
+                cx >= r.X && cx < r.X + r.Width &&
+                cy >= r.Y && cy < r.Y + r.Height &&
+                (cx == r.X || cx == r.X + r.Width - 1 ||
+                 cy == r.Y || cy == r.Y + r.Height - 1));
+            if (hasWall) return rot;
+        }
+        return 0;
+    }
+
+private void ShowAlarmSettingsDialog()
+{
+    if (_alarmSettingsForm != null && !_alarmSettingsForm.IsDisposed)
+    {
+        _alarmSettingsForm.Close();
+        _alarmSettingsForm = null;
+        return;
+    }
+
+    _alarmSettingsForm = new Form
+    {
+        Text = "Настройки сигнализации",
+        Size = new Size(450, 300),
+        StartPosition = FormStartPosition.CenterParent,
+        FormBorderStyle = FormBorderStyle.FixedDialog,
+        ShowInTaskbar = false,
+        MaximizeBox = false,
+        MinimizeBox = false
+    };
+    _alarmSettingsForm.Owner = this;
+
+    var panel = new TableLayoutPanel
+    {
+        Dock = DockStyle.Fill,
+        Padding = new Padding(10),
+        RowCount = 3,
+        ColumnCount = 2,
+        AutoSize = true
+    };
+
+    panel.Controls.Add(new Label { Text = "Тип", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
+    panel.Controls.Add(new Label { Text = "ID прототипа", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
+
+    int row = 1;
+    var textBoxes = new Dictionary<string, TextBox>();
+
+    foreach (var alarm in _alarmSettings.Values)
+    {
+        panel.Controls.Add(new Label { Text = alarm.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+        
+        var txtId = new TextBox
+        {
+            Text = alarm.Id,
+            Width = 150,
+            Tag = alarm.DisplayName
+        };
+        txtId.TextChanged += (s, e) =>
+        {
+            if (txtId.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
+            {
+                settings.Id = txtId.Text;
+            }
+        };
+        panel.Controls.Add(txtId, 1, row);
+        textBoxes[alarm.DisplayName] = txtId;
+        row++;
+    }
+
+    var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+    
+    var btnOk = new Button
+    {
+        Text = "OK",
+        Location = new Point(btnPanel.Width - 100, 10),
+        Width = 80,
+        Height = 30,
+        Anchor = AnchorStyles.Top | AnchorStyles.Right
+    };
+    btnOk.Click += (s, e) => _alarmSettingsForm?.Close();
+    btnPanel.Controls.Add(btnOk);
+
+    var btnCancel = new Button
+    {
+        Text = "Отмена",
+        Location = new Point(btnPanel.Width - 190, 10),
+        Width = 80,
+        Height = 30,
+        Anchor = AnchorStyles.Top | AnchorStyles.Right
+    };
+    btnCancel.Click += (s, e) =>
+    {
+        foreach (var alarm in _alarmSettings.Values)
+        {
+            if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
+            {
+                alarm.Id = defaultSettings.Id;
+            }
+        }
+        _alarmSettingsForm?.Close();
+    };
+    btnPanel.Controls.Add(btnCancel);
+
+    _alarmSettingsForm.Controls.Add(panel);
+    _alarmSettingsForm.Controls.Add(btnPanel);
+
+    _alarmSettingsForm.FormClosed += (s, e) => { _alarmSettingsForm = null; };
+    _alarmSettingsForm.Show(this);
+}
+
 }
 
 

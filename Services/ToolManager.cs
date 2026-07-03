@@ -14,7 +14,9 @@ public class ToolManager
         DoorGlass,
         PipeDistra,
         PipeWaste,
-        PipeNormal
+        PipeNormal,
+        AirAlarm,
+        FireAlarm,
     }
 
     private Tool _currentTool = Tool.None;
