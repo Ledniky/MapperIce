@@ -126,50 +126,51 @@ public static class YAMLGenerator
         return grid.Entities.OfType<PipeEntity>().Count();
     }
 
-    private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
+private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
+{
+    var chunks = new Dictionary<(int x, int y), int[]>();
+
+    // Полы, стены и двери дают тайлы (все они — тайлы в TileGrid)
+    var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
+    var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
+    var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
+    var allTiles = floorTiles.Concat(wallTiles).Concat(doorTiles);
+
+    foreach (var tile in allTiles)
     {
-        var chunks = new Dictionary<(int x, int y), int[]>();
+        int x = tile.X;
+        int y = -tile.Y; // Инвертируем Y как в SS14
 
-        var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
-        var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-        var allTiles = floorTiles.Concat(wallTiles);
+        int cx = x / CHUNK_SIZE;
+        int cy = y / CHUNK_SIZE;
+        int lx = x % CHUNK_SIZE;
+        int ly = y % CHUNK_SIZE;
 
-        foreach (var tile in allTiles)
+        if (ly < 0)
         {
-            int x = tile.X;
-            int y = -tile.Y;
-
-            int cx = x / CHUNK_SIZE;
-            int cy = y / CHUNK_SIZE;
-            int lx = x % CHUNK_SIZE;
-            int ly = y % CHUNK_SIZE;
-
-            if (ly < 0)
-            {
-                ly += CHUNK_SIZE;
-                cy--;
-            }
-
-            var key = (cx, cy);
-            if (!chunks.ContainsKey(key))
-            {
-                var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
-                chunks[key] = tiles;
-            }
-
-            int index = ly * CHUNK_SIZE + lx;
-            chunks[key][index] = 1;
+            ly += CHUNK_SIZE;
+            cy--;
         }
 
-        var result = new Dictionary<(int x, int y), string>();
-        foreach (var kvp in chunks)
+        var key = (cx, cy);
+        if (!chunks.ContainsKey(key))
         {
-            result[kvp.Key] = EncodeTiles(kvp.Value);
+            var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
+            chunks[key] = tiles;
         }
 
-        return result;
+        int index = ly * CHUNK_SIZE + lx;
+        chunks[key][index] = 1; // Plating
     }
 
+    var result = new Dictionary<(int x, int y), string>();
+    foreach (var kvp in chunks)
+    {
+        result[kvp.Key] = EncodeTiles(kvp.Value);
+    }
+
+    return result;
+}
     private static string EncodeTiles(int[] tileIds)
     {
         var bytes = new List<byte>();

@@ -20,6 +20,10 @@ public class TileData
     public int RoomUid { get; set; } = -1;
     public string? PipeType { get; set; }
     
+    // Для хранения информации о поле под дверью
+    public bool HasFloorUnder { get; set; } = false;
+    public string? FloorProtoUnder { get; set; } = null;
+    
     public bool IsWall => Content == TileContent.Wall;
     public bool IsFloor => Content == TileContent.Floor;
     public bool IsDoor => Content == TileContent.Door;
@@ -36,7 +40,9 @@ public class TileData
             ProtoId = ProtoId,
             RoomType = RoomType,
             RoomUid = RoomUid,
-            PipeType = PipeType
+            PipeType = PipeType,
+            HasFloorUnder = HasFloorUnder,
+            FloorProtoUnder = FloorProtoUnder
         };
     }
 }

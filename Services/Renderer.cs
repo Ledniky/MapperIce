@@ -47,10 +47,12 @@ public class Renderer
 
             int tileSize = (int)(Constants.TILE_SIZE * scale);
 
+            // В Renderer.cs - метод Render, часть с foreach (var grid in map.Grids)
+
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
-                
+
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
@@ -65,20 +67,37 @@ public class Renderer
                     DrawFloorTile(g, tile, tileSize, viewOffset, grid.Position, opacity);
                 }
 
-                // 3. Стены
+                // 2.5. Пол под дверями (если есть)
+                foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+                {
+                    if (tile.HasFloorUnder)
+                    {
+                        // Создаём временный TileData для отрисовки пола
+                        var floorTile = new TileData
+                        {
+                            X = tile.X,
+                            Y = tile.Y,
+                            Content = TileContent.Floor,
+                            ProtoId = tile.FloorProtoUnder ?? "Plating"
+                        };
+                        DrawFloorTile(g, floorTile, tileSize, viewOffset, grid.Position, opacity);
+                    }
+                }
+
+                // 3. Стены (тайлы для рендера)
                 foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
                 {
                     string bestWall = _tileBuilder.GetBestWallAt(tileGrid, tile.X, tile.Y);
                     DrawWallAt(g, bestWall, tile.X, tile.Y, tileSize, viewOffset, grid.Position, opacity);
                 }
 
-                // 4. Двери
+                // 4. Двери (тайлы для рендера)
                 foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
                 {
                     DrawDoorAt(g, tile, tileSize, viewOffset, grid.Position);
                 }
 
-                // 4.5. ПОЖАРНЫЕ ШЛЮЗЫ
+                // 4.5. ПОЖАРНЫЕ ШЛЮЗЫ (структуры)
                 foreach (var entity in grid.Entities)
                 {
                     if (entity is FirelockEntity firelock)
@@ -103,13 +122,13 @@ public class Renderer
                     DrawRoomLine(g, currentRoom, tileSize, viewOffset, grid.Position, true, 1.0f);
                 }
 
-                // 6. ТРУБЫ
+                // 6. ТРУБЫ (структуры)
                 if (ShowPipeOverlay)
                 {
                     var allPipes = _pipeBuilder.GetPipes(grid);
-                    
+
                     DrawPipeLines(g, allPipes, tileSize, viewOffset, grid.Position);
-                    
+
                     foreach (var pipe in allPipes)
                     {
                         DrawPipeDot(g, pipe, tileSize, viewOffset, grid.Position);
@@ -119,7 +138,7 @@ public class Renderer
                     {
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
-                        
+
                         var path = CalculatePipePath(start, end);
                         foreach (var pos in path)
                         {
@@ -128,7 +147,7 @@ public class Renderer
                     }
                 }
 
-                // 7. СИГНАЛИЗАЦИЯ (AirAlarm, FireAlarm)
+                // 7. СИГНАЛИЗАЦИЯ (структуры)
                 foreach (var entity in grid.Entities)
                 {
                     if (entity is AirAlarmEntity airAlarm)
