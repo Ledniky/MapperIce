@@ -56,7 +56,7 @@ public class MainForm : Form
     private string _currentPipeLayer = "Distra";
     private Form? _pipeSettingsForm = null;
     private Button _btnPipeSettings = null!;
-
+    private bool _snapToGrid = true;
 
     public MainForm()
     {
@@ -495,6 +495,19 @@ public class MainForm : Form
         _toolPanel.Controls.Add(title);
         y += 35 + 2;
 
+        _typeLabel = new Label
+        {
+            Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}",
+            Location = new Point(leftMargin, y),
+            Width = contentWidth,
+            Height = 25,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.DarkGray,
+            Font = new Font("Arial", 8)
+        };
+        _toolPanel.Controls.Add(_typeLabel);
+        y += 25 + 2;
+        
         _btnCreateRoom = new Button
         {
             Text = "🟦 Создать",
@@ -584,7 +597,7 @@ public class MainForm : Form
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
-        
+
         // ТРУБЫ
         var pipeLabel = new Label
         {
@@ -599,104 +612,104 @@ public class MainForm : Form
         _toolPanel.Controls.Add(pipeLabel);
         y += 20 + 2;
 
-var pipePanel = new Panel
-{
-    Location = new Point(leftMargin + 2, y),
-    Width = contentWidth - 4,
-    Height = 40,
-    BackColor = Color.Transparent
-};
+        var pipePanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
 
-// 4 кнопки одинаковой ширины
-int buttonWidth = pipePanel.Width / 4;
+        // 4 кнопки одинаковой ширины
+        int buttonWidth = pipePanel.Width / 4;
 
-_btnPipeDistra = new Button
-{
-    Location = new Point(0, 0),
-    Width = buttonWidth - 1,
-    Height = 40,
-    FlatStyle = FlatStyle.Flat,
-    BackColor = Color.White,
-    TextAlign = ContentAlignment.MiddleCenter,
-    Tag = "Distra",
-    ImageAlign = ContentAlignment.MiddleCenter,
-    Text = "D",
-    Padding = new Padding(0)
-};
-_btnPipeDistra.Click += (s, e) =>
-{
-    _currentPipeLayer = "Distra";
-    _toolManager.SetTool(ToolManager.Tool.PipeDistra);
-};
-pipePanel.Controls.Add(_btnPipeDistra);
+        _btnPipeDistra = new Button
+        {
+            Location = new Point(0, 0),
+            Width = buttonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Distra",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "D",
+            Padding = new Padding(0)
+        };
+        _btnPipeDistra.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Distra";
+            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
+        };
+        pipePanel.Controls.Add(_btnPipeDistra);
 
-_btnPipeNormal = new Button
-{
-    Location = new Point(buttonWidth, 0),
-    Width = buttonWidth - 1,
-    Height = 40,
-    FlatStyle = FlatStyle.Flat,
-    BackColor = Color.White,
-    TextAlign = ContentAlignment.MiddleCenter,
-    Tag = "Normal",
-    ImageAlign = ContentAlignment.MiddleCenter,
-    Text = "N",
-    Padding = new Padding(0)
-};
-_btnPipeNormal.Click += (s, e) =>
-{
-    _currentPipeLayer = "Normal";
-    _toolManager.SetTool(ToolManager.Tool.PipeNormal);
-};
-pipePanel.Controls.Add(_btnPipeNormal);
+        _btnPipeNormal = new Button
+        {
+            Location = new Point(buttonWidth, 0),
+            Width = buttonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Normal",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "N",
+            Padding = new Padding(0)
+        };
+        _btnPipeNormal.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Normal";
+            _toolManager.SetTool(ToolManager.Tool.PipeNormal);
+        };
+        pipePanel.Controls.Add(_btnPipeNormal);
 
-_btnPipeWaste = new Button
-{
-    Location = new Point(buttonWidth * 2, 0),
-    Width = buttonWidth - 1,
-    Height = 40,
-    FlatStyle = FlatStyle.Flat,
-    BackColor = Color.White,
-    TextAlign = ContentAlignment.MiddleCenter,
-    Tag = "Waste",
-    ImageAlign = ContentAlignment.MiddleCenter,
-    Text = "W",
-    Padding = new Padding(0)
-};
-_btnPipeWaste.Click += (s, e) =>
-{
-    _currentPipeLayer = "Waste";
-    _toolManager.SetTool(ToolManager.Tool.PipeWaste);
-};
-pipePanel.Controls.Add(_btnPipeWaste);
+        _btnPipeWaste = new Button
+        {
+            Location = new Point(buttonWidth * 2, 0),
+            Width = buttonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Waste",
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "W",
+            Padding = new Padding(0)
+        };
+        _btnPipeWaste.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Waste";
+            _toolManager.SetTool(ToolManager.Tool.PipeWaste);
+        };
+        pipePanel.Controls.Add(_btnPipeWaste);
 
-_btnPipeSettings = new Button
-{
-    Text = "⚙",
-    Location = new Point(buttonWidth * 3, 0),
-    Width = buttonWidth - 1,
-    Height = 40,
-    FlatStyle = FlatStyle.Flat,
-    BackColor = Color.White,
-    Font = new Font("Segoe UI", 12)
-};
-_btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
-pipePanel.Controls.Add(_btnPipeSettings);
+        _btnPipeSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(buttonWidth * 3, 0),
+            Width = buttonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12)
+        };
+        _btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
+        pipePanel.Controls.Add(_btnPipeSettings);
 
-pipePanel.Resize += (s, e) =>
-{
-    int bw = pipePanel.Width / 4;
-    _btnPipeDistra.Width = bw - 1;
-    _btnPipeNormal.Location = new Point(bw, 0);
-    _btnPipeNormal.Width = bw - 1;
-    _btnPipeWaste.Location = new Point(bw * 2, 0);
-    _btnPipeWaste.Width = bw - 1;
-    _btnPipeSettings.Location = new Point(bw * 3, 0);
-    _btnPipeSettings.Width = bw - 1;
-};
+        pipePanel.Resize += (s, e) =>
+        {
+            int bw = pipePanel.Width / 4;
+            _btnPipeDistra.Width = bw - 1;
+            _btnPipeNormal.Location = new Point(bw, 0);
+            _btnPipeNormal.Width = bw - 1;
+            _btnPipeWaste.Location = new Point(bw * 2, 0);
+            _btnPipeWaste.Width = bw - 1;
+            _btnPipeSettings.Location = new Point(bw * 3, 0);
+            _btnPipeSettings.Width = bw - 1;
+        };
 
-_toolPanel.Controls.Add(pipePanel);
-y += 40 + 2;
+        _toolPanel.Controls.Add(pipePanel);
+        y += 40 + 2;
 
 
 
@@ -718,18 +731,7 @@ y += 40 + 2;
         _toolPanel.Controls.Add(_btnDelete);
         y += 40 + 2;
 
-        _typeLabel = new Label
-        {
-            Text = $"Тип: {_roomTypeManager.SelectedType}  Приоритет: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}",
-            Location = new Point(leftMargin, y),
-            Width = contentWidth,
-            Height = 25,
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.DarkGray,
-            Font = new Font("Arial", 8)
-        };
-        _toolPanel.Controls.Add(_typeLabel);
-        y += 25 + 2;
+        
 
         _toolPanel.Controls.Add(new Label
         {
@@ -1281,7 +1283,7 @@ y += 40 + 2;
         {
             Text = "🗺️",
             Location = new Point(0, 7),
-            Width = 35,
+            Width = 40,
             Height = 40,
             BackColor = Color.LightGreen,
             FlatStyle = FlatStyle.Flat,
@@ -1292,7 +1294,7 @@ y += 40 + 2;
         {
             _hideRoomOverlay = !_hideRoomOverlay;
             btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
-            btnToggleOverlay.Text = _hideRoomOverlay ? "🚫" : "🗺️";
+            btnToggleOverlay.Text = _hideRoomOverlay ? "❌" : "🗺️";
             Render();
         };
         panel.Controls.Add(btnToggleOverlay);
@@ -1301,8 +1303,8 @@ y += 40 + 2;
         var btnTogglePipe = new Button
         {
             Text = "🔧",
-            Location = new Point(40, 7),
-            Width = 35,
+            Location = new Point(45, 7),
+            Width = 40,
             Height = 40,
             BackColor = Color.LightGreen,
             FlatStyle = FlatStyle.Flat,
@@ -1313,10 +1315,32 @@ y += 40 + 2;
         {
             _showPipeOverlay = !_showPipeOverlay;
             btnTogglePipe.BackColor = _showPipeOverlay ? Color.LightGreen : Color.LightGray;
-            btnTogglePipe.Text = _showPipeOverlay ? "🔧" : "🚫";
+            btnTogglePipe.Text = _showPipeOverlay ? "🔧" : "❌";
             Render();
         };
         panel.Controls.Add(btnTogglePipe);
+
+
+        // Кнопка магнита (привязка к сетке)
+        var btnSnap = new Button
+        {
+            Text = "🧲",
+            Location = new Point(90, 7),
+            Width = 40,
+            Height = 40,
+            BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 10),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnSnap.Click += (s, e) =>
+        {
+            _snapToGrid = !_snapToGrid;
+            btnSnap.BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray;
+            btnSnap.Text = _snapToGrid ? "🧲" : "❌";
+            Render();
+        };
+        panel.Controls.Add(btnSnap);
 
         Controls.Add(panel);
     }
@@ -1870,7 +1894,7 @@ y += 40 + 2;
         return Color.FromArgb(200, 230, 230, 230);
     }
 
-private void ShowPipeSettingsDialog()
+    private void ShowPipeSettingsDialog()
     {
         if (_pipeSettingsForm != null && !_pipeSettingsForm.IsDisposed)
         {
@@ -1912,10 +1936,10 @@ private void ShowPipeSettingsDialog()
         foreach (var layer in _pipeLayers.Keys)
         {
             var settings = _pipeLayers[layer];
-            
+
             // Название слоя
             panel.Controls.Add(new Label { Text = settings.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
-            
+
             // Кнопка выбора цвета
             var btnColor = new Button
             {
@@ -1967,7 +1991,7 @@ private void ShowPipeSettingsDialog()
 
         // Кнопки OK и Cancel
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
-        
+
         var btnOk = new Button
         {
             Text = "OK",
@@ -2020,13 +2044,13 @@ private void ShowPipeSettingsDialog()
             var color = _pipeLayers.GetValueOrDefault("Distra")?.Color ?? Color.FromArgb(180, 100, 200, 255);
             _btnPipeDistra.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeDistra ? Color.LightBlue : Color.White;
         }
-        
+
         if (_btnPipeNormal != null)
         {
             var color = _pipeLayers.GetValueOrDefault("Normal")?.Color ?? Color.FromArgb(180, 200, 200, 200);
             _btnPipeNormal.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ? Color.LightBlue : Color.White;
         }
-        
+
         if (_btnPipeWaste != null)
         {
             var color = _pipeLayers.GetValueOrDefault("Waste")?.Color ?? Color.FromArgb(180, 255, 150, 150);
