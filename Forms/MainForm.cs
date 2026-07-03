@@ -52,6 +52,11 @@ public class MainForm : Form
     private CancellationTokenSource? _searchCts;
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
+    private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
+    private string _currentPipeLayer = "Distra";
+    private Form? _pipeSettingsForm = null;
+    private Button _btnPipeSettings = null!;
+
 
     public MainForm()
     {
@@ -99,21 +104,21 @@ public class MainForm : Form
     }
 
     // === UNDO/REDO ===
-// Вместо SaveState():
-private void SaveState()
-{
-    if (_map.ActiveGrid == null) return;
-    _undo.AddState(_map.ActiveGrid);
-}
+    // Вместо SaveState():
+    private void SaveState()
+    {
+        if (_map.ActiveGrid == null) return;
+        _undo.AddState(_map.ActiveGrid);
+    }
 
-// Вместо RestoreState():
-private void RestoreState(GridSnapshot snapshot)
-{
-    if (_map.ActiveGrid == null) return;
-    snapshot.RestoreTo(_map.ActiveGrid);
-    UpdateTileGrid();
-    Render();
-}
+    // Вместо RestoreState():
+    private void RestoreState(GridSnapshot snapshot)
+    {
+        if (_map.ActiveGrid == null) return;
+        snapshot.RestoreTo(_map.ActiveGrid);
+        UpdateTileGrid();
+        Render();
+    }
 
     // В ProcessCmdKey:
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -579,6 +584,7 @@ private void RestoreState(GridSnapshot snapshot)
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
+        
         // ТРУБЫ
         var pipeLabel = new Label
         {
@@ -593,83 +599,106 @@ private void RestoreState(GridSnapshot snapshot)
         _toolPanel.Controls.Add(pipeLabel);
         y += 20 + 2;
 
-        var pipePanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 40,
-            BackColor = Color.Transparent
-        };
+var pipePanel = new Panel
+{
+    Location = new Point(leftMargin + 2, y),
+    Width = contentWidth - 4,
+    Height = 40,
+    BackColor = Color.Transparent
+};
 
-        _btnPipeDistra = new Button
-        {
-            Location = new Point(0, 0),
-            Width = (pipePanel.Width / 3) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Distra",
-            ImageAlign = ContentAlignment.MiddleCenter,
-            Text = "",
-            Padding = new Padding(0)
-        };
-        _btnPipeDistra.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
-        };
-        pipePanel.Controls.Add(_btnPipeDistra);
+// 4 кнопки одинаковой ширины
+int buttonWidth = pipePanel.Width / 4;
 
-        _btnPipeWaste = new Button
-        {
-            Location = new Point((pipePanel.Width / 3) + 1, 0),
-            Width = (pipePanel.Width / 3) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Waste",
-            ImageAlign = ContentAlignment.MiddleCenter,
-            Text = "",
-            Padding = new Padding(0)
-        };
-        _btnPipeWaste.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.PipeWaste);
-        };
-        pipePanel.Controls.Add(_btnPipeWaste);
+_btnPipeDistra = new Button
+{
+    Location = new Point(0, 0),
+    Width = buttonWidth - 1,
+    Height = 40,
+    FlatStyle = FlatStyle.Flat,
+    BackColor = Color.White,
+    TextAlign = ContentAlignment.MiddleCenter,
+    Tag = "Distra",
+    ImageAlign = ContentAlignment.MiddleCenter,
+    Text = "D",
+    Padding = new Padding(0)
+};
+_btnPipeDistra.Click += (s, e) =>
+{
+    _currentPipeLayer = "Distra";
+    _toolManager.SetTool(ToolManager.Tool.PipeDistra);
+};
+pipePanel.Controls.Add(_btnPipeDistra);
 
-        _btnPipeNormal = new Button
-        {
-            Location = new Point(((pipePanel.Width / 3) * 2) + 2, 0),
-            Width = (pipePanel.Width / 3) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Normal",
-            ImageAlign = ContentAlignment.MiddleCenter,
-            Text = "",
-            Padding = new Padding(0)
-        };
-        _btnPipeNormal.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.PipeNormal);
-        };
-        pipePanel.Controls.Add(_btnPipeNormal);
+_btnPipeNormal = new Button
+{
+    Location = new Point(buttonWidth, 0),
+    Width = buttonWidth - 1,
+    Height = 40,
+    FlatStyle = FlatStyle.Flat,
+    BackColor = Color.White,
+    TextAlign = ContentAlignment.MiddleCenter,
+    Tag = "Normal",
+    ImageAlign = ContentAlignment.MiddleCenter,
+    Text = "N",
+    Padding = new Padding(0)
+};
+_btnPipeNormal.Click += (s, e) =>
+{
+    _currentPipeLayer = "Normal";
+    _toolManager.SetTool(ToolManager.Tool.PipeNormal);
+};
+pipePanel.Controls.Add(_btnPipeNormal);
 
-        pipePanel.Resize += (s, e) =>
-        {
-            int thirdWidth = pipePanel.Width / 3;
-            _btnPipeDistra.Width = thirdWidth - 1;
-            _btnPipeWaste.Location = new Point(thirdWidth + 1, 0);
-            _btnPipeWaste.Width = thirdWidth - 1;
-            _btnPipeNormal.Location = new Point((thirdWidth * 2) + 2, 0);
-            _btnPipeNormal.Width = thirdWidth - 1;
-        };
+_btnPipeWaste = new Button
+{
+    Location = new Point(buttonWidth * 2, 0),
+    Width = buttonWidth - 1,
+    Height = 40,
+    FlatStyle = FlatStyle.Flat,
+    BackColor = Color.White,
+    TextAlign = ContentAlignment.MiddleCenter,
+    Tag = "Waste",
+    ImageAlign = ContentAlignment.MiddleCenter,
+    Text = "W",
+    Padding = new Padding(0)
+};
+_btnPipeWaste.Click += (s, e) =>
+{
+    _currentPipeLayer = "Waste";
+    _toolManager.SetTool(ToolManager.Tool.PipeWaste);
+};
+pipePanel.Controls.Add(_btnPipeWaste);
 
-        _toolPanel.Controls.Add(pipePanel);
-        y += 40 + 2;
+_btnPipeSettings = new Button
+{
+    Text = "⚙",
+    Location = new Point(buttonWidth * 3, 0),
+    Width = buttonWidth - 1,
+    Height = 40,
+    FlatStyle = FlatStyle.Flat,
+    BackColor = Color.White,
+    Font = new Font("Segoe UI", 12)
+};
+_btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
+pipePanel.Controls.Add(_btnPipeSettings);
+
+pipePanel.Resize += (s, e) =>
+{
+    int bw = pipePanel.Width / 4;
+    _btnPipeDistra.Width = bw - 1;
+    _btnPipeNormal.Location = new Point(bw, 0);
+    _btnPipeNormal.Width = bw - 1;
+    _btnPipeWaste.Location = new Point(bw * 2, 0);
+    _btnPipeWaste.Width = bw - 1;
+    _btnPipeSettings.Location = new Point(bw * 3, 0);
+    _btnPipeSettings.Width = bw - 1;
+};
+
+_toolPanel.Controls.Add(pipePanel);
+y += 40 + 2;
+
+
 
         _btnDelete = new Button
         {
@@ -1429,124 +1458,124 @@ private void RestoreState(GridSnapshot snapshot)
     private (int x, int y) GetTilePosition(Point mouseLocation)
     {
         if (_map.ActiveGrid == null) return (0, 0);
-        
+
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
         float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
         float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
         float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
         float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
-        
+
         return ((int)Math.Floor(worldX), (int)Math.Floor(worldY));
     }
 
-private void OnMouseDown(object? sender, MouseEventArgs e)
-{
-    if (_canvas.Width == 0 || _canvas.Height == 0) return;
-    if (_map.ActiveGrid == null) return;
-
-    if (e.Button == MouseButtons.Right)
+    private void OnMouseDown(object? sender, MouseEventArgs e)
     {
-        // Если рисуем трубу - отменяем
-        if (_pipeBuilder.IsDrawing)
+        if (_canvas.Width == 0 || _canvas.Height == 0) return;
+        if (_map.ActiveGrid == null) return;
+
+        if (e.Button == MouseButtons.Right)
         {
-            _pipeBuilder.ResetDrawing();
-            Render();
-            return;
-        }
-
-        _isPanning = true;
-        _panStart = new PointF(e.Location.X, e.Location.Y);
-        Cursor = Cursors.SizeAll;
-        return;
-    }
-
-    if (e.Button == MouseButtons.Left)
-    {
-        var tilePos = GetTilePosition(e.Location);
-        int tileX = tilePos.x;
-        int tileY = tilePos.y;
-
-        // === СОЗДАТЬ КОМНАТУ ===
-        if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
-        {
-            _isDrawing = true;
-            _startPoint = e.Location;
-            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
-        }
-
-        // === УДАЛИТЬ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
-        {
-            var grid = _map.ActiveGrid;
-
-            if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
+            // Если рисуем трубу - отменяем
+            if (_pipeBuilder.IsDrawing)
             {
-                SaveState();
-                UpdateTileGrid();
+                _pipeBuilder.ResetDrawing();
                 Render();
                 return;
             }
 
-            var roomToDelete = grid.Rooms.FirstOrDefault(r =>
-                tileX >= r.X && tileX < r.X + r.Width &&
-                tileY >= r.Y && tileY < r.Y + r.Height);
-            if (roomToDelete != null)
-            {
-                grid.Rooms.Remove(roomToDelete);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
+            _isPanning = true;
+            _panStart = new PointF(e.Location.X, e.Location.Y);
+            Cursor = Cursors.SizeAll;
+            return;
         }
 
-        // === ДВЕРЬ ОБЫЧНАЯ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+        if (e.Button == MouseButtons.Left)
         {
-            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
-            {
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-        }
+            var tilePos = GetTilePosition(e.Location);
+            int tileX = tilePos.x;
+            int tileY = tilePos.y;
 
-        // === ДВЕРЬ СТЕКЛЯННАЯ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
-        {
-            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
+            // === СОЗДАТЬ КОМНАТУ ===
+            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
             {
-                SaveState();
-                UpdateTileGrid();
-                Render();
+                _isDrawing = true;
+                _startPoint = e.Location;
+                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
             }
-        }
 
-        // === ТРУБЫ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
-                 _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                 _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
-        {
-            if (!_pipeBuilder.IsDrawing)
+            // === УДАЛИТЬ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
             {
-                _pipeBuilder.StartDrawing(tileX, tileY);
-                Render();
-            }
-            else
-            {
-                string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
-                var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-                
-                if (positions.Count == 0)
+                var grid = _map.ActiveGrid;
+
+                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
                 {
-                    _pipeBuilder.ResetDrawing();
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                    return;
+                }
+
+                var roomToDelete = grid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+                if (roomToDelete != null)
+                {
+                    grid.Rooms.Remove(roomToDelete);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ДВЕРЬ ОБЫЧНАЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+            {
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor))
+                {
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ДВЕРЬ СТЕКЛЯННАЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+            {
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor))
+                {
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ТРУБЫ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+            {
+                if (!_pipeBuilder.IsDrawing)
+                {
+                    _pipeBuilder.StartDrawing(tileX, tileY);
+                    Render();
+                }
+                else
+                {
+                    string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
+                    var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+
+                    if (positions.Count == 0)
+                    {
+                        _pipeBuilder.ResetDrawing();
+                    }
                 }
             }
         }
     }
-}
 
 
 
@@ -1680,7 +1709,8 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
         {
             try
             {
-                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder);
+                // Передаём _pipeLayers
+                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers);
                 File.WriteAllText(dialog.FileName, yaml);
                 MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
             }
@@ -1839,4 +1869,187 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
         catch { }
         return Color.FromArgb(200, 230, 230, 230);
     }
+
+private void ShowPipeSettingsDialog()
+    {
+        if (_pipeSettingsForm != null && !_pipeSettingsForm.IsDisposed)
+        {
+            _pipeSettingsForm.Close();
+            _pipeSettingsForm = null;
+            return;
+        }
+
+        _pipeSettingsForm = new Form
+        {
+            Text = "Настройки слоёв труб",
+            Size = new Size(400, 350),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _pipeSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 5,
+            ColumnCount = 3,
+            AutoSize = true
+        };
+
+        // Заголовки
+        panel.Controls.Add(new Label { Text = "Слой", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
+        panel.Controls.Add(new Label { Text = "Цвет", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
+        panel.Controls.Add(new Label { Text = "", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 2, 0);
+
+        int row = 1;
+        var colorButtons = new Dictionary<string, Button>();
+        var colorDialogs = new Dictionary<string, ColorDialog>();
+
+        foreach (var layer in _pipeLayers.Keys)
+        {
+            var settings = _pipeLayers[layer];
+            
+            // Название слоя
+            panel.Controls.Add(new Label { Text = settings.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+            
+            // Кнопка выбора цвета
+            var btnColor = new Button
+            {
+                BackColor = settings.Color,
+                Width = 60,
+                Height = 30,
+                FlatStyle = FlatStyle.Flat,
+                Tag = layer
+            };
+            btnColor.Click += (s, e) =>
+            {
+                using var dialog = new ColorDialog();
+                dialog.Color = settings.Color;
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    settings.Color = dialog.Color;
+                    btnColor.BackColor = dialog.Color;
+                    UpdatePipeButtonColors();
+                    Render();
+                }
+            };
+            panel.Controls.Add(btnColor, 1, row);
+            colorButtons[layer] = btnColor;
+
+            // Кнопка сброса цвета
+            var btnReset = new Button
+            {
+                Text = "↺",
+                Width = 30,
+                Height = 30,
+                FlatStyle = FlatStyle.Flat,
+                Tag = layer
+            };
+            btnReset.Click += (s, e) =>
+            {
+                if (PipeSettings.DefaultLayers.TryGetValue(layer, out var defaultSettings))
+                {
+                    settings.Color = defaultSettings.Color;
+                    if (colorButtons.TryGetValue(layer, out var btn))
+                        btn.BackColor = defaultSettings.Color;
+                    UpdatePipeButtonColors();
+                    Render();
+                }
+            };
+            panel.Controls.Add(btnReset, 2, row);
+
+            row++;
+        }
+
+        // Кнопки OK и Cancel
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+        
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) => _pipeSettingsForm?.Close();
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) =>
+        {
+            // Восстанавливаем цвета
+            foreach (var layer in _pipeLayers.Keys)
+            {
+                if (PipeSettings.DefaultLayers.TryGetValue(layer, out var defaultSettings))
+                {
+                    _pipeLayers[layer].Color = defaultSettings.Color;
+                }
+            }
+            UpdatePipeButtonColors();
+            _pipeSettingsForm?.Close();
+        };
+        btnPanel.Controls.Add(btnCancel);
+
+        _pipeSettingsForm.Controls.Add(panel);
+        _pipeSettingsForm.Controls.Add(btnPanel);
+
+        _pipeSettingsForm.FormClosed += (s, e) => { _pipeSettingsForm = null; };
+        _pipeSettingsForm.Show(this);
+    }
+
+    /// <summary>
+    /// Обновляет цвета кнопок труб согласно настройкам
+    /// </summary>
+    private void UpdatePipeButtonColors()
+    {
+        // Обновляем цвета кнопок
+        if (_btnPipeDistra != null)
+        {
+            var color = _pipeLayers.GetValueOrDefault("Distra")?.Color ?? Color.FromArgb(180, 100, 200, 255);
+            _btnPipeDistra.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeDistra ? Color.LightBlue : Color.White;
+        }
+        
+        if (_btnPipeNormal != null)
+        {
+            var color = _pipeLayers.GetValueOrDefault("Normal")?.Color ?? Color.FromArgb(180, 200, 200, 200);
+            _btnPipeNormal.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ? Color.LightBlue : Color.White;
+        }
+        
+        if (_btnPipeWaste != null)
+        {
+            var color = _pipeLayers.GetValueOrDefault("Waste")?.Color ?? Color.FromArgb(180, 255, 150, 150);
+            _btnPipeWaste.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ? Color.LightBlue : Color.White;
+        }
+    }
+
+    /// <summary>
+    /// Получить цвет слоя трубы
+    /// </summary>
+    private Color GetPipeLayerColor(string layer)
+    {
+        return _pipeLayers.GetValueOrDefault(layer)?.Color ?? Color.FromArgb(180, 150, 150, 150);
+    }
+    private string GetPipeHexColor(string layer)
+    {
+        if (_pipeLayers.TryGetValue(layer, out var settings))
+            return settings.HexColor;
+        return PipeSettings.DefaultLayers.TryGetValue(layer, out var def) ? def.HexColor : "#FFFFFFFF";
+    }
 }
+
+
+
+
+

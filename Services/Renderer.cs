@@ -37,7 +37,7 @@ public class Renderer
     public Bitmap Render(MapData map, float scale, PointF viewOffset, Room? currentRoom, string toolName)
     {
         _currentMap = map;
-        
+
         lock (_lock)
         {
             if (_buffer.Width == 0 || _buffer.Height == 0) return _buffer;
@@ -50,7 +50,7 @@ public class Renderer
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
-                
+
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
@@ -98,10 +98,10 @@ public class Renderer
                 if (ShowPipeOverlay)
                 {
                     var allPipes = _pipeBuilder.GetPipes(grid);
-                    
+
                     // Рисуем линии между соединёнными трубами
                     DrawPipeLines(g, allPipes, tileSize, viewOffset, grid.Position);
-                    
+
                     // Рисуем точки на каждой трубе
                     foreach (var pipe in allPipes)
                     {
@@ -113,7 +113,7 @@ public class Renderer
                     {
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
-                        
+
                         var path = CalculatePipePath(start, end);
                         foreach (var pos in path)
                         {
@@ -215,7 +215,7 @@ public class Renderer
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
     {
         var positions = new List<(int x, int y)>();
-        
+
         int startX = start.x;
         int startY = start.y;
         int endX = end.x;
@@ -280,8 +280,8 @@ public class Renderer
             var floorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (floorPath != null && File.Exists(floorPath))
             {
-                try 
-                { 
+                try
+                {
                     floorTexture = Image.FromFile(floorPath);
                 }
                 catch { }
@@ -312,8 +312,8 @@ public class Renderer
             var wallPath = _indexer.GetFullTexturePath(wallProto);
             if (wallPath != null && File.Exists(wallPath))
             {
-                try 
-                { 
+                try
+                {
                     wallTexture = Image.FromFile(wallPath);
                 }
                 catch { }
@@ -344,8 +344,8 @@ public class Renderer
             var doorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (doorPath != null && File.Exists(doorPath))
             {
-                try 
-                { 
+                try
+                {
                     doorTexture = Image.FromFile(doorPath);
                 }
                 catch { }
@@ -373,7 +373,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -387,7 +387,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -401,7 +401,7 @@ public class Renderer
         {
             int innerWText = Math.Max(0, room.Width - 2);
             int innerHText = Math.Max(0, room.Height - 2);
-            
+
             if (innerWText > 0 && innerHText > 0)
             {
                 using var font = new Font("Arial", Math.Min(10, tileSize / 3));
@@ -429,4 +429,18 @@ public class Renderer
         g.DrawString($"Инструмент: {toolName}{mode}{pipeMode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
             font, brush, 10, 10);
     }
+    
+
+    private Color GetPipeColor(string pipeType)
+{
+    // Получаем цвет из настроек через MainForm
+    // Или используем значения по умолчанию
+    return pipeType switch
+    {
+        "Distra" => Color.FromArgb(180, 100, 200, 255),
+        "Waste" => Color.FromArgb(180, 255, 150, 150),
+        "Normal" => Color.FromArgb(180, 200, 200, 200),
+        _ => Color.FromArgb(180, 150, 150, 150)
+    };
+}
 }

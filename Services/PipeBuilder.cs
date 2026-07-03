@@ -152,7 +152,7 @@ public class PipeBuilder
         // Проверяем, есть ли уже конец в этой позиции
         var existingEndpoint = grid.Entities
             .OfType<PipeEntity>()
-            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
+            .FirstOrDefault(p => (int)p.X == x && (int)p.Y == y && p.IsEndpoint);
 
         // Если ставим конец, а там уже есть конец другого типа - нельзя
         if (isEndpoint && existingEndpoint != null && existingEndpoint.PipeType != pipeType)
@@ -167,13 +167,13 @@ public class PipeBuilder
             return;
         }
 
-        // Если ставим конец, а там есть труба (не конец) - удаляем трубу и ставим конец
+        // Если ставим конец - удаляем ТОЛЬКО трубу ТОГО ЖЕ СЛОЯ
         if (isEndpoint)
         {
             var existingPipe = grid.Entities
                 .OfType<PipeEntity>()
-                .FirstOrDefault(p => p.X == x && p.Y == y && !p.IsEndpoint);
-            
+                .FirstOrDefault(p => (int)p.X == x && (int)p.Y == y && !p.IsEndpoint && p.PipeType == pipeType);
+
             if (existingPipe != null)
             {
                 grid.Entities.Remove(existingPipe);
@@ -181,12 +181,10 @@ public class PipeBuilder
         }
 
         // Проверяем, есть ли уже такая труба (не конец) в этой позиции
-        // Трубы могут накладываться друг на друга (разные слои)
         var existing = grid.Entities
             .OfType<PipeEntity>()
-            .FirstOrDefault(p => p.X == x && p.Y == y && p.PipeType == pipeType && !p.IsEndpoint);
+            .FirstOrDefault(p => (int)p.X == x && (int)p.Y == y && p.PipeType == pipeType && !p.IsEndpoint);
 
-        // Если такая труба уже есть - не добавляем дубликат
         if (!isEndpoint && existing != null)
         {
             return;
