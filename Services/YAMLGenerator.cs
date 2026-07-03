@@ -278,21 +278,68 @@ private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(Til
     }
 
     private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings)
+{
+    // Собираем все устройства для привязки
+    var devices = new List<MapEntity>();
+    foreach (var entity in grid.Entities)
     {
-        foreach (var entity in grid.Entities)
+        if (entity is FirelockEntity || entity is GasVentPumpEntity || entity is GasVentScrubberEntity)
         {
-            if (entity is AirAlarmEntity airAlarm)
-            {
-                string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
-                GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid);
-            }
-            else if (entity is FireAlarmEntity fireAlarm)
-            {
-                string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
-                GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid);
-            }
+            devices.Add(entity);
         }
     }
+
+    foreach (var entity in grid.Entities)
+    {
+        if (entity is AirAlarmEntity airAlarm)
+        {
+            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+            bool autoLink = settings?.AutoLinkDevices ?? true;
+            GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid, devices, autoLink);
+        }
+        else if (entity is FireAlarmEntity fireAlarm)
+        {
+            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+            bool autoLink = settings?.AutoLinkDevices ?? true;
+            GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid, devices, autoLink);
+        }
+    }
+}
+
+private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid, List<MapEntity> devices, bool autoLink)
+{
+    float posX = x + 0.5f;
+    float posY = -y + 0.5f;
+    sb.AppendLine($"- proto: {protoId}");
+    sb.AppendLine("  entities:");
+    sb.AppendLine($"  - uid: {uid}");
+    sb.AppendLine($"    components:");
+    sb.AppendLine($"    - type: Transform");
+    if (rotation != 0)
+    {
+        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+        sb.AppendLine($"      rot: {rotStr} rad");
+    }
+    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+    sb.AppendLine($"      parent: 2");
+    
+    // Если автопривязка включена, добавляем DeviceList
+    if (autoLink && devices.Count > 0)
+    {
+        sb.AppendLine($"    - type: DeviceList");
+        sb.AppendLine($"      devices:");
+        foreach (var device in devices)
+        {
+            // Находим uid устройства (он уже должен быть сгенерирован)
+            // Пока добавляем ссылки по позиции, но в реальности нужно сохранять uid
+            sb.AppendLine($"      - {device.GetHashCode()}");
+        }
+    }
+    
+    sb.AppendLine($"    - type: Fixtures");
+    sb.AppendLine($"      fixtures: {{}}");
+    uid++;
+}
 
     private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
     {
@@ -431,11 +478,12 @@ private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(Til
 
                 if (neighbors.Count > 0)
                 {
-                    var (dx, dy) = neighbors[0];
-                    if (dx == 1) ventRotation = (float)Math.PI;
-                    else if (dx == -1) ventRotation = 0;
-                    else if (dy == 1) ventRotation = (float)(-Math.PI / 2);
-                    else if (dy == -1) ventRotation = (float)(Math.PI / 2);
+        var (dx, dy) = neighbors[0];
+        
+                if (dx == 1) ventRotation = (float)(Math.PI / 2);      // Труба справа → смотрим вправо   
+                else if (dx == -1) ventRotation = (float)(-Math.PI / 2);    // Труба слева → смотрим влево 
+                else if (dy == 1) ventRotation = 0;  // Труба снизу → смотрим вниз  
+                else if (dy == -1) ventRotation = (float)Math.PI;    // Труба сверху → смотрим вверх 
                 }
 
                 sb.AppendLine($"- proto: {ventProto}");

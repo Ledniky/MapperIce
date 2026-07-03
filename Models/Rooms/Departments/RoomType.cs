@@ -48,6 +48,11 @@ public class General : CommonRoomType
     public override string Name => "General";
     public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
 }
+public class Vox : CommonRoomType
+{
+    public override string Name => "Vox";
+    public override Color FillColor => Color.FromArgb(100, 254, 1, 64);
+}
 
 public class Technical : CommonRoomType
 {

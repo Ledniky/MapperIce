@@ -2462,7 +2462,7 @@ public class MainForm : Form
         _alarmSettingsForm = new Form
         {
             Text = "Настройки сигнализации",
-            Size = new Size(450, 300),
+            Size = new Size(450, 350),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -2475,7 +2475,7 @@ public class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(10),
-            RowCount = 3,
+            RowCount = 4,
             ColumnCount = 2,
             AutoSize = true
         };
@@ -2485,6 +2485,7 @@ public class MainForm : Form
 
         int row = 1;
         var textBoxes = new Dictionary<string, TextBox>();
+        var checkBoxes = new Dictionary<string, CheckBox>();
 
         foreach (var alarm in _alarmSettings.Values)
         {
@@ -2505,6 +2506,26 @@ public class MainForm : Form
             };
             panel.Controls.Add(txtId, 1, row);
             textBoxes[alarm.DisplayName] = txtId;
+            row++;
+
+            // Чекбокс автопривязки
+            var chkAutoLink = new CheckBox
+            {
+                Text = "Автопривязка устройств",
+                Checked = alarm.AutoLinkDevices,
+                AutoSize = true,
+                Tag = alarm.DisplayName
+            };
+            chkAutoLink.CheckedChanged += (s, e) =>
+            {
+                if (chkAutoLink.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
+                {
+                    settings.AutoLinkDevices = chkAutoLink.Checked;
+                }
+            };
+            panel.Controls.Add(chkAutoLink, 0, row);
+            panel.SetColumnSpan(chkAutoLink, 2);
+            checkBoxes[alarm.DisplayName] = chkAutoLink;
             row++;
         }
 
@@ -2536,6 +2557,7 @@ public class MainForm : Form
                 if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
                 {
                     alarm.Id = defaultSettings.Id;
+                    alarm.AutoLinkDevices = defaultSettings.AutoLinkDevices;
                 }
             }
             _alarmSettingsForm?.Close();
