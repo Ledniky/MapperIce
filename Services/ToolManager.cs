@@ -10,19 +10,21 @@ public class ToolManager
         None,
         CreateRoom,
         Delete,
+        DeleteArea,
+        DeleteSettings,
         Door,
         DoorGlass,
         PipeDistra,
         PipeWaste,
         PipeNormal,
         AirAlarm,
-        FireAlarm,
+        FireAlarm
     }
 
     private Tool _currentTool = Tool.None;
-    
+
     public Tool CurrentTool => _currentTool;
-    
+
     public event Action<Tool>? ToolChanged;
 
     public void SetTool(Tool tool)
@@ -35,7 +37,7 @@ public class ToolManager
         {
             _currentTool = tool;
         }
-        
+
         ToolChanged?.Invoke(_currentTool);
     }
 

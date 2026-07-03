@@ -63,6 +63,14 @@ public class MainForm : Form
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
     private float _currentAlarmRotation = 0;
+    private Button _btnDeleteArea = null!;
+    private Button _btnDeleteSettings = null!;
+    private Point _deleteStartPoint;
+    private Point? _deleteEndPoint;
+    private bool _isDeletingArea = false;
+    private DeleteSettings _deleteSettings = new DeleteSettings();
+    private Form? _deleteSettingsForm = null;
+
     public MainForm()
     {
         Text = "MapperIce";
@@ -807,26 +815,99 @@ public class MainForm : Form
         y += 40 + 2;
 
 
+        // В CreateToolPanel() замените кнопки удаления на:
 
-        _btnDelete = new Button
+        // === УДАЛЕНИЕ ===
+        var deleteLabel = new Label
         {
-            Text = "🗑 Удалить",
+            Text = "Удаление:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(deleteLabel);
+        y += 20 + 2;
+
+        var deletePanel = new Panel
+        {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
             Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        // 3 кнопки одинаковой ширины
+        int deleteButtonWidth = deletePanel.Width / 3;
+
+        // Кнопка "Удалить" (точечное удаление)
+        _btnDelete = new Button
+        {
+            Text = "🗑",
+            Location = new Point(0, 0),
+            Width = deleteButtonWidth - 1,
+            Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Arial", 9, FontStyle.Bold)
+            Font = new Font("Segoe UI", 14),
+            TextAlign = ContentAlignment.MiddleCenter
         };
         _btnDelete.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.Delete);
         };
-        _toolPanel.Controls.Add(_btnDelete);
+        deletePanel.Controls.Add(_btnDelete);
+
+        // Кнопка "Удалить область"
+        _btnDeleteArea = new Button
+        {
+            Text = "🧹",
+            Location = new Point(deleteButtonWidth, 0),
+            Width = deleteButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 14),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnDeleteArea.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.DeleteArea);
+        };
+        deletePanel.Controls.Add(_btnDeleteArea);
+
+        // Кнопка настроек удаления (пока заглушка)
+        _btnDeleteSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(deleteButtonWidth * 2, 0),
+            Width = deleteButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnDeleteSettings.Click += (s, e) => ShowDeleteSettingsDialog();
+        ;
+        deletePanel.Controls.Add(_btnDeleteSettings);
+
+        deletePanel.Resize += (s, e) =>
+        {
+            int bw = deletePanel.Width / 3;
+            _btnDelete.Width = bw - 1;
+            _btnDeleteArea.Location = new Point(bw, 0);
+            _btnDeleteArea.Width = bw - 1;
+            _btnDeleteSettings.Location = new Point(bw * 2, 0);
+            _btnDeleteSettings.Width = bw - 1;
+        };
+
+        _toolPanel.Controls.Add(deletePanel);
         y += 40 + 2;
 
-
+        // Удаляем старую кнопку _btnDelete, если она была объявлена отдельно
 
         _toolPanel.Controls.Add(new Label
         {
@@ -1498,77 +1579,89 @@ public class MainForm : Form
 
     // === ОТРИСОВКА ===
 
-private void OnToolChanged(ToolManager.Tool tool)
-{
-    _btnCreateRoom.BackColor = Color.White;
-    _btnDelete.BackColor = Color.White;
-    _btnAirlock.BackColor = Color.White;
-    _btnAirlockGlass.BackColor = Color.White;
-    _btnPipeDistra.BackColor = Color.White;
-    _btnPipeWaste.BackColor = Color.White;
-    _btnPipeNormal.BackColor = Color.White;
-
-    // Сброс сигналок
-    if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
-    if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
-
-    switch (tool)
+    private void OnToolChanged(ToolManager.Tool tool)
     {
-        case ToolManager.Tool.CreateRoom:
-            _btnCreateRoom.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
-            break;
-        case ToolManager.Tool.Delete:
-            _btnDelete.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Удаление";
-            break;
-        case ToolManager.Tool.Door:
-            _btnAirlock.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Дверь: Airlock";
-            break;
-        case ToolManager.Tool.DoorGlass:
-            _btnAirlockGlass.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Дверь: AirlockGlass";
-            break;
-        case ToolManager.Tool.PipeDistra:
-            _btnPipeDistra.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Труба: Distra";
-            break;
-        case ToolManager.Tool.PipeWaste:
-            _btnPipeWaste.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Труба: Waste";
-            break;
-        case ToolManager.Tool.PipeNormal:
-            _btnPipeNormal.BackColor = Color.LightBlue;
-            _typeLabel.Text = $"Труба: Normal";
-            break;
-        case ToolManager.Tool.AirAlarm:
-            if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
-            float airDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
-            _typeLabel.Text = $"Воздушная сигнализация: {airDegrees:F1}° (колёсико для вращения)";
-            break;
-        case ToolManager.Tool.FireAlarm:
-            if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
-            float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
-            _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F1}° (колёсико для вращения)";
-            break;
-        default:
-            _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
-            break;
+        _btnCreateRoom.BackColor = Color.White;
+        _btnDelete.BackColor = Color.White;
+        _btnDeleteArea.BackColor = Color.White;
+        _btnDeleteSettings.BackColor = Color.White;
+        _btnAirlock.BackColor = Color.White;
+        _btnAirlockGlass.BackColor = Color.White;
+        _btnPipeDistra.BackColor = Color.White;
+        _btnPipeWaste.BackColor = Color.White;
+        _btnPipeNormal.BackColor = Color.White;
+
+        // Сброс сигналок
+        if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
+        if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
+
+        switch (tool)
+        {
+            case ToolManager.Tool.CreateRoom:
+                _btnCreateRoom.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+                break;
+            case ToolManager.Tool.Delete:
+                _btnDelete.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Удаление (клик по объекту)";
+                break;
+            case ToolManager.Tool.DeleteArea:
+                _btnDeleteArea.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Удаление области (выделите прямоугольник)";
+                break;
+            case ToolManager.Tool.DeleteSettings:
+                _btnDeleteSettings.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Настройки удаления";
+                break;
+            case ToolManager.Tool.Door:
+                _btnAirlock.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Дверь: Airlock";
+                break;
+            case ToolManager.Tool.DoorGlass:
+                _btnAirlockGlass.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Дверь: AirlockGlass";
+                break;
+            case ToolManager.Tool.PipeDistra:
+                _btnPipeDistra.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Труба: Distra";
+                break;
+            case ToolManager.Tool.PipeWaste:
+                _btnPipeWaste.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Труба: Waste";
+                break;
+            case ToolManager.Tool.PipeNormal:
+                _btnPipeNormal.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Труба: Normal";
+                break;
+            case ToolManager.Tool.AirAlarm:
+                if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
+                float airDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
+                _typeLabel.Text = $"Воздушная сигнализация: {airDegrees:F0}° (СКМ для вращения)";
+                break;
+            case ToolManager.Tool.FireAlarm:
+                if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
+                float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
+                _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F0}° (СКМ для вращения)";
+                break;
+            default:
+                _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+                break;
+        }
+
+        Cursor = tool switch
+        {
+            ToolManager.Tool.CreateRoom => Cursors.Cross,
+            ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
+            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
+            ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+            ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
+            _ => Cursors.Default
+        };
+
+        Render();
     }
 
-    Cursor = tool switch
-    {
-        ToolManager.Tool.CreateRoom => Cursors.Cross,
-        ToolManager.Tool.Delete => Cursors.Hand,
-        ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
-        ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
-        ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
-        _ => Cursors.Default
-    };
 
-    Render();
-}
 
 
 
@@ -1614,153 +1707,155 @@ private void OnToolChanged(ToolManager.Tool tool)
         return ((int)Math.Floor(worldX), (int)Math.Floor(worldY));
     }
 
-private void OnMouseDown(object? sender, MouseEventArgs e)
-{
-    if (_canvas.Width == 0 || _canvas.Height == 0) return;
-    if (_map.ActiveGrid == null) return;
-
-    if (e.Button == MouseButtons.Right)
+    private void OnMouseDown(object? sender, MouseEventArgs e)
     {
-        // Если рисуем трубу - отменяем
-        if (_pipeBuilder.IsDrawing)
+        if (_canvas.Width == 0 || _canvas.Height == 0) return;
+        if (_map.ActiveGrid == null) return;
+
+        if (e.Button == MouseButtons.Right)
         {
-            _pipeBuilder.ResetDrawing();
-            Render();
-            return;
-        }
-
-        _isPanning = true;
-        _panStart = new PointF(e.Location.X, e.Location.Y);
-        Cursor = Cursors.SizeAll;
-        return;
-    }
-
-    if (e.Button == MouseButtons.Middle) // СКМ
-    {
-        // Если выбран инструмент сигнализации - вращаем её на 90°
-        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm || 
-            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-        {
-            _currentAlarmRotation += (float)(Math.PI / 2); // +90°
-            
-            while (_currentAlarmRotation >= (float)(Math.PI * 2))
-                _currentAlarmRotation -= (float)(Math.PI * 2);
-            
-            float degrees = _currentAlarmRotation * 180 / (float)Math.PI;
-            string toolName = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "Воздушная" : "Пожарная";
-            _typeLabel.Text = $"{toolName} сигнализация: {degrees:F0}° (СКМ для вращения)";
-            
-            Render();
-            return;
-        }
-        
-        return;
-    }
-
-    if (e.Button == MouseButtons.Left)
-    {
-        var tilePos = GetTilePosition(e.Location);
-        int tileX = tilePos.x;
-        int tileY = tilePos.y;
-
-        // === СОЗДАТЬ КОМНАТУ ===
-        if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
-        {
-            _isDrawing = true;
-            _startPoint = e.Location;
-            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
-        }
-
-        // === УДАЛИТЬ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
-        {
-            var grid = _map.ActiveGrid;
-
-            if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
+            if (_pipeBuilder.IsDrawing)
             {
-                SaveState();
-                UpdateTileGrid();
+                _pipeBuilder.ResetDrawing();
                 Render();
                 return;
             }
 
-            var roomToDelete = grid.Rooms.FirstOrDefault(r =>
-                tileX >= r.X && tileX < r.X + r.Width &&
-                tileY >= r.Y && tileY < r.Y + r.Height);
-            if (roomToDelete != null)
-            {
-                grid.Rooms.Remove(roomToDelete);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
+            _isPanning = true;
+            _panStart = new PointF(e.Location.X, e.Location.Y);
+            Cursor = Cursors.SizeAll;
+            return;
         }
 
-        // === ДВЕРЬ ОБЫЧНАЯ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+        if (e.Button == MouseButtons.Middle)
         {
-            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor, _snapToGrid))
+            if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
+                _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
             {
-                SaveState();
-                UpdateTileGrid();
+                _currentAlarmRotation += (float)(Math.PI / 2);
+                while (_currentAlarmRotation >= (float)(Math.PI * 2))
+                    _currentAlarmRotation -= (float)(Math.PI * 2);
+                float degrees = _currentAlarmRotation * 180 / (float)Math.PI;
+                string toolName = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "Воздушная" : "Пожарная";
+                _typeLabel.Text = $"{toolName} сигнализация: {degrees:F0}° (СКМ для вращения)";
                 Render();
+                return;
             }
+            return;
         }
 
-        // === ДВЕРЬ СТЕКЛЯННАЯ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+        if (e.Button == MouseButtons.Left)
         {
-            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor, _snapToGrid))
-            {
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-        }
+            var tilePos = GetTilePosition(e.Location);
+            int tileX = tilePos.x;
+            int tileY = tilePos.y;
 
-        // === ТРУБЫ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
-                 _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                 _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
-        {
-            if (!_pipeBuilder.IsDrawing)
+            // === СОЗДАТЬ КОМНАТУ ===
+            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
             {
-                _pipeBuilder.StartDrawing(tileX, tileY);
-                Render();
+                _isDrawing = true;
+                _startPoint = e.Location;
+                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
             }
-            else
-            {
-                string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
-                var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
-                SaveState();
-                UpdateTileGrid();
-                Render();
 
-                if (positions.Count == 0)
+            // === УДАЛИТЬ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+            {
+                var grid = _map.ActiveGrid;
+
+                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
                 {
-                    _pipeBuilder.ResetDrawing();
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                    return;
+                }
+
+                var roomToDelete = grid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+                if (roomToDelete != null)
+                {
+                    grid.Rooms.Remove(roomToDelete);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
                 }
             }
-        }
 
-        // === СИГНАЛИЗАЦИЯ ===
-        else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
-        {
-            AddAirAlarm(_map.ActiveGrid, tileX, tileY);
-            SaveState();
-            UpdateTileGrid();
-            Render();
-        }
-        else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-        {
-            AddFireAlarm(_map.ActiveGrid, tileX, tileY);
-            SaveState();
-            UpdateTileGrid();
-            Render();
+            // === УДАЛИТЬ ОБЛАСТЬ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
+            {
+                _isDeletingArea = true;
+                _deleteStartPoint = new Point(tileX, tileY);
+                _deleteEndPoint = new Point(tileX, tileY);
+                Render();
+            }
+
+            // === ДВЕРЬ ОБЫЧНАЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
+            {
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor, _snapToGrid))
+                {
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ДВЕРЬ СТЕКЛЯННАЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+            {
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor, _snapToGrid))
+                {
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            // === ТРУБЫ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+            {
+                if (!_pipeBuilder.IsDrawing)
+                {
+                    _pipeBuilder.StartDrawing(tileX, tileY);
+                    Render();
+                }
+                else
+                {
+                    string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
+                    var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+
+                    if (positions.Count == 0)
+                    {
+                        _pipeBuilder.ResetDrawing();
+                    }
+                }
+            }
+
+            // === СИГНАЛИЗАЦИЯ ===
+            else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
+            {
+                AddAirAlarm(_map.ActiveGrid, tileX, tileY);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+            {
+                AddFireAlarm(_map.ActiveGrid, tileX, tileY);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
         }
     }
-}
-
 
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
@@ -1782,6 +1877,15 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
         }
 
         if (_map.ActiveGrid == null) return;
+
+        // === УДАЛЕНИЕ ОБЛАСТИ ===
+        if (_isDeletingArea)
+        {
+            var tilePos = GetTilePosition(e.Location);
+            _deleteEndPoint = new Point(tilePos.x, tilePos.y);
+            Render();
+            return;
+        }
 
         // === РИСОВАНИЕ ТРУБ ===
         if (_pipeBuilder.IsDrawing)
@@ -1825,7 +1929,7 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
             Cursor = _toolManager.CurrentTool switch
             {
                 ToolManager.Tool.CreateRoom => Cursors.Cross,
-                ToolManager.Tool.Delete => Cursors.Hand,
+                ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
                 ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
                 ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
                 _ => Cursors.Default
@@ -1833,6 +1937,45 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
             return;
         }
 
+        // === УДАЛЕНИЕ ОБЛАСТИ ===
+        if (e.Button == MouseButtons.Left && _isDeletingArea && _map.ActiveGrid != null)
+        {
+            var start = _deleteStartPoint;
+            var end = _deleteEndPoint ?? start;
+
+            int minX = Math.Min(start.X, end.X);
+            int maxX = Math.Max(start.X, end.X);
+            int minY = Math.Min(start.Y, end.Y);
+            int maxY = Math.Max(start.Y, end.Y);
+
+            var grid = _map.ActiveGrid;
+
+            // Удаляем в зависимости от настроек
+            if (_deleteSettings.DeleteAll || _deleteSettings.DeletePipes)
+            {
+                var pipesToRemove = grid.Entities
+                    .OfType<PipeEntity>()
+                    .Where(p => p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY)
+                    .ToList();
+
+                foreach (var pipe in pipesToRemove)
+                {
+                    grid.Entities.Remove(pipe);
+                }
+            }
+
+            // TODO: Провода и другие сущности
+
+            SaveState();
+            UpdateTileGrid();
+            Render();
+
+            _isDeletingArea = false;
+            _deleteEndPoint = null;
+            return;
+        }
+
+        // === СОЗДАНИЕ КОМНАТЫ ===
         if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
         {
             if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
@@ -1850,7 +1993,7 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
         }
     }
 
-  
+
     private string GetPipeTypeFromTool(ToolManager.Tool tool)
     {
         return tool switch
@@ -2245,60 +2388,60 @@ private void OnMouseDown(object? sender, MouseEventArgs e)
     }
 
     private float GetAlarmRotation(Grid grid, int x, int y)
-{
-    // Проверяем, есть ли стена в соседних тайлах
-    var dirs = new[] { 
+    {
+        // Проверяем, есть ли стена в соседних тайлах
+        var dirs = new[] {
         (0, -1, 0f),                              // стена снизу → 0°
         (0, 1, (float)Math.PI),                   // стена сверху → 180°
         (-1, 0, (float)(Math.PI / 2)),            // стена слева → 90°
         (1, 0, (float)(-Math.PI / 2))             // стена справа → -90°
     };
-    
-    foreach (var (dx, dy, rot) in dirs)
-    {
-        int cx = x + dx, cy = y + dy;
-        if (HasWallAt(grid, cx, cy)) 
-            return rot;
+
+        foreach (var (dx, dy, rot) in dirs)
+        {
+            int cx = x + dx, cy = y + dy;
+            if (HasWallAt(grid, cx, cy))
+                return rot;
+        }
+        return _currentAlarmRotation; // Если стены нет - используем текущую ротацию
     }
-    return _currentAlarmRotation; // Если стены нет - используем текущую ротацию
-}
 
-private void AddAirAlarm(Grid grid, int x, int y)
-{
-    if (grid == null) return;
-    if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
-
-    // Убираем проверку на пол - сигнализация ставится на стену
-    // if (!HasFloorAt(grid, x, y)) return;
-
-    if (_snapToGrid)
+    private void AddAirAlarm(Grid grid, int x, int y)
     {
-        if (!HasWallAt(grid, x, y)) return;
-        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
-    }
-    else
-    {
-        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
-    }
-}
+        if (grid == null) return;
+        if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
 
-private void AddFireAlarm(Grid grid, int x, int y)
-{
-    if (grid == null) return;
-    if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
+        // Убираем проверку на пол - сигнализация ставится на стену
+        // if (!HasFloorAt(grid, x, y)) return;
 
-    System.Diagnostics.Debug.WriteLine($"AddAirAlarm: x={x}, y={y}, rotation={_currentAlarmRotation}");
+        if (_snapToGrid)
+        {
+            if (!HasWallAt(grid, x, y)) return;
+            grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
+        }
+        else
+        {
+            grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
+        }
+    }
 
-    if (_snapToGrid)
+    private void AddFireAlarm(Grid grid, int x, int y)
     {
-        if (!HasWallAt(grid, x, y)) return;
-        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
+        if (grid == null) return;
+        if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
+
+        System.Diagnostics.Debug.WriteLine($"AddAirAlarm: x={x}, y={y}, rotation={_currentAlarmRotation}");
+
+        if (_snapToGrid)
+        {
+            if (!HasWallAt(grid, x, y)) return;
+            grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
+        }
+        else
+        {
+            grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
+        }
     }
-    else
-    {
-        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
-    }
-}
 
 
     private bool HasFloorAt(Grid grid, int x, int y)
@@ -2405,6 +2548,172 @@ private void AddFireAlarm(Grid grid, int x, int y)
         _alarmSettingsForm.FormClosed += (s, e) => { _alarmSettingsForm = null; };
         _alarmSettingsForm.Show(this);
     }
+
+
+    private void ShowDeleteSettingsDialog()
+    {
+        if (_deleteSettingsForm != null && !_deleteSettingsForm.IsDisposed)
+        {
+            _deleteSettingsForm.Close();
+            _deleteSettingsForm = null;
+            return;
+        }
+
+        _deleteSettingsForm = new Form
+        {
+            Text = "Настройки удаления",
+            Size = new Size(350, 250),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _deleteSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(15),
+            RowCount = 5,
+            ColumnCount = 2,
+            AutoSize = true
+        };
+
+        int row = 0;
+
+        // Заголовок
+        panel.Controls.Add(new Label
+        {
+            Text = "Удалять:",
+            Font = new Font("Arial", 10, FontStyle.Bold),
+            AutoSize = true
+        }, 0, row);
+        panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
+        row++;
+
+        // Всё
+        var chkAll = new CheckBox
+        {
+            Text = "Всё",
+            Checked = _deleteSettings.DeleteAll,
+            AutoSize = true,
+            Tag = "all"
+        };
+        chkAll.CheckedChanged += (s, e) =>
+        {
+            _deleteSettings.DeleteAll = chkAll.Checked;
+            // При выборе "Всё" отключаем остальные чекбоксы
+            foreach (Control ctrl in panel.Controls)
+            {
+                if (ctrl is CheckBox chk && chk.Tag != null && chk.Tag.ToString() != "all")
+                {
+                    chk.Enabled = !_deleteSettings.DeleteAll;
+                    if (_deleteSettings.DeleteAll) chk.Checked = true;
+                }
+            }
+            UpdateDeleteSettingsLabel();
+        };
+        panel.Controls.Add(chkAll, 0, row);
+        panel.SetColumnSpan(chkAll, 2);
+        row++;
+
+        // Газовые трубы
+        var chkPipes = new CheckBox
+        {
+            Text = "Газовые трубы",
+            Checked = _deleteSettings.DeletePipes,
+            AutoSize = true,
+            Tag = "pipes",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkPipes.CheckedChanged += (s, e) =>
+        {
+            _deleteSettings.DeletePipes = chkPipes.Checked;
+        };
+        panel.Controls.Add(chkPipes, 0, row);
+        panel.SetColumnSpan(chkPipes, 2);
+        row++;
+
+        // Провода (заглушка)
+        var chkWires = new CheckBox
+        {
+            Text = "Провода (скоро)",
+            Checked = _deleteSettings.DeleteWires,
+            AutoSize = true,
+            Tag = "wires",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkWires.CheckedChanged += (s, e) =>
+        {
+            _deleteSettings.DeleteWires = chkWires.Checked;
+        };
+        panel.Controls.Add(chkWires, 0, row);
+        panel.SetColumnSpan(chkWires, 2);
+        row++;
+
+        // Другие сущности (заглушка)
+        var chkEntities = new CheckBox
+        {
+            Text = "Другие сущности (скоро)",
+            Checked = _deleteSettings.DeleteEntities,
+            AutoSize = true,
+            Tag = "entities",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkEntities.CheckedChanged += (s, e) =>
+        {
+            _deleteSettings.DeleteEntities = chkEntities.Checked;
+        };
+        panel.Controls.Add(chkEntities, 0, row);
+        panel.SetColumnSpan(chkEntities, 2);
+        row++;
+
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) => _deleteSettingsForm?.Close();
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) =>
+        {
+            // Восстанавливаем настройки
+            _deleteSettings = new DeleteSettings();
+            _deleteSettingsForm?.Close();
+        };
+        btnPanel.Controls.Add(btnCancel);
+
+        _deleteSettingsForm.Controls.Add(panel);
+        _deleteSettingsForm.Controls.Add(btnPanel);
+
+        _deleteSettingsForm.FormClosed += (s, e) => { _deleteSettingsForm = null; };
+        _deleteSettingsForm.Show(this);
+    }
+
+    private void UpdateDeleteSettingsLabel()
+    {
+        string mode = _deleteSettings.DeleteAll ? "Всё" :
+                      _deleteSettings.DeletePipes ? "Трубы" : "Ничего";
+        _typeLabel.Text = $"Удаление области: {mode}";
+    }
+
+
+
 
 }
 
