@@ -62,6 +62,7 @@ public class MainForm : Form
     private string _currentPipeLayer = "Distra";
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
+    private float _currentAlarmRotation = 0;
     public MainForm()
     {
         Text = "MapperIce";
@@ -1497,63 +1498,79 @@ public class MainForm : Form
 
     // === ОТРИСОВКА ===
 
-    private void OnToolChanged(ToolManager.Tool tool)
+private void OnToolChanged(ToolManager.Tool tool)
+{
+    _btnCreateRoom.BackColor = Color.White;
+    _btnDelete.BackColor = Color.White;
+    _btnAirlock.BackColor = Color.White;
+    _btnAirlockGlass.BackColor = Color.White;
+    _btnPipeDistra.BackColor = Color.White;
+    _btnPipeWaste.BackColor = Color.White;
+    _btnPipeNormal.BackColor = Color.White;
+
+    // Сброс сигналок
+    if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
+    if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
+
+    switch (tool)
     {
-        _btnCreateRoom.BackColor = Color.White;
-        _btnDelete.BackColor = Color.White;
-        _btnAirlock.BackColor = Color.White;
-        _btnAirlockGlass.BackColor = Color.White;
-        _btnPipeDistra.BackColor = Color.White;
-        _btnPipeWaste.BackColor = Color.White;
-        _btnPipeNormal.BackColor = Color.White;
-
-        // Сброс сигналок
-        if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
-        if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
-
-        switch (tool)
-        {
-            case ToolManager.Tool.CreateRoom:
-                _btnCreateRoom.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.Delete:
-                _btnDelete.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.Door:
-                _btnAirlock.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.DoorGlass:
-                _btnAirlockGlass.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.PipeDistra:
-                _btnPipeDistra.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.PipeWaste:
-                _btnPipeWaste.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.PipeNormal:
-                _btnPipeNormal.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.AirAlarm:
-                if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.FireAlarm:
-                if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
-                break;
-        }
-
-        Cursor = tool switch
-        {
-            ToolManager.Tool.CreateRoom => Cursors.Cross,
-            ToolManager.Tool.Delete => Cursors.Hand,
-            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
-            ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
-            ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
-            _ => Cursors.Default
-        };
-
-        Render();
+        case ToolManager.Tool.CreateRoom:
+            _btnCreateRoom.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+            break;
+        case ToolManager.Tool.Delete:
+            _btnDelete.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Удаление";
+            break;
+        case ToolManager.Tool.Door:
+            _btnAirlock.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Дверь: Airlock";
+            break;
+        case ToolManager.Tool.DoorGlass:
+            _btnAirlockGlass.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Дверь: AirlockGlass";
+            break;
+        case ToolManager.Tool.PipeDistra:
+            _btnPipeDistra.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Труба: Distra";
+            break;
+        case ToolManager.Tool.PipeWaste:
+            _btnPipeWaste.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Труба: Waste";
+            break;
+        case ToolManager.Tool.PipeNormal:
+            _btnPipeNormal.BackColor = Color.LightBlue;
+            _typeLabel.Text = $"Труба: Normal";
+            break;
+        case ToolManager.Tool.AirAlarm:
+            if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
+            float airDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
+            _typeLabel.Text = $"Воздушная сигнализация: {airDegrees:F1}° (колёсико для вращения)";
+            break;
+        case ToolManager.Tool.FireAlarm:
+            if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
+            float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
+            _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F1}° (колёсико для вращения)";
+            break;
+        default:
+            _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+            break;
     }
+
+    Cursor = tool switch
+    {
+        ToolManager.Tool.CreateRoom => Cursors.Cross,
+        ToolManager.Tool.Delete => Cursors.Hand,
+        ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
+        ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+        ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
+        _ => Cursors.Default
+    };
+
+    Render();
+}
+
+
 
     private void OnResize(object? sender, EventArgs e)
     {
@@ -1597,131 +1614,161 @@ public class MainForm : Form
         return ((int)Math.Floor(worldX), (int)Math.Floor(worldY));
     }
 
-    private void OnMouseDown(object? sender, MouseEventArgs e)
-    {
-        if (_canvas.Width == 0 || _canvas.Height == 0) return;
-        if (_map.ActiveGrid == null) return;
+private void OnMouseDown(object? sender, MouseEventArgs e)
+{
+    if (_canvas.Width == 0 || _canvas.Height == 0) return;
+    if (_map.ActiveGrid == null) return;
 
-        if (e.Button == MouseButtons.Right)
+    if (e.Button == MouseButtons.Right)
+    {
+        // Если рисуем трубу - отменяем
+        if (_pipeBuilder.IsDrawing)
         {
-            // Если рисуем трубу - отменяем
-            if (_pipeBuilder.IsDrawing)
+            _pipeBuilder.ResetDrawing();
+            Render();
+            return;
+        }
+
+        _isPanning = true;
+        _panStart = new PointF(e.Location.X, e.Location.Y);
+        Cursor = Cursors.SizeAll;
+        return;
+    }
+
+    if (e.Button == MouseButtons.Middle) // СКМ
+    {
+        // Если выбран инструмент сигнализации - вращаем её на 90°
+        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm || 
+            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            _currentAlarmRotation += (float)(Math.PI / 2); // +90°
+            
+            while (_currentAlarmRotation >= (float)(Math.PI * 2))
+                _currentAlarmRotation -= (float)(Math.PI * 2);
+            
+            float degrees = _currentAlarmRotation * 180 / (float)Math.PI;
+            string toolName = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "Воздушная" : "Пожарная";
+            _typeLabel.Text = $"{toolName} сигнализация: {degrees:F0}° (СКМ для вращения)";
+            
+            Render();
+            return;
+        }
+        
+        return;
+    }
+
+    if (e.Button == MouseButtons.Left)
+    {
+        var tilePos = GetTilePosition(e.Location);
+        int tileX = tilePos.x;
+        int tileY = tilePos.y;
+
+        // === СОЗДАТЬ КОМНАТУ ===
+        if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+        {
+            _isDrawing = true;
+            _startPoint = e.Location;
+            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
+        }
+
+        // === УДАЛИТЬ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+        {
+            var grid = _map.ActiveGrid;
+
+            if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
             {
-                _pipeBuilder.ResetDrawing();
+                SaveState();
+                UpdateTileGrid();
                 Render();
                 return;
             }
 
-            _isPanning = true;
-            _panStart = new PointF(e.Location.X, e.Location.Y);
-            Cursor = Cursors.SizeAll;
-            return;
+            var roomToDelete = grid.Rooms.FirstOrDefault(r =>
+                tileX >= r.X && tileX < r.X + r.Width &&
+                tileY >= r.Y && tileY < r.Y + r.Height);
+            if (roomToDelete != null)
+            {
+                grid.Rooms.Remove(roomToDelete);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
         }
 
-        if (e.Button == MouseButtons.Left)
+        // === ДВЕРЬ ОБЫЧНАЯ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
         {
-            var tilePos = GetTilePosition(e.Location);
-            int tileX = tilePos.x;
-            int tileY = tilePos.y;
-
-            // === СОЗДАТЬ КОМНАТУ ===
-            if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor, _snapToGrid))
             {
-                _isDrawing = true;
-                _startPoint = e.Location;
-                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
-            }
-
-            // === УДАЛИТЬ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
-            {
-                var grid = _map.ActiveGrid;
-
-                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                    return;
-                }
-
-                var roomToDelete = grid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
-                if (roomToDelete != null)
-                {
-                    grid.Rooms.Remove(roomToDelete);
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
-            }
-
-            // === ДВЕРЬ ОБЫЧНАЯ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
-            {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out var newDoor, _snapToGrid))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
-            }
-
-            // === ДВЕРЬ СТЕКЛЯННАЯ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
-            {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor, _snapToGrid))
-                {
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-                }
-            }
-
-            // === ТРУБЫ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
-            {
-                if (!_pipeBuilder.IsDrawing)
-                {
-                    _pipeBuilder.StartDrawing(tileX, tileY);
-                    Render();
-                }
-                else
-                {
-                    string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
-                    var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
-
-                    if (positions.Count == 0)
-                    {
-                        _pipeBuilder.ResetDrawing();
-                    }
-                }
-            }
-
-            // === СИГНАЛИЗАЦИЯ ===
-            else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
-            {
-                AddAirAlarm(_map.ActiveGrid, tileX, tileY);
                 SaveState();
                 UpdateTileGrid();
                 Render();
             }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        }
+
+        // === ДВЕРЬ СТЕКЛЯННАЯ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+        {
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out var newDoor, _snapToGrid))
             {
-                AddFireAlarm(_map.ActiveGrid, tileX, tileY);
                 SaveState();
                 UpdateTileGrid();
                 Render();
             }
+        }
+
+        // === ТРУБЫ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+        {
+            if (!_pipeBuilder.IsDrawing)
+            {
+                _pipeBuilder.StartDrawing(tileX, tileY);
+                Render();
+            }
+            else
+            {
+                string pipeType = GetPipeTypeFromTool(_toolManager.CurrentTool);
+                var positions = _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+
+                if (positions.Count == 0)
+                {
+                    _pipeBuilder.ResetDrawing();
+                }
+            }
+        }
+
+        // === СИГНАЛИЗАЦИЯ ===
+        else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
+        {
+            AddAirAlarm(_map.ActiveGrid, tileX, tileY);
+            SaveState();
+            UpdateTileGrid();
+            Render();
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            AddFireAlarm(_map.ActiveGrid, tileX, tileY);
+            SaveState();
+            UpdateTileGrid();
+            Render();
         }
     }
+}
 
+
+    private void OnMouseWheel(object? sender, MouseEventArgs e)
+    {
+        // Только зум, вращение теперь на ПКМ
+        float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
+        _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
+        Render();
+    }
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
@@ -1803,13 +1850,7 @@ public class MainForm : Form
         }
     }
 
-    private void OnMouseWheel(object? sender, MouseEventArgs e)
-    {
-        float delta = e.Delta > 0 ? 0.1f : -0.1f;
-        _scale = Math.Clamp(_scale + delta, 0.2f, 3.0f);
-        Render();
-    }
-
+  
     private string GetPipeTypeFromTool(ToolManager.Tool tool)
     {
         return tool switch
@@ -1820,6 +1861,7 @@ public class MainForm : Form
             _ => "Distra"
         };
     }
+
 
     private void UpdateTypeLabel()
     {
@@ -2203,35 +2245,40 @@ public class MainForm : Form
     }
 
     private float GetAlarmRotation(Grid grid, int x, int y)
+{
+    // Проверяем, есть ли стена в соседних тайлах
+    var dirs = new[] { 
+        (0, -1, 0f),                              // стена снизу → 0°
+        (0, 1, (float)Math.PI),                   // стена сверху → 180°
+        (-1, 0, (float)(Math.PI / 2)),            // стена слева → 90°
+        (1, 0, (float)(-Math.PI / 2))             // стена справа → -90°
+    };
+    
+    foreach (var (dx, dy, rot) in dirs)
     {
-        var dirs = new[] { (0, -1, 0f), (0, 1, (float)Math.PI), (-1, 0, (float)(Math.PI / 2)), (1, 0, (float)(-Math.PI / 2)) };
-
-        foreach (var (dx, dy, rot) in dirs)
-        {
-            int cx = x + dx, cy = y + dy;
-            if (HasWallAt(grid, cx, cy)) return rot;
-        }
-        return 0;
+        int cx = x + dx, cy = y + dy;
+        if (HasWallAt(grid, cx, cy)) 
+            return rot;
     }
+    return _currentAlarmRotation; // Если стены нет - используем текущую ротацию
+}
 
 private void AddAirAlarm(Grid grid, int x, int y)
 {
     if (grid == null) return;
     if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
 
-    // Нельзя ставить на пол
-    if (!HasFloorAt(grid, x, y)) return;
+    // Убираем проверку на пол - сигнализация ставится на стену
+    // if (!HasFloorAt(grid, x, y)) return;
 
     if (_snapToGrid)
     {
-        // Проверяем, что это стена
         if (!HasWallAt(grid, x, y)) return;
-        // Всегда смотрим на юг (0°)
-        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = 0 });
+        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
     }
     else
     {
-        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = 0 });
+        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
     }
 }
 
@@ -2240,26 +2287,26 @@ private void AddFireAlarm(Grid grid, int x, int y)
     if (grid == null) return;
     if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
 
-    // Нельзя ставить на пол
-    if (!HasFloorAt(grid, x, y)) return;
+    System.Diagnostics.Debug.WriteLine($"AddAirAlarm: x={x}, y={y}, rotation={_currentAlarmRotation}");
 
     if (_snapToGrid)
     {
         if (!HasWallAt(grid, x, y)) return;
-        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = 0 });
+        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
     }
     else
     {
-        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = 0 });
+        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
     }
 }
 
-private bool HasFloorAt(Grid grid, int x, int y)
-{
-    return grid.Rooms.Any(r =>
-        x >= r.X && x < r.X + r.Width &&
-        y >= r.Y && y < r.Y + r.Height);
-}
+
+    private bool HasFloorAt(Grid grid, int x, int y)
+    {
+        return grid.Rooms.Any(r =>
+            x >= r.X && x < r.X + r.Width &&
+            y >= r.Y && y < r.Y + r.Height);
+    }
     private void ShowAlarmSettingsDialog()
     {
         if (_alarmSettingsForm != null && !_alarmSettingsForm.IsDisposed)

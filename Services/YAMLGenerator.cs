@@ -291,27 +291,26 @@ public static class YAMLGenerator
             }
         }
     }
-    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
+private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
+{
+    float posX = x + 0.5f;
+    float posY = -y + 0.5f;
+    sb.AppendLine($"- proto: {protoId}");
+    sb.AppendLine("  entities:");
+    sb.AppendLine($"  - uid: {uid}");
+    sb.AppendLine($"    components:");
+    sb.AppendLine($"    - type: Transform");
+    if (rotation != 0)
     {
-        float posX = x + 0.5f;
-        float posY = -y + 0.5f;
-        sb.AppendLine($"- proto: {protoId}");
-        sb.AppendLine("  entities:");
-        sb.AppendLine($"  - uid: {uid}");
-        sb.AppendLine($"    components:");
-        sb.AppendLine($"    - type: Transform");
-        if (rotation != 0)
-        {
-            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-            sb.AppendLine($"      rot: {rotStr} rad");
-        }
-        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-        sb.AppendLine($"      parent: 2");
-        sb.AppendLine($"    - type: Fixtures");
-        sb.AppendLine($"      fixtures: {{}}");
-        uid++;
+        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+        sb.AppendLine($"      rot: {rotStr} rad");
     }
-
+    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+    sb.AppendLine($"      parent: 2");
+    sb.AppendLine($"    - type: Fixtures");
+    sb.AppendLine($"      fixtures: {{}}");
+    uid++;
+}
 
 
     private static void GeneratePipesFromEntities(

@@ -249,51 +249,80 @@ public class Renderer
 
     // ============ МЕТОДЫ ДЛЯ СИГНАЛИЗАЦИИ ============
 
-    // В Renderer.cs - замените метод DrawAlarm
 
     // В Renderer.cs - замените метод DrawAlarm
 
-    private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
+private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
+{
+    float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
+    float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+    var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+
+    // ПОЛУЧАЕМ РОТАЦИЮ
+    float rotation = 0;
+    if (entity is AirAlarmEntity airAlarm)
+        rotation = airAlarm.Rotation;
+    else if (entity is FireAlarmEntity fireAlarm)
+        rotation = fireAlarm.Rotation;
+
+
+    // ДЛЯ ОТЛАДКИ - выведите ротацию
+    // System.Diagnostics.Debug.WriteLine($"Alarm rotation: {rotation}");
+
+    Image? texture = null;
+    if (_indexer != null)
     {
-        float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-        var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
-
-        // Пытаемся загрузить спрайт
-        Image? texture = null;
-        if (_indexer != null)
+        var texturePath = _indexer.GetFullTexturePath(protoId);
+        if (texturePath != null && File.Exists(texturePath))
         {
-            var texturePath = _indexer.GetFullTexturePath(protoId);
-            if (texturePath != null && File.Exists(texturePath))
+            try
             {
-                try
-                {
-                    texture = Image.FromFile(texturePath);
-                }
-                catch { }
+                texture = Image.FromFile(texturePath);
             }
-        }
-
-        if (texture != null)
-        {
-            // Рисуем спрайт
-            var srcRect = GetSourceRect(texture);
-            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-        }
-        else
-        {
-            // Fallback - цветной квадрат с иконкой
-            using var brush = new SolidBrush(bgColor);
-            g.FillRectangle(brush, rect);
-            using var pen = new Pen(Color.Black, 1);
-            g.DrawRectangle(pen, rect);
-
-            string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
-            using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
-            using var textBrush = new SolidBrush(Color.Black);
-            g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+            catch { }
         }
     }
+
+    if (texture != null)
+    {
+        var oldTransform = g.Transform;
+        
+        // ПРИМЕНЯЕМ РОТАЦИЮ
+        if (rotation != 0)
+        {
+            var matrix = new System.Drawing.Drawing2D.Matrix();
+            float angleDegrees = rotation * 180 / (float)Math.PI;
+            matrix.RotateAt(angleDegrees, new PointF(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
+            g.Transform = matrix;
+        }
+        
+        var srcRect = GetSourceRect(texture);
+        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+        
+        g.Transform = oldTransform;
+    }
+    else
+    {
+        // Fallback
+        using var brush = new SolidBrush(bgColor);
+        g.FillRectangle(brush, rect);
+        using var pen = new Pen(Color.Black, 1);
+        g.DrawRectangle(pen, rect);
+        
+        string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
+        using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Color.Black);
+        g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+        
+        // СТРЕЛКА ПОКАЗЫВАЕТ НАПРАВЛЕНИЕ
+        using var arrowPen = new Pen(Color.Red, 2);
+        float cx = rect.X + rect.Width / 2;
+        float cy = rect.Y + rect.Height / 2;
+        float radius = tileSize / 2 - 4;
+        float angle = rotation;
+        g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(angle) * radius, cy + (float)Math.Sin(angle) * radius);
+    }
+}
     private Rectangle GetSourceRect(Image img)
     {
         int w = img.Width, h = img.Height;
