@@ -37,7 +37,7 @@ public class Renderer
     public Bitmap Render(MapData map, float scale, PointF viewOffset, Room? currentRoom, string toolName)
     {
         _currentMap = map;
-        
+
         lock (_lock)
         {
             if (_buffer.Width == 0 || _buffer.Height == 0) return _buffer;
@@ -50,7 +50,7 @@ public class Renderer
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
-                
+
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
@@ -98,9 +98,9 @@ public class Renderer
                 if (ShowPipeOverlay)
                 {
                     var allPipes = _pipeBuilder.GetPipes(grid);
-                    
+
                     DrawPipeLines(g, allPipes, tileSize, viewOffset, grid.Position);
-                    
+
                     foreach (var pipe in allPipes)
                     {
                         DrawPipeDot(g, pipe, tileSize, viewOffset, grid.Position);
@@ -110,7 +110,7 @@ public class Renderer
                     {
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
-                        
+
                         var path = CalculatePipePath(start, end);
                         foreach (var pos in path)
                         {
@@ -120,15 +120,16 @@ public class Renderer
                 }
 
                 // 7. СИГНАЛИЗАЦИЯ (AirAlarm, FireAlarm)
+                // 7. СИГНАЛИЗАЦИЯ (AirAlarm, FireAlarm)
                 foreach (var entity in grid.Entities)
                 {
                     if (entity is AirAlarmEntity airAlarm)
                     {
-                        DrawAlarm(g, airAlarm, tileSize, viewOffset, grid.Position, "🔊", Color.FromArgb(200, 255, 200, 100));
+                        DrawAlarm(g, airAlarm, tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
                     }
                     else if (entity is FireAlarmEntity fireAlarm)
                     {
-                        DrawAlarm(g, fireAlarm, tileSize, viewOffset, grid.Position, "🔥", Color.FromArgb(200, 255, 100, 100));
+                        DrawAlarm(g, fireAlarm, tileSize, viewOffset, grid.Position, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
                     }
                 }
             }
@@ -146,7 +147,7 @@ public class Renderer
         if (pipes.Count == 0) return;
 
         var grouped = pipes.GroupBy(p => p.PipeType);
-        
+
         foreach (var group in grouped)
         {
             Color color = group.Key switch
@@ -166,7 +167,7 @@ public class Renderer
                     pipeDict[key] = pipe;
                 }
             }
-            
+
             using var pen = new Pen(color, Math.Max(2, tileSize / 10));
 
             foreach (var pipe in pipeDict.Values)
@@ -175,7 +176,7 @@ public class Renderer
                 float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
                 var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-                
+
                 foreach (var (dx, dy) in directions)
                 {
                     var key = (pipe.X + dx, pipe.Y + dy);
@@ -224,7 +225,7 @@ public class Renderer
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
     {
         var positions = new List<(int x, int y)>();
-        
+
         int startX = start.x;
         int startY = start.y;
         int endX = end.x;
@@ -248,23 +249,51 @@ public class Renderer
 
     // ============ МЕТОДЫ ДЛЯ СИГНАЛИЗАЦИИ ============
 
-    private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string icon, Color bgColor)
+    // В Renderer.cs - замените метод DrawAlarm
+
+    // В Renderer.cs - замените метод DrawAlarm
+
+    private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
     {
         float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
         float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
         var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
 
-        using var brush = new SolidBrush(bgColor);
-        g.FillRectangle(brush, rect);
-        using var pen = new Pen(Color.Black, 1);
-        g.DrawRectangle(pen, rect);
-        using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.Black);
-        g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+        // Пытаемся загрузить спрайт
+        Image? texture = null;
+        if (_indexer != null)
+        {
+            var texturePath = _indexer.GetFullTexturePath(protoId);
+            if (texturePath != null && File.Exists(texturePath))
+            {
+                try
+                {
+                    texture = Image.FromFile(texturePath);
+                }
+                catch { }
+            }
+        }
+
+        if (texture != null)
+        {
+            // Рисуем спрайт
+            var srcRect = GetSourceRect(texture);
+            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+        }
+        else
+        {
+            // Fallback - цветной квадрат с иконкой
+            using var brush = new SolidBrush(bgColor);
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.Black, 1);
+            g.DrawRectangle(pen, rect);
+
+            string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
+            using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
+            using var textBrush = new SolidBrush(Color.Black);
+            g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+        }
     }
-
-    // ============ ОСТАЛЬНЫЕ МЕТОДЫ ============
-
     private Rectangle GetSourceRect(Image img)
     {
         int w = img.Width, h = img.Height;
@@ -306,8 +335,8 @@ public class Renderer
             var floorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (floorPath != null && File.Exists(floorPath))
             {
-                try 
-                { 
+                try
+                {
                     floorTexture = Image.FromFile(floorPath);
                 }
                 catch { }
@@ -338,8 +367,8 @@ public class Renderer
             var wallPath = _indexer.GetFullTexturePath(wallProto);
             if (wallPath != null && File.Exists(wallPath))
             {
-                try 
-                { 
+                try
+                {
                     wallTexture = Image.FromFile(wallPath);
                 }
                 catch { }
@@ -370,8 +399,8 @@ public class Renderer
             var doorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (doorPath != null && File.Exists(doorPath))
             {
-                try 
-                { 
+                try
+                {
                     doorTexture = Image.FromFile(doorPath);
                 }
                 catch { }
@@ -399,7 +428,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -413,7 +442,7 @@ public class Renderer
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-        
+
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -427,7 +456,7 @@ public class Renderer
         {
             int innerWText = Math.Max(0, room.Width - 2);
             int innerHText = Math.Max(0, room.Height - 2);
-            
+
             if (innerWText > 0 && innerHText > 0)
             {
                 using var font = new Font("Arial", Math.Min(10, tileSize / 3));

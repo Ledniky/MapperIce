@@ -275,43 +275,45 @@ public static class YAMLGenerator
         }
     }
 
-private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings)
-{
-    foreach (var entity in grid.Entities)
+    private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings)
     {
-        if (entity is AirAlarmEntity airAlarm)
+        foreach (var entity in grid.Entities)
         {
-            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
-            GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid);
-        }
-        else if (entity is FireAlarmEntity fireAlarm)
-        {
-            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
-            GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid);
+            if (entity is AirAlarmEntity airAlarm)
+            {
+                string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+                GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid);
+            }
+            else if (entity is FireAlarmEntity fireAlarm)
+            {
+                string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+                GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid);
+            }
         }
     }
-}
+    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
+    {
+        float posX = x + 0.5f;
+        float posY = -y + 0.5f;
+        sb.AppendLine($"- proto: {protoId}");
+        sb.AppendLine("  entities:");
+        sb.AppendLine($"  - uid: {uid}");
+        sb.AppendLine($"    components:");
+        sb.AppendLine($"    - type: Transform");
+        if (rotation != 0)
+        {
+            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+            sb.AppendLine($"      rot: {rotStr} rad");
+        }
+        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+        sb.AppendLine($"      parent: 2");
+        sb.AppendLine($"    - type: Fixtures");
+        sb.AppendLine($"      fixtures: {{}}");
+        uid++;
+    }
 
-private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
-{
-    float posX = x + 0.5f;
-    float posY = -y + 0.5f;
-    sb.AppendLine($"- proto: {protoId}");
-    sb.AppendLine("  entities:");
-    sb.AppendLine($"  - uid: {uid}");
-    sb.AppendLine($"    components:");
-    sb.AppendLine($"    - type: Transform");
-    if (rotation != 0)
-    {
-        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-        sb.AppendLine($"      rot: {rotStr} rad");
-    }
-    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-    sb.AppendLine($"      parent: 2");
-    sb.AppendLine($"    - type: Fixtures");
-    sb.AppendLine($"      fixtures: {{}}");
-    uid++;
-}
+
+
     private static void GeneratePipesFromEntities(
         StringBuilder sb,
         Grid grid,
@@ -337,8 +339,8 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                 _ => ""
             };
 
-            bool hasColor = pipeLayers != null && 
-                            pipeLayers.TryGetValue(group.Key, out var settings) && 
+            bool hasColor = pipeLayers != null &&
+                            pipeLayers.TryGetValue(group.Key, out var settings) &&
                             settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
@@ -425,7 +427,7 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
 
                 var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
                 float ventRotation = 0;
-                
+
                 if (neighbors.Count > 0)
                 {
                     var (dx, dy) = neighbors[0];

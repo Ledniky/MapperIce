@@ -61,7 +61,7 @@ public class MainForm : Form
     private Button _btnAlarmSettings = null!;
     private string _currentPipeLayer = "Distra";
     private Button _btnAirAlarm = null!;
-    private Button _btnFireAlarm = null!; 
+    private Button _btnFireAlarm = null!;
     public MainForm()
     {
         Text = "MapperIce";
@@ -1507,6 +1507,10 @@ public class MainForm : Form
         _btnPipeWaste.BackColor = Color.White;
         _btnPipeNormal.BackColor = Color.White;
 
+        // Сброс сигналок
+        if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
+        if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
+
         switch (tool)
         {
             case ToolManager.Tool.CreateRoom:
@@ -1530,6 +1534,12 @@ public class MainForm : Form
             case ToolManager.Tool.PipeNormal:
                 _btnPipeNormal.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.AirAlarm:
+                if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.FireAlarm:
+                if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
+                break;
         }
 
         Cursor = tool switch
@@ -1538,6 +1548,7 @@ public class MainForm : Form
             ToolManager.Tool.Delete => Cursors.Hand,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+            ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
             _ => Cursors.Default
         };
 
@@ -2181,22 +2192,14 @@ public class MainForm : Form
         return PipeSettings.DefaultLayers.TryGetValue(layer, out var def) ? def.HexColor : "#FFFFFFFF";
     }
 
-    private void AddAirAlarm(Grid grid, int x, int y)
+
+    private bool HasWallAt(Grid grid, int x, int y)
     {
-        if (grid == null) return;
-        if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
-
-        float rotation = GetAlarmRotation(grid, x, y);
-        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = rotation });
-    }
-
-    private void AddFireAlarm(Grid grid, int x, int y)
-    {
-        if (grid == null) return;
-        if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
-
-        float rotation = GetAlarmRotation(grid, x, y);
-        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = rotation });
+        return grid.Rooms.Any(r =>
+            x >= r.X && x < r.X + r.Width &&
+            y >= r.Y && y < r.Y + r.Height &&
+            (x == r.X || x == r.X + r.Width - 1 ||
+             y == r.Y || y == r.Y + r.Height - 1));
     }
 
     private float GetAlarmRotation(Grid grid, int x, int y)
@@ -2206,114 +2209,155 @@ public class MainForm : Form
         foreach (var (dx, dy, rot) in dirs)
         {
             int cx = x + dx, cy = y + dy;
-            bool hasWall = grid.Rooms.Any(r =>
-                cx >= r.X && cx < r.X + r.Width &&
-                cy >= r.Y && cy < r.Y + r.Height &&
-                (cx == r.X || cx == r.X + r.Width - 1 ||
-                 cy == r.Y || cy == r.Y + r.Height - 1));
-            if (hasWall) return rot;
+            if (HasWallAt(grid, cx, cy)) return rot;
         }
         return 0;
     }
 
-private void ShowAlarmSettingsDialog()
+private void AddAirAlarm(Grid grid, int x, int y)
 {
-    if (_alarmSettingsForm != null && !_alarmSettingsForm.IsDisposed)
+    if (grid == null) return;
+    if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
+
+    // Нельзя ставить на пол
+    if (!HasFloorAt(grid, x, y)) return;
+
+    if (_snapToGrid)
     {
-        _alarmSettingsForm.Close();
-        _alarmSettingsForm = null;
-        return;
+        // Проверяем, что это стена
+        if (!HasWallAt(grid, x, y)) return;
+        // Всегда смотрим на юг (0°)
+        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = 0 });
     }
-
-    _alarmSettingsForm = new Form
+    else
     {
-        Text = "Настройки сигнализации",
-        Size = new Size(450, 300),
-        StartPosition = FormStartPosition.CenterParent,
-        FormBorderStyle = FormBorderStyle.FixedDialog,
-        ShowInTaskbar = false,
-        MaximizeBox = false,
-        MinimizeBox = false
-    };
-    _alarmSettingsForm.Owner = this;
-
-    var panel = new TableLayoutPanel
-    {
-        Dock = DockStyle.Fill,
-        Padding = new Padding(10),
-        RowCount = 3,
-        ColumnCount = 2,
-        AutoSize = true
-    };
-
-    panel.Controls.Add(new Label { Text = "Тип", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
-    panel.Controls.Add(new Label { Text = "ID прототипа", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
-
-    int row = 1;
-    var textBoxes = new Dictionary<string, TextBox>();
-
-    foreach (var alarm in _alarmSettings.Values)
-    {
-        panel.Controls.Add(new Label { Text = alarm.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
-        
-        var txtId = new TextBox
-        {
-            Text = alarm.Id,
-            Width = 150,
-            Tag = alarm.DisplayName
-        };
-        txtId.TextChanged += (s, e) =>
-        {
-            if (txtId.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
-            {
-                settings.Id = txtId.Text;
-            }
-        };
-        panel.Controls.Add(txtId, 1, row);
-        textBoxes[alarm.DisplayName] = txtId;
-        row++;
+        grid.Entities.Add(new AirAlarmEntity { X = x, Y = y, Rotation = 0 });
     }
+}
 
-    var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
-    
-    var btnOk = new Button
-    {
-        Text = "OK",
-        Location = new Point(btnPanel.Width - 100, 10),
-        Width = 80,
-        Height = 30,
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnOk.Click += (s, e) => _alarmSettingsForm?.Close();
-    btnPanel.Controls.Add(btnOk);
+private void AddFireAlarm(Grid grid, int x, int y)
+{
+    if (grid == null) return;
+    if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
 
-    var btnCancel = new Button
+    // Нельзя ставить на пол
+    if (!HasFloorAt(grid, x, y)) return;
+
+    if (_snapToGrid)
     {
-        Text = "Отмена",
-        Location = new Point(btnPanel.Width - 190, 10),
-        Width = 80,
-        Height = 30,
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnCancel.Click += (s, e) =>
+        if (!HasWallAt(grid, x, y)) return;
+        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = 0 });
+    }
+    else
     {
+        grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = 0 });
+    }
+}
+
+private bool HasFloorAt(Grid grid, int x, int y)
+{
+    return grid.Rooms.Any(r =>
+        x >= r.X && x < r.X + r.Width &&
+        y >= r.Y && y < r.Y + r.Height);
+}
+    private void ShowAlarmSettingsDialog()
+    {
+        if (_alarmSettingsForm != null && !_alarmSettingsForm.IsDisposed)
+        {
+            _alarmSettingsForm.Close();
+            _alarmSettingsForm = null;
+            return;
+        }
+
+        _alarmSettingsForm = new Form
+        {
+            Text = "Настройки сигнализации",
+            Size = new Size(450, 300),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _alarmSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 3,
+            ColumnCount = 2,
+            AutoSize = true
+        };
+
+        panel.Controls.Add(new Label { Text = "Тип", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
+        panel.Controls.Add(new Label { Text = "ID прототипа", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
+
+        int row = 1;
+        var textBoxes = new Dictionary<string, TextBox>();
+
         foreach (var alarm in _alarmSettings.Values)
         {
-            if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
+            panel.Controls.Add(new Label { Text = alarm.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+
+            var txtId = new TextBox
             {
-                alarm.Id = defaultSettings.Id;
-            }
+                Text = alarm.Id,
+                Width = 150,
+                Tag = alarm.DisplayName
+            };
+            txtId.TextChanged += (s, e) =>
+            {
+                if (txtId.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
+                {
+                    settings.Id = txtId.Text;
+                }
+            };
+            panel.Controls.Add(txtId, 1, row);
+            textBoxes[alarm.DisplayName] = txtId;
+            row++;
         }
-        _alarmSettingsForm?.Close();
-    };
-    btnPanel.Controls.Add(btnCancel);
 
-    _alarmSettingsForm.Controls.Add(panel);
-    _alarmSettingsForm.Controls.Add(btnPanel);
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
 
-    _alarmSettingsForm.FormClosed += (s, e) => { _alarmSettingsForm = null; };
-    _alarmSettingsForm.Show(this);
-}
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) => _alarmSettingsForm?.Close();
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) =>
+        {
+            foreach (var alarm in _alarmSettings.Values)
+            {
+                if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
+                {
+                    alarm.Id = defaultSettings.Id;
+                }
+            }
+            _alarmSettingsForm?.Close();
+        };
+        btnPanel.Controls.Add(btnCancel);
+
+        _alarmSettingsForm.Controls.Add(panel);
+        _alarmSettingsForm.Controls.Add(btnPanel);
+
+        _alarmSettingsForm.FormClosed += (s, e) => { _alarmSettingsForm = null; };
+        _alarmSettingsForm.Show(this);
+    }
 
 }
 
