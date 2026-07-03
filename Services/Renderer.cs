@@ -37,7 +37,7 @@ public class Renderer
     public Bitmap Render(MapData map, float scale, PointF viewOffset, Room? currentRoom, string toolName)
     {
         _currentMap = map;
-
+        
         lock (_lock)
         {
             if (_buffer.Width == 0 || _buffer.Height == 0) return _buffer;
@@ -50,7 +50,7 @@ public class Renderer
             foreach (var grid in map.Grids)
             {
                 if (!grid.IsVisible) continue;
-
+                
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
@@ -78,6 +78,15 @@ public class Renderer
                     DrawDoorAt(g, tile, tileSize, viewOffset, grid.Position);
                 }
 
+                // 4.5. ПОЖАРНЫЕ ШЛЮЗЫ
+                foreach (var entity in grid.Entities)
+                {
+                    if (entity is FirelockEntity firelock)
+                    {
+                        DrawFirelock(g, firelock, tileSize, viewOffset, grid.Position);
+                    }
+                }
+
                 // 5. Оверлей комнат
                 if (!HideRoomOverlay)
                 {
@@ -98,9 +107,9 @@ public class Renderer
                 if (ShowPipeOverlay)
                 {
                     var allPipes = _pipeBuilder.GetPipes(grid);
-
+                    
                     DrawPipeLines(g, allPipes, tileSize, viewOffset, grid.Position);
-
+                    
                     foreach (var pipe in allPipes)
                     {
                         DrawPipeDot(g, pipe, tileSize, viewOffset, grid.Position);
@@ -110,7 +119,7 @@ public class Renderer
                     {
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
-
+                        
                         var path = CalculatePipePath(start, end);
                         foreach (var pos in path)
                         {
@@ -119,7 +128,6 @@ public class Renderer
                     }
                 }
 
-                // 7. СИГНАЛИЗАЦИЯ (AirAlarm, FireAlarm)
                 // 7. СИГНАЛИЗАЦИЯ (AirAlarm, FireAlarm)
                 foreach (var entity in grid.Entities)
                 {
@@ -182,6 +190,7 @@ public class Renderer
                     var key = (pipe.X + dx, pipe.Y + dy);
                     if (pipeDict.ContainsKey(key))
                     {
+                        // ИСПОЛЬЗУЕМ Item1 И Item2 ВМЕСТО x И y
                         float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
                         float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
                         g.DrawLine(pen, cx, cy, nx, ny);
@@ -225,7 +234,7 @@ public class Renderer
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
     {
         var positions = new List<(int x, int y)>();
-
+        
         int startX = start.x;
         int startY = start.y;
         int endX = end.x;
@@ -249,80 +258,126 @@ public class Renderer
 
     // ============ МЕТОДЫ ДЛЯ СИГНАЛИЗАЦИИ ============
 
-
-    // В Renderer.cs - замените метод DrawAlarm
-
-private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
-{
-    float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
-    float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-    var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
-
-    // ПОЛУЧАЕМ РОТАЦИЮ
-    float rotation = 0;
-    if (entity is AirAlarmEntity airAlarm)
-        rotation = airAlarm.Rotation;
-    else if (entity is FireAlarmEntity fireAlarm)
-        rotation = fireAlarm.Rotation;
-
-
-    // ДЛЯ ОТЛАДКИ - выведите ротацию
-    // System.Diagnostics.Debug.WriteLine($"Alarm rotation: {rotation}");
-
-    Image? texture = null;
-    if (_indexer != null)
+    private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
     {
-        var texturePath = _indexer.GetFullTexturePath(protoId);
-        if (texturePath != null && File.Exists(texturePath))
+        float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+        var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+
+        float rotation = 0;
+        if (entity is AirAlarmEntity airAlarm)
+            rotation = airAlarm.Rotation;
+        else if (entity is FireAlarmEntity fireAlarm)
+            rotation = fireAlarm.Rotation;
+
+        Image? texture = null;
+        if (_indexer != null)
         {
-            try
+            var texturePath = _indexer.GetFullTexturePath(protoId);
+            if (texturePath != null && File.Exists(texturePath))
             {
-                texture = Image.FromFile(texturePath);
+                try
+                {
+                    texture = Image.FromFile(texturePath);
+                }
+                catch { }
             }
-            catch { }
+        }
+
+        if (texture != null)
+        {
+            var oldTransform = g.Transform;
+            
+            if (rotation != 0)
+            {
+                var matrix = new System.Drawing.Drawing2D.Matrix();
+                float angleDegrees = rotation * 180 / (float)Math.PI;
+                matrix.RotateAt(angleDegrees, new PointF(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
+                g.Transform = matrix;
+            }
+            
+            var srcRect = GetSourceRect(texture);
+            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            
+            g.Transform = oldTransform;
+        }
+        else
+        {
+            using var brush = new SolidBrush(bgColor);
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.Black, 1);
+            g.DrawRectangle(pen, rect);
+            
+            string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
+            using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
+            using var textBrush = new SolidBrush(Color.Black);
+            g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+            
+            // Стрелка направления
+            using var arrowPen = new Pen(Color.Red, 2);
+            float cx = rect.X + rect.Width / 2;
+            float cy = rect.Y + rect.Height / 2;
+            float radius = tileSize / 2 - 4;
+            float angle = rotation;
+            g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(angle) * radius, cy + (float)Math.Sin(angle) * radius);
         }
     }
 
-    if (texture != null)
+    // ============ МЕТОДЫ ДЛЯ ПОЖАРНЫХ ШЛЮЗОВ ============
+
+    private void DrawFirelock(Graphics g, FirelockEntity firelock, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        var oldTransform = g.Transform;
-        
-        // ПРИМЕНЯЕМ РОТАЦИЮ
-        if (rotation != 0)
+        float x = (firelock.X + gridOffset.X) * tileSize - viewOffset.X;
+        float y = (firelock.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+        var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+
+        Image? texture = null;
+        if (_indexer != null)
         {
-            var matrix = new System.Drawing.Drawing2D.Matrix();
-            float angleDegrees = rotation * 180 / (float)Math.PI;
-            matrix.RotateAt(angleDegrees, new PointF(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
-            g.Transform = matrix;
+            var texturePath = _indexer.GetFullTexturePath(firelock.Proto);
+            if (texturePath != null && File.Exists(texturePath))
+            {
+                try
+                {
+                    // Заменяем closed.png на open.png
+                    string directory = Path.GetDirectoryName(texturePath)!;
+                    string fileName = Path.GetFileName(texturePath);
+                    if (fileName.Equals("closed.png", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string openPath = Path.Combine(directory, "open.png");
+                        if (File.Exists(openPath))
+                        {
+                            texturePath = openPath;
+                        }
+                    }
+                    texture = Image.FromFile(texturePath);
+                }
+                catch { }
+            }
         }
-        
-        var srcRect = GetSourceRect(texture);
-        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-        
-        g.Transform = oldTransform;
+
+        if (texture != null)
+        {
+            var srcRect = GetSourceRect(texture);
+            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+        }
+        else
+        {
+            // Fallback
+            Color color = firelock.IsGlass ? Color.FromArgb(150, 100, 200, 255) : Color.FromArgb(200, 200, 100, 100);
+            using var brush = new SolidBrush(color);
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.Black, 1);
+            g.DrawRectangle(pen, rect);
+
+            using var font = new Font("Segoe UI", tileSize / 3, FontStyle.Bold);
+            using var textBrush = new SolidBrush(Color.White);
+            g.DrawString("🔥", font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+        }
     }
-    else
-    {
-        // Fallback
-        using var brush = new SolidBrush(bgColor);
-        g.FillRectangle(brush, rect);
-        using var pen = new Pen(Color.Black, 1);
-        g.DrawRectangle(pen, rect);
-        
-        string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
-        using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.Black);
-        g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
-        
-        // СТРЕЛКА ПОКАЗЫВАЕТ НАПРАВЛЕНИЕ
-        using var arrowPen = new Pen(Color.Red, 2);
-        float cx = rect.X + rect.Width / 2;
-        float cy = rect.Y + rect.Height / 2;
-        float radius = tileSize / 2 - 4;
-        float angle = rotation;
-        g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(angle) * radius, cy + (float)Math.Sin(angle) * radius);
-    }
-}
+
+    // ============ ОСТАЛЬНЫЕ МЕТОДЫ ============
+
     private Rectangle GetSourceRect(Image img)
     {
         int w = img.Width, h = img.Height;
@@ -364,8 +419,8 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
             var floorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (floorPath != null && File.Exists(floorPath))
             {
-                try
-                {
+                try 
+                { 
                     floorTexture = Image.FromFile(floorPath);
                 }
                 catch { }
@@ -396,8 +451,8 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
             var wallPath = _indexer.GetFullTexturePath(wallProto);
             if (wallPath != null && File.Exists(wallPath))
             {
-                try
-                {
+                try 
+                { 
                     wallTexture = Image.FromFile(wallPath);
                 }
                 catch { }
@@ -428,8 +483,8 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
             var doorPath = _indexer.GetFullTexturePath(tile.ProtoId);
             if (doorPath != null && File.Exists(doorPath))
             {
-                try
-                {
+                try 
+                { 
                     doorTexture = Image.FromFile(doorPath);
                 }
                 catch { }
@@ -457,7 +512,7 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-
+        
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -471,7 +526,7 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
     {
         int innerW = Math.Max(0, room.Width - 1);
         int innerH = Math.Max(0, room.Height - 1);
-
+        
         float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
         float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
@@ -485,7 +540,7 @@ private void DrawAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOf
         {
             int innerWText = Math.Max(0, room.Width - 2);
             int innerHText = Math.Max(0, room.Height - 2);
-
+            
             if (innerWText > 0 && innerHText > 0)
             {
                 using var font = new Font("Arial", Math.Min(10, tileSize / 3));

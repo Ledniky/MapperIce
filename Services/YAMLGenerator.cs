@@ -116,6 +116,7 @@ public static class YAMLGenerator
         GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
         GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
         GenerateAlarms(sb, grid, ref uid, alarmSettings);
+        GenerateFirelocks(sb, grid, ref uid);
 
         return sb.ToString();
     }
@@ -291,27 +292,27 @@ public static class YAMLGenerator
             }
         }
     }
-private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
-{
-    float posX = x + 0.5f;
-    float posY = -y + 0.5f;
-    sb.AppendLine($"- proto: {protoId}");
-    sb.AppendLine("  entities:");
-    sb.AppendLine($"  - uid: {uid}");
-    sb.AppendLine($"    components:");
-    sb.AppendLine($"    - type: Transform");
-    if (rotation != 0)
-    {
-        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-        sb.AppendLine($"      rot: {rotStr} rad");
-    }
-    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-    sb.AppendLine($"      parent: 2");
-    sb.AppendLine($"    - type: Fixtures");
-    sb.AppendLine($"      fixtures: {{}}");
-    uid++;
-}
 
+    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
+    {
+        float posX = x + 0.5f;
+        float posY = -y + 0.5f;
+        sb.AppendLine($"- proto: {protoId}");
+        sb.AppendLine("  entities:");
+        sb.AppendLine($"  - uid: {uid}");
+        sb.AppendLine($"    components:");
+        sb.AppendLine($"    - type: Transform");
+        if (rotation != 0)
+        {
+            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+            sb.AppendLine($"      rot: {rotStr} rad");
+        }
+        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+        sb.AppendLine($"      parent: 2");
+        sb.AppendLine($"    - type: Fixtures");
+        sb.AppendLine($"      fixtures: {{}}");
+        uid++;
+    }
 
     private static void GeneratePipesFromEntities(
         StringBuilder sb,
@@ -573,5 +574,25 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
         }
 
         return 0;
+    }
+
+    private static void GenerateFirelocks(StringBuilder sb, Grid grid, ref int uid)
+    {
+        foreach (var entity in grid.Entities)
+        {
+            if (entity is FirelockEntity firelock)
+            {
+                float posX = firelock.X + 0.5f;
+                float posY = -firelock.Y + 0.5f;
+                sb.AppendLine($"- proto: {firelock.Proto}");
+                sb.AppendLine("  entities:");
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
     }
 }

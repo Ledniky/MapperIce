@@ -23,7 +23,6 @@ public class DoorUpdater
             return false;
         }
 
-        // Если магнит включен - проверяем, что рядом есть стена
         if (snapToGrid)
         {
             var room = grid.Rooms.FirstOrDefault(r =>
@@ -32,7 +31,6 @@ public class DoorUpdater
 
             if (room == null) return false;
 
-            // Проверяем, что позиция на границе комнаты
             bool isOnEdge = x == room.X || x == room.X + room.Width - 1 ||
                            y == room.Y || y == room.Y + room.Height - 1;
 
@@ -47,7 +45,6 @@ public class DoorUpdater
             Proto = doorType
         };
 
-        // Находим комнату и добавляем дверь
         var targetRoom = grid.Rooms.FirstOrDefault(r =>
             x >= r.X && x < r.X + r.Width &&
             y >= r.Y && y < r.Y + r.Height);
@@ -55,10 +52,34 @@ public class DoorUpdater
         if (targetRoom != null)
         {
             targetRoom.Doors.Add(newDoor);
+            
+            // === ДОБАВЛЯЕМ ПОЖАРНЫЙ ШЛЮЗ ===
+            AddFirelock(grid, x, y, doorType);
+            
             return true;
         }
 
         return false;
+    }
+
+    private void AddFirelock(Grid grid, int x, int y, string doorType)
+    {
+        if (grid == null) return;
+
+        if (grid.Entities.OfType<FirelockEntity>().Any(e => (int)e.X == x && (int)e.Y == y))
+            return;
+
+        string firelockType = doorType.Contains("Glass") ? "FirelockGlass" : "Firelock";
+
+        var firelock = new FirelockEntity
+        {
+            X = x,
+            Y = y,
+            IsGlass = doorType.Contains("Glass"),
+            Proto = firelockType
+        };
+
+        grid.Entities.Add(firelock);
     }
 
     public bool TryRemoveDoor(Grid grid, int x, int y)
@@ -71,6 +92,15 @@ public class DoorUpdater
             if (door != null)
             {
                 room.Doors.Remove(door);
+                
+                // Удаляем пожарный шлюз
+                var firelock = grid.Entities.OfType<FirelockEntity>()
+                    .FirstOrDefault(f => (int)f.X == x && (int)f.Y == y);
+                if (firelock != null)
+                {
+                    grid.Entities.Remove(firelock);
+                }
+                
                 return true;
             }
         }
@@ -80,23 +110,19 @@ public class DoorUpdater
 
     public void UpdateAllDoors(Grid grid)
     {
-        // Пересоздаем все двери
         var allDoors = grid.Rooms.SelectMany(r => r.Doors).ToList();
+        
+        // Очищаем старые шлюзы
+        var oldFirelocks = grid.Entities.OfType<FirelockEntity>().ToList();
+        foreach (var f in oldFirelocks)
+        {
+            grid.Entities.Remove(f);
+        }
+
+        // Добавляем шлюзы для всех дверей
         foreach (var door in allDoors)
         {
-            // Проверяем, что дверь все еще на границе комнаты
-            var room = grid.Rooms.FirstOrDefault(r =>
-                door.X >= r.X && door.X < r.X + r.Width &&
-                door.Y >= r.Y && door.Y < r.Y + r.Height);
-
-            if (room == null)
-            {
-                // Если комнаты нет - удаляем дверь
-                foreach (var r in grid.Rooms)
-                {
-                    r.Doors.Remove(door);
-                }
-            }
+            AddFirelock(grid, door.X, door.Y, door.Proto);
         }
     }
 }

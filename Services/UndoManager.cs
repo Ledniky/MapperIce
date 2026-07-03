@@ -51,6 +51,9 @@ public class GridSnapshot
     public List<Room> Rooms { get; set; } = new();
     public List<Door> Doors { get; set; } = new();
     public List<PipeEntity> Pipes { get; set; } = new();
+    public List<FirelockEntity> Firelocks { get; set; } = new(); // Добавить
+    public List<AirAlarmEntity> AirAlarms { get; set; } = new(); // Добавить
+    public List<FireAlarmEntity> FireAlarms { get; set; } = new(); // Добавить
 
     public GridSnapshot() { }
 
@@ -61,7 +64,20 @@ public class GridSnapshot
             .Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto })
             .ToList();
         Pipes = grid.Entities.OfType<PipeEntity>()
-            .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType })
+            .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType, IsEndpoint = p.IsEndpoint })
+            .ToList();
+        
+        // Сохраняем пожарные шлюзы
+        Firelocks = grid.Entities.OfType<FirelockEntity>()
+            .Select(f => new FirelockEntity { X = f.X, Y = f.Y, Proto = f.Proto, IsGlass = f.IsGlass })
+            .ToList();
+        
+        // Сохраняем сигнализации
+        AirAlarms = grid.Entities.OfType<AirAlarmEntity>()
+            .Select(a => new AirAlarmEntity { X = a.X, Y = a.Y, Rotation = a.Rotation })
+            .ToList();
+        FireAlarms = grid.Entities.OfType<FireAlarmEntity>()
+            .Select(f => new FireAlarmEntity { X = f.X, Y = f.Y, Rotation = f.Rotation })
             .ToList();
     }
 
@@ -89,8 +105,31 @@ public class GridSnapshot
             {
                 X = pipe.X,
                 Y = pipe.Y,
-                PipeType = pipe.PipeType
+                PipeType = pipe.PipeType,
+                IsEndpoint = pipe.IsEndpoint
             });
+        }
+
+        // Восстанавливаем пожарные шлюзы
+        foreach (var firelock in Firelocks)
+        {
+            grid.Entities.Add(new FirelockEntity
+            {
+                X = firelock.X,
+                Y = firelock.Y,
+                Proto = firelock.Proto,
+                IsGlass = firelock.IsGlass
+            });
+        }
+
+        // Восстанавливаем сигнализации
+        foreach (var alarm in AirAlarms)
+        {
+            grid.Entities.Add(new AirAlarmEntity { X = alarm.X, Y = alarm.Y, Rotation = alarm.Rotation });
+        }
+        foreach (var alarm in FireAlarms)
+        {
+            grid.Entities.Add(new FireAlarmEntity { X = alarm.X, Y = alarm.Y, Rotation = alarm.Rotation });
         }
     }
 }
