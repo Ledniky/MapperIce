@@ -8,9 +8,6 @@ public static class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
-    /// <summary>
-    /// Генерирует YAML карту из грида
-    /// </summary>
     public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings> pipeLayers)
     {
         if (grid == null)
@@ -18,7 +15,6 @@ public static class YAMLGenerator
         if (tileBuilder == null)
             throw new ArgumentNullException(nameof(tileBuilder));
 
-        // Строим TileGrid из комнат
         var tileGrid = tileBuilder.BuildFromRooms(grid);
 
         var sb = new StringBuilder();
@@ -50,7 +46,6 @@ public static class YAMLGenerator
         // ==================== ENTITIES ====================
         sb.AppendLine("entities:");
 
-        // Map Entity
         sb.AppendLine("- proto: \"\"");
         sb.AppendLine("  entities:");
         sb.AppendLine("  - uid: 1");
@@ -64,7 +59,6 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: Broadphase");
         sb.AppendLine("    - type: OccluderTree");
 
-        // Grid Entity
         sb.AppendLine("  - uid: 2");
         sb.AppendLine("    components:");
         sb.AppendLine("    - type: MetaData");
@@ -75,7 +69,6 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: MapGrid");
         sb.AppendLine("      chunks:");
 
-        // ==================== CHUNKS ====================
         var chunks = GenerateChunksFromTileGrid(tileGrid);
         foreach (var chunk in chunks)
         {
@@ -85,7 +78,6 @@ public static class YAMLGenerator
             sb.AppendLine($"          version: 7");
         }
 
-        // ==================== GRID COMPONENTS ====================
         sb.AppendLine("    - type: Broadphase");
         sb.AppendLine("    - type: Physics");
         sb.AppendLine("      bodyStatus: InAir");
@@ -119,35 +111,23 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: GasTileOverlay");
         sb.AppendLine("    - type: RadiationGridResistance");
 
-        // ==================== WALLS ====================
         int uid = 3;
         GenerateWallsFromTileGrid(sb, tileGrid, tileBuilder, ref uid);
-
-        // ==================== DOORS ====================
         GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
-
-        // ==================== PIPES ====================
         GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
 
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Подсчитывает количество труб
-    /// </summary>
     private static int CountPipes(Grid grid)
     {
         return grid.Entities.OfType<PipeEntity>().Count();
     }
 
-    /// <summary>
-    /// Генерирует чанки из TileGrid
-    /// </summary>
     private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
     {
         var chunks = new Dictionary<(int x, int y), int[]>();
 
-        // Полы и стены дают тайлы
         var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
         var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
         var allTiles = floorTiles.Concat(wallTiles);
@@ -155,7 +135,7 @@ public static class YAMLGenerator
         foreach (var tile in allTiles)
         {
             int x = tile.X;
-            int y = -tile.Y; // Инвертируем Y как в SS14
+            int y = -tile.Y;
 
             int cx = x / CHUNK_SIZE;
             int cy = y / CHUNK_SIZE;
@@ -176,7 +156,7 @@ public static class YAMLGenerator
             }
 
             int index = ly * CHUNK_SIZE + lx;
-            chunks[key][index] = 1; // Plating
+            chunks[key][index] = 1;
         }
 
         var result = new Dictionary<(int x, int y), string>();
@@ -188,9 +168,6 @@ public static class YAMLGenerator
         return result;
     }
 
-    /// <summary>
-    /// Кодирует тайлы в Base64
-    /// </summary>
     private static string EncodeTiles(int[] tileIds)
     {
         var bytes = new List<byte>();
@@ -204,20 +181,14 @@ public static class YAMLGenerator
         return Convert.ToBase64String(bytes.ToArray());
     }
 
-    /// <summary>
-    /// Подсчитывает количество сущностей
-    /// </summary>
     private static int CountEntities(TileGrid tileGrid)
     {
-        int count = 2; // Map Entity + Grid
+        int count = 2;
         count += tileGrid.GetTilesByContent(TileContent.Wall).Count();
         count += tileGrid.GetTilesByContent(TileContent.Door).Count();
         return count;
     }
 
-    /// <summary>
-    /// Генерирует стены из TileGrid
-    /// </summary>
     private static void GenerateWallsFromTileGrid(
         StringBuilder sb,
         TileGrid tileGrid,
@@ -260,9 +231,6 @@ public static class YAMLGenerator
         }
     }
 
-    /// <summary>
-    /// Генерирует двери из TileGrid
-    /// </summary>
     private static void GenerateDoorsFromTileGrid(
         StringBuilder sb,
         TileGrid tileGrid,
@@ -306,92 +274,185 @@ public static class YAMLGenerator
         }
     }
 
-// В GeneratePipesFromEntities - добавляем цвет ТОЛЬКО для Distra и Waste
-
-private static void GeneratePipesFromEntities(
-    StringBuilder sb,
-    Grid grid,
-    ref int uid,
-    Dictionary<string, PipeSettings> pipeLayers)
-{
-    if (grid == null) return;
-
-    var pipes = grid.Entities.OfType<PipeEntity>().ToList();
-    if (pipes.Count == 0) return;
-
-    var grouped = pipes.GroupBy(p => p.PipeType);
-
-    foreach (var group in grouped)
+    private static void GeneratePipesFromEntities(
+        StringBuilder sb,
+        Grid grid,
+        ref int uid,
+        Dictionary<string, PipeSettings> pipeLayers)
     {
-        var pipeList = group.ToList();
+        if (grid == null) return;
 
-        // Определяем суффикс для слоя
-        string suffix = group.Key switch
+        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
+        if (pipes.Count == 0) return;
+
+        var grouped = pipes.GroupBy(p => p.PipeType);
+
+        foreach (var group in grouped)
         {
-            "Distra" => "Alt2",
-            "Waste" => "Alt1",
-            "Normal" => "",
-            _ => ""
-        };
+            var pipeList = group.ToList();
 
-        // Получаем цвет из настроек или используем цвета по умолчанию
-        string hexColor = GetPipeHexColor(pipeLayers, group.Key);
-        bool hasColor = group.Key != "Normal"; // Normal не имеет цвета
-
-        foreach (var pipe in pipeList)
-        {
-            int pipeX = (int)pipe.X;
-            int pipeY = (int)pipe.Y;
-
-            var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
-            string protoType = GetPipeProto(suffix, neighbors);
-            float rotation = GetPipeRotation(neighbors);
-
-            sb.AppendLine($"- proto: {protoType}");
-            sb.AppendLine("  entities:");
-
-            float posX = pipe.X + 0.5f;
-            float posY = -pipe.Y + 0.5f;
-
-            string posXStr = posX.ToString("0.0").Replace(',', '.');
-            string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-            sb.AppendLine($"  - uid: {uid}");
-            sb.AppendLine($"    components:");
-            sb.AppendLine($"    - type: Transform");
-
-            if (rotation != 0)
+            string suffix = group.Key switch
             {
-                string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-                sb.AppendLine($"      rot: {rotStr} rad");
+                "Distra" => "Alt2",
+                "Waste" => "Alt1",
+                "Normal" => "",
+                _ => ""
+            };
+
+            bool hasColor = pipeLayers != null &&
+                            pipeLayers.TryGetValue(group.Key, out var settings) &&
+                            settings.HasColor;
+            string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
+
+            // Находим концы труб (с 1 соседом)
+            var endpoints = new List<PipeEntity>();
+            foreach (var pipe in pipeList)
+            {
+                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                if (neighbors == 1)
+                {
+                    endpoints.Add(pipe);
+                }
             }
 
-            sb.AppendLine($"      pos: {posXStr},{posYStr}");
-            sb.AppendLine($"      parent: 2");
-
-            // Добавляем цвет ТОЛЬКО для Distra и Waste
-            if (hasColor)
+            // Сначала генерируем все трубы, кроме концов
+            foreach (var pipe in pipeList)
             {
-                sb.AppendLine($"    - type: AtmosPipeColor");
-                sb.AppendLine($"      color: '{hexColor}'");
+                // Пропускаем концы - они будут заменены на вентиляции
+                if (endpoints.Contains(pipe)) continue;
+
+                int pipeX = (int)pipe.X;
+                int pipeY = (int)pipe.Y;
+
+                var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
+                string protoType = GetPipeProto(suffix, neighbors);
+                float rotation = GetPipeRotation(neighbors);
+
+                sb.AppendLine($"- proto: {protoType}");
+                sb.AppendLine("  entities:");
+
+                float posX = pipe.X + 0.5f;
+                float posY = -pipe.Y + 0.5f;
+
+                string posXStr = posX.ToString("0.0").Replace(',', '.');
+                string posYStr = posY.ToString("0.0").Replace(',', '.');
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (rotation != 0)
+                {
+                    string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posXStr},{posYStr}");
+                sb.AppendLine($"      parent: 2");
+
+                if (hasColor)
+                {
+                    sb.AppendLine($"    - type: AtmosPipeColor");
+                    sb.AppendLine($"      color: '{hexColor}'");
+                }
+
+                uid++;
             }
 
-            uid++;
+            // Генерируем вентиляции/скрубберы на концах (вместо труб)
+            foreach (var endpoint in endpoints)
+            {
+                string ventProto;
+                string pipeLayer;
+
+                if (group.Key == "Distra")
+                {
+                    ventProto = "GasVentPump";
+                    pipeLayer = "Tertiary";
+                }
+                else if (group.Key == "Waste")
+                {
+                    ventProto = "GasVentScrubber";
+                    pipeLayer = "Secondary";
+                }
+                else
+                {
+                    continue; // Normal - без вентиляций
+                }
+
+                float posX = endpoint.X + 0.5f;
+                float posY = -endpoint.Y + 0.5f;
+
+                string posXStr = posX.ToString("0.0").Replace(',', '.');
+                string posYStr = posY.ToString("0.0").Replace(',', '.');
+
+                // Получаем направление соседа
+                var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
+                float ventRotation = 0;
+
+                if (neighbors.Count > 0)
+                {
+                    var (dx, dy) = neighbors[0];
+                    
+                    if (dx == 1) ventRotation = (float)(Math.PI / 2);         // Сосед справа → смотрим влево   (float)(Math.PI / 2);
+                    else if (dx == -1) ventRotation = (float)(-Math.PI / 2);                    // Сосед слева → смотрим вправо    (float)(-Math.PI / 2);
+                    else if (dy == 1) ventRotation = 0;      // Сосед снизу → смотрим вверх     = 0;     
+                    else if (dy == -1) ventRotation = (float)Math.PI;  // Сосед сверху → смотрим вниз      (float)Math.PI;          
+                }
+
+                sb.AppendLine($"- proto: {ventProto}");
+                sb.AppendLine("  entities:");
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (ventRotation != 0)
+                {
+                    string rotStr = ventRotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posXStr},{posYStr}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: AtmosPipeLayers");
+                sb.AppendLine($"      pipeLayer: {pipeLayer}");
+
+                if (hasColor)
+                {
+                    sb.AppendLine($"    - type: AtmosPipeColor");
+                    sb.AppendLine($"      color: '{hexColor}'");
+                }
+
+                uid++;
+            }
         }
     }
-}
-    /// <summary>
-    /// Получает Hex цвет для слоя трубы
-    /// </summary>
+
+
+    private static float GetVentRotation(List<PipeEntity> pipes, int x, int y)
+    {
+        var neighbors = GetNeighbors(pipes, x, y);
+        if (neighbors.Count == 0) return 0;
+
+        var (dx, dy) = neighbors[0];
+
+        // Вентиляция смотрит в сторону соседа
+        if (dx == 1) return 0;          // Вправо
+        if (dx == -1) return (float)Math.PI; // Влево
+        if (dy == 1) return (float)(Math.PI / 2); // Вниз
+        if (dy == -1) return (float)(-Math.PI / 2); // Вверх
+
+        return 0;
+    }
+
     private static string GetPipeHexColor(Dictionary<string, PipeSettings> pipeLayers, string layer)
     {
-        // Если есть настройки - берём цвет из них
         if (pipeLayers != null && pipeLayers.TryGetValue(layer, out var settings))
         {
             return settings.HexColor;
         }
 
-        // Цвета по умолчанию
         return layer switch
         {
             "Distra" => "#0055CCFF",
@@ -401,9 +462,6 @@ private static void GeneratePipesFromEntities(
         };
     }
 
-    /// <summary>
-    /// Получает соседей для трубы
-    /// </summary>
     private static List<(int dx, int dy)> GetNeighbors(List<PipeEntity> pipes, int x, int y)
     {
         var neighbors = new List<(int dx, int dy)>();
@@ -420,9 +478,6 @@ private static void GeneratePipesFromEntities(
         return neighbors;
     }
 
-    /// <summary>
-    /// Определяет прототип трубы по соседям
-    /// </summary>
     private static string GetPipeProto(string suffix, List<(int dx, int dy)> neighbors)
     {
         int count = neighbors.Count;
@@ -436,9 +491,6 @@ private static void GeneratePipesFromEntities(
             _ => "Fourway"
         };
 
-        // Distra: suffix = ""  → GasPipeStraight
-        // Waste: suffix = "Alt1" → GasPipeStraightAlt1
-        // Normal: suffix = "Alt2" → GasPipeStraightAlt2
         return $"GasPipe{type}{suffix}";
     }
 
@@ -450,14 +502,10 @@ private static void GeneratePipesFromEntities(
         return (dx1 == -dx2 && dy1 == -dy2) || (dx1 == dx2 && dy1 == dy2);
     }
 
-    /// <summary>
-    /// Вычисляет ротацию для трубы
-    /// </summary>
     private static float GetPipeRotation(List<(int dx, int dy)> neighbors)
     {
         if (neighbors.Count == 0) return 0;
 
-        // Для одного соседа - прямая
         if (neighbors.Count == 1)
         {
             var (dx, dy) = neighbors[0];
@@ -465,23 +513,19 @@ private static void GeneratePipesFromEntities(
             if (dy != 0) return 0;
         }
 
-        // Для прямой трубы (2 соседа)
         if (neighbors.Count == 2)
         {
             var (dx1, dy1) = neighbors[0];
             var (dx2, dy2) = neighbors[1];
 
-            // Горизонтальная прямая
             if ((dx1 == -1 && dx2 == 1) || (dx1 == 1 && dx2 == -1))
             {
                 return (float)(Math.PI / 2);
             }
-            // Вертикальная прямая
             else if ((dy1 == -1 && dy2 == 1) || (dy1 == 1 && dy2 == -1))
             {
                 return 0;
             }
-            // Угол (поворот)
             else
             {
                 bool hasUp = neighbors.Any(n => n.dy == -1);
@@ -496,7 +540,6 @@ private static void GeneratePipesFromEntities(
             }
         }
 
-        // Для тройника (3 соседа)
         if (neighbors.Count == 3)
         {
             bool hasUp = neighbors.Any(n => n.dy == -1);
@@ -508,12 +551,6 @@ private static void GeneratePipesFromEntities(
             if (!hasDown) return (float)Math.PI;
             if (!hasLeft) return (float)(Math.PI / 2);
             if (!hasRight) return (float)(-Math.PI / 2);
-        }
-
-        // Крестовина - без ротации
-        if (neighbors.Count >= 4)
-        {
-            return 0;
         }
 
         return 0;
