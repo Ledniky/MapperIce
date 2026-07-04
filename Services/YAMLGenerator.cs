@@ -27,7 +27,7 @@ public static class YAMLGenerator
         sb.AppendLine("  forkId: \"\"");
         sb.AppendLine("  forkVersion: \"\"");
         sb.AppendLine($"  time: {DateTime.Now:MM/dd/yyyy HH:mm:ss}");
-        sb.AppendLine($"  entityCount: {CountEntities(tileGrid) + CountPipes(grid)}");
+        sb.AppendLine($"  entityCount: {CountEntities(tileGrid) + CountPipes(grid) + CountAlarms(grid) + CountFirelocks(grid)}");
 
         // ==================== MAPS & GRIDS ====================
         sb.AppendLine("maps:");
@@ -112,11 +112,19 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: RadiationGridResistance");
 
         int uid = 3;
+
+        // 1. СНАЧАЛА генерируем ВСЕ устройства (стены, двери, трубы, вентиляции)
         GenerateWallsFromTileGrid(sb, tileGrid, tileBuilder, ref uid);
         GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
-        GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
-        GenerateAlarms(sb, grid, ref uid, alarmSettings);
-        GenerateFirelocks(sb, grid, ref uid);
+        
+        // Генерируем трубы и запоминаем UID вентиляций/скрубберов
+        var ventUids = GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
+        
+        // Генерируем пожарные шлюзы и запоминаем их UID
+        var firelockUids = GenerateFirelocks(sb, grid, ref uid);
+        
+        // 2. ПОТОМ генерируем сигнализации с DeviceList
+        GenerateAlarms(sb, grid, ref uid, alarmSettings, ventUids, firelockUids);
 
         return sb.ToString();
     }
@@ -126,51 +134,61 @@ public static class YAMLGenerator
         return grid.Entities.OfType<PipeEntity>().Count();
     }
 
-private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
-{
-    var chunks = new Dictionary<(int x, int y), int[]>();
-
-    // Полы, стены и двери дают тайлы (все они — тайлы в TileGrid)
-    var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
-    var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-    var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
-    var allTiles = floorTiles.Concat(wallTiles).Concat(doorTiles);
-
-    foreach (var tile in allTiles)
+    private static int CountAlarms(Grid grid)
     {
-        int x = tile.X;
-        int y = -tile.Y; // Инвертируем Y как в SS14
-
-        int cx = x / CHUNK_SIZE;
-        int cy = y / CHUNK_SIZE;
-        int lx = x % CHUNK_SIZE;
-        int ly = y % CHUNK_SIZE;
-
-        if (ly < 0)
-        {
-            ly += CHUNK_SIZE;
-            cy--;
-        }
-
-        var key = (cx, cy);
-        if (!chunks.ContainsKey(key))
-        {
-            var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
-            chunks[key] = tiles;
-        }
-
-        int index = ly * CHUNK_SIZE + lx;
-        chunks[key][index] = 1; // Plating
+        return grid.Entities.OfType<AirAlarmEntity>().Count() + grid.Entities.OfType<FireAlarmEntity>().Count();
     }
 
-    var result = new Dictionary<(int x, int y), string>();
-    foreach (var kvp in chunks)
+    private static int CountFirelocks(Grid grid)
     {
-        result[kvp.Key] = EncodeTiles(kvp.Value);
+        return grid.Entities.OfType<FirelockEntity>().Count();
     }
 
-    return result;
-}
+    private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
+    {
+        var chunks = new Dictionary<(int x, int y), int[]>();
+
+        var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
+        var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
+        var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
+        var allTiles = floorTiles.Concat(wallTiles).Concat(doorTiles);
+
+        foreach (var tile in allTiles)
+        {
+            int x = tile.X;
+            int y = -tile.Y;
+
+            int cx = x / CHUNK_SIZE;
+            int cy = y / CHUNK_SIZE;
+            int lx = x % CHUNK_SIZE;
+            int ly = y % CHUNK_SIZE;
+
+            if (ly < 0)
+            {
+                ly += CHUNK_SIZE;
+                cy--;
+            }
+
+            var key = (cx, cy);
+            if (!chunks.ContainsKey(key))
+            {
+                var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
+                chunks[key] = tiles;
+            }
+
+            int index = ly * CHUNK_SIZE + lx;
+            chunks[key][index] = 1;
+        }
+
+        var result = new Dictionary<(int x, int y), string>();
+        foreach (var kvp in chunks)
+        {
+            result[kvp.Key] = EncodeTiles(kvp.Value);
+        }
+
+        return result;
+    }
+
     private static string EncodeTiles(int[] tileIds)
     {
         var bytes = new List<byte>();
@@ -277,102 +295,43 @@ private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(Til
         }
     }
 
-    private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings)
-{
-    // Собираем все устройства для привязки
-    var devices = new List<MapEntity>();
-    foreach (var entity in grid.Entities)
+    private static List<int> GenerateFirelocks(StringBuilder sb, Grid grid, ref int uid)
     {
-        if (entity is FirelockEntity || entity is GasVentPumpEntity || entity is GasVentScrubberEntity)
+        var firelockUids = new List<int>();
+        
+        foreach (var entity in grid.Entities)
         {
-            devices.Add(entity);
+            if (entity is FirelockEntity firelock)
+            {
+                firelockUids.Add(uid);
+                float posX = firelock.X + 0.5f;
+                float posY = -firelock.Y + 0.5f;
+                sb.AppendLine($"- proto: {firelock.Proto}");
+                sb.AppendLine("  entities:");
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
         }
+        
+        return firelockUids;
     }
 
-    foreach (var entity in grid.Entities)
-    {
-        if (entity is AirAlarmEntity airAlarm)
-        {
-            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
-            bool autoLink = settings?.AutoLinkDevices ?? true;
-            GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid, devices, autoLink);
-        }
-        else if (entity is FireAlarmEntity fireAlarm)
-        {
-            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
-            bool autoLink = settings?.AutoLinkDevices ?? true;
-            GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid, devices, autoLink);
-        }
-    }
-}
-
-private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid, List<MapEntity> devices, bool autoLink)
-{
-    float posX = x + 0.5f;
-    float posY = -y + 0.5f;
-    sb.AppendLine($"- proto: {protoId}");
-    sb.AppendLine("  entities:");
-    sb.AppendLine($"  - uid: {uid}");
-    sb.AppendLine($"    components:");
-    sb.AppendLine($"    - type: Transform");
-    if (rotation != 0)
-    {
-        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-        sb.AppendLine($"      rot: {rotStr} rad");
-    }
-    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-    sb.AppendLine($"      parent: 2");
-    
-    // Если автопривязка включена, добавляем DeviceList
-    if (autoLink && devices.Count > 0)
-    {
-        sb.AppendLine($"    - type: DeviceList");
-        sb.AppendLine($"      devices:");
-        foreach (var device in devices)
-        {
-            // Находим uid устройства (он уже должен быть сгенерирован)
-            // Пока добавляем ссылки по позиции, но в реальности нужно сохранять uid
-            sb.AppendLine($"      - {device.GetHashCode()}");
-        }
-    }
-    
-    sb.AppendLine($"    - type: Fixtures");
-    sb.AppendLine($"      fixtures: {{}}");
-    uid++;
-}
-
-    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid)
-    {
-        float posX = x + 0.5f;
-        float posY = -y + 0.5f;
-        sb.AppendLine($"- proto: {protoId}");
-        sb.AppendLine("  entities:");
-        sb.AppendLine($"  - uid: {uid}");
-        sb.AppendLine($"    components:");
-        sb.AppendLine($"    - type: Transform");
-        if (rotation != 0)
-        {
-            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-            sb.AppendLine($"      rot: {rotStr} rad");
-        }
-        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-        sb.AppendLine($"      parent: 2");
-        sb.AppendLine($"    - type: Fixtures");
-        sb.AppendLine($"      fixtures: {{}}");
-        uid++;
-    }
-
-    private static void GeneratePipesFromEntities(
+    private static List<int> GeneratePipesFromEntities(
         StringBuilder sb,
         Grid grid,
         ref int uid,
         Dictionary<string, PipeSettings>? pipeLayers)
     {
-        if (grid == null) return;
+        if (grid == null) return new List<int>();
 
         var pipes = grid.Entities.OfType<PipeEntity>().ToList();
-        if (pipes.Count == 0) return;
+        if (pipes.Count == 0) return new List<int>();
 
+        var ventUids = new List<int>();
         var grouped = pipes.GroupBy(p => p.PipeType);
 
         foreach (var group in grouped)
@@ -392,7 +351,6 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                             settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
-            // Находим концы труб (с 1 соседом)
             var endpoints = new List<PipeEntity>();
             foreach (var pipe in pipeList)
             {
@@ -403,7 +361,7 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                 }
             }
 
-            // Сначала генерируем все трубы, кроме концов
+            // Генерируем трубы
             foreach (var pipe in pipeList)
             {
                 if (endpoints.Contains(pipe)) continue;
@@ -446,7 +404,7 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                 uid++;
             }
 
-            // Генерируем вентиляции/скрубберы на концах (вместо труб)
+            // Генерируем вентиляции/скрубберы на концах
             foreach (var endpoint in endpoints)
             {
                 string ventProto;
@@ -467,6 +425,9 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                     continue;
                 }
 
+                int ventUid = uid;
+                ventUids.Add(ventUid);
+
                 float posX = endpoint.X + 0.5f;
                 float posY = -endpoint.Y + 0.5f;
 
@@ -478,18 +439,17 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
 
                 if (neighbors.Count > 0)
                 {
-        var (dx, dy) = neighbors[0];
-        
-                if (dx == 1) ventRotation = (float)(Math.PI / 2);      // Труба справа → смотрим вправо   
-                else if (dx == -1) ventRotation = (float)(-Math.PI / 2);    // Труба слева → смотрим влево 
-                else if (dy == 1) ventRotation = 0;  // Труба снизу → смотрим вниз  
-                else if (dy == -1) ventRotation = (float)Math.PI;    // Труба сверху → смотрим вверх 
+                    var (dx, dy) = neighbors[0];
+                    if (dx == 1) ventRotation = (float)(Math.PI / 2);
+                    else if (dx == -1) ventRotation = (float)(-Math.PI / 2);
+                    else if (dy == 1) ventRotation = 0;
+                    else if (dy == -1) ventRotation = (float)Math.PI;
                 }
 
                 sb.AppendLine($"- proto: {ventProto}");
                 sb.AppendLine("  entities:");
 
-                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"  - uid: {ventUid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
 
@@ -513,6 +473,88 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
                 uid++;
             }
         }
+
+        return ventUids;
+    }
+
+    private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings, List<int> ventUids, List<int> firelockUids)
+    {
+        // Собираем все UID устройств для привязки
+        var allDeviceUids = new List<int>();
+        allDeviceUids.AddRange(ventUids);
+        allDeviceUids.AddRange(firelockUids);
+
+        foreach (var entity in grid.Entities)
+        {
+            if (entity is AirAlarmEntity airAlarm)
+            {
+                string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+                bool autoLink = settings?.AutoLinkDevices ?? true;
+
+                // ПОНЯТНАЯ КОНСТРУКЦИЯ:
+                List<int> linkedDevices;
+                if (autoLink == true)
+                {
+                    linkedDevices = allDeviceUids; // Привязываем ВСЕ устройства
+                }
+                else
+                {
+                    linkedDevices = new List<int>(); // Не привязываем НИЧЕГО (пустой список)
+                }
+
+                GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid, linkedDevices);
+            }
+            else if (entity is FireAlarmEntity fireAlarm)
+            {
+                string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+                bool autoLink = settings?.AutoLinkDevices ?? true;
+
+                // ПОНЯТНАЯ КОНСТРУКЦИЯ:
+                List<int> linkedDevices;
+                if (autoLink == true)
+                {
+                    linkedDevices = allDeviceUids; // Привязываем ВСЕ устройства
+                }
+                else
+                {
+                    linkedDevices = new List<int>(); // Не привязываем НИЧЕГО (пустой список)
+                }
+
+                GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid, linkedDevices);
+            }
+        }
+    }
+
+    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid, List<int> linkedDevices)
+    {
+        float posX = x + 0.5f;
+        float posY = -y + 0.5f;
+        sb.AppendLine($"- proto: {protoId}");
+        sb.AppendLine("  entities:");
+        sb.AppendLine($"  - uid: {uid}");
+        sb.AppendLine($"    components:");
+        sb.AppendLine($"    - type: Transform");
+        if (rotation != 0)
+        {
+            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+            sb.AppendLine($"      rot: {rotStr} rad");
+        }
+        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+        sb.AppendLine($"      parent: 2");
+
+        if (linkedDevices.Count > 0)
+        {
+            sb.AppendLine($"    - type: DeviceList");
+            sb.AppendLine($"      devices:");
+            foreach (var deviceUid in linkedDevices)
+            {
+                sb.AppendLine($"      - {deviceUid}");
+            }
+        }
+
+        sb.AppendLine($"    - type: Fixtures");
+        sb.AppendLine($"      fixtures: {{}}");
+        uid++;
     }
 
     private static string GetPipeHexColor(Dictionary<string, PipeSettings>? pipeLayers, string layer)
@@ -623,25 +665,5 @@ private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float 
         }
 
         return 0;
-    }
-
-    private static void GenerateFirelocks(StringBuilder sb, Grid grid, ref int uid)
-    {
-        foreach (var entity in grid.Entities)
-        {
-            if (entity is FirelockEntity firelock)
-            {
-                float posX = firelock.X + 0.5f;
-                float posY = -firelock.Y + 0.5f;
-                sb.AppendLine($"- proto: {firelock.Proto}");
-                sb.AppendLine("  entities:");
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
-                uid++;
-            }
-        }
     }
 }

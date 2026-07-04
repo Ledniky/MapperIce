@@ -2484,11 +2484,25 @@ public class MainForm : Form
         panel.Controls.Add(new Label { Text = "ID прототипа", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
 
         int row = 1;
-        var textBoxes = new Dictionary<string, TextBox>();
-        var checkBoxes = new Dictionary<string, CheckBox>();
 
-        foreach (var alarm in _alarmSettings.Values)
+        // СОЗДАЁМ КОПИИ ДЛЯ ОТОБРАЖЕНИЯ
+        var tempSettings = new Dictionary<string, AlarmSettings>();
+        foreach (var kvp in _alarmSettings)
         {
+            // ИСПРАВЛЕНО: используем DisplayName как ключ
+            tempSettings[kvp.Value.DisplayName] = new AlarmSettings
+            {
+                Id = kvp.Value.Id,
+                DisplayName = kvp.Value.DisplayName,
+                Icon = kvp.Value.Icon,
+                Color = kvp.Value.Color,
+                AutoLinkDevices = kvp.Value.AutoLinkDevices
+            };
+        }
+
+        foreach (var alarm in tempSettings.Values)
+        {
+            // Строка с названием и ID
             panel.Controls.Add(new Label { Text = alarm.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
 
             var txtId = new TextBox
@@ -2499,16 +2513,15 @@ public class MainForm : Form
             };
             txtId.TextChanged += (s, e) =>
             {
-                if (txtId.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
+                if (txtId.Tag is string displayName && tempSettings.TryGetValue(displayName, out var settings))
                 {
                     settings.Id = txtId.Text;
                 }
             };
             panel.Controls.Add(txtId, 1, row);
-            textBoxes[alarm.DisplayName] = txtId;
             row++;
 
-            // Чекбокс автопривязки
+            // Строка с чекбоксом автопривязки
             var chkAutoLink = new CheckBox
             {
                 Text = "Автопривязка устройств",
@@ -2516,16 +2529,28 @@ public class MainForm : Form
                 AutoSize = true,
                 Tag = alarm.DisplayName
             };
+
+            // ИСПРАВЛЕНО: добавляем отладочный вывод и явное сохранение
             chkAutoLink.CheckedChanged += (s, e) =>
             {
-                if (chkAutoLink.Tag is string displayName && _alarmSettings.TryGetValue(displayName, out var settings))
+                var chk = (CheckBox)s;
+                if (chk.Tag is string displayName)
                 {
-                    settings.AutoLinkDevices = chkAutoLink.Checked;
+                    if (tempSettings.TryGetValue(displayName, out var settings))
+                    {
+                        settings.AutoLinkDevices = chk.Checked;
+                        System.Diagnostics.Debug.WriteLine($"ИЗМЕНЕНО: {displayName}: AutoLinkDevices = {settings.AutoLinkDevices}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"ОШИБКА: Не найден ключ {displayName} в tempSettings");
+                        System.Diagnostics.Debug.WriteLine($"Доступные ключи: {string.Join(", ", tempSettings.Keys)}");
+                    }
                 }
             };
+
             panel.Controls.Add(chkAutoLink, 0, row);
             panel.SetColumnSpan(chkAutoLink, 2);
-            checkBoxes[alarm.DisplayName] = chkAutoLink;
             row++;
         }
 
@@ -2539,7 +2564,31 @@ public class MainForm : Form
             Height = 30,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        btnOk.Click += (s, e) => _alarmSettingsForm?.Close();
+        btnOk.Click += (s, e) =>
+        {
+            // ПРИМЕНЯЕМ ИЗМЕНЕНИЯ К ОРИГИНАЛЬНОМУ СЛОВАРЮ
+            foreach (var kvp in tempSettings)
+            {
+                // ИСПРАВЛЕНО: ищем по DisplayName в оригинальном словаре
+                var original = _alarmSettings.Values.FirstOrDefault(a => a.DisplayName == kvp.Key);
+                if (original != null)
+                {
+                    original.Id = kvp.Value.Id;
+                    original.AutoLinkDevices = kvp.Value.AutoLinkDevices;
+                    System.Diagnostics.Debug.WriteLine($"СОХРАНЕНО: {original.DisplayName}: AutoLinkDevices = {original.AutoLinkDevices}");
+                }
+            }
+
+            // ПОКАЗЫВАЕМ СОСТОЯНИЕ ГАЛОЧЕК
+            string message = "Состояние галочек:\n\n";
+            foreach (var alarm in _alarmSettings.Values)
+            {
+                message += $"{alarm.DisplayName}: {(alarm.AutoLinkDevices ? "✅ ВКЛ" : "❌ ВЫКЛ")}\n";
+            }
+            MessageBox.Show(message, "Статус автопривязки");
+
+            _alarmSettingsForm?.Close();
+        };
         btnPanel.Controls.Add(btnOk);
 
         var btnCancel = new Button
@@ -2552,6 +2601,7 @@ public class MainForm : Form
         };
         btnCancel.Click += (s, e) =>
         {
+            // ВОССТАНАВЛИВАЕМ ЗНАЧЕНИЯ ПО УМОЛЧАНИЮ
             foreach (var alarm in _alarmSettings.Values)
             {
                 if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
@@ -2570,7 +2620,6 @@ public class MainForm : Form
         _alarmSettingsForm.FormClosed += (s, e) => { _alarmSettingsForm = null; };
         _alarmSettingsForm.Show(this);
     }
-
 
     private void ShowDeleteSettingsDialog()
     {
