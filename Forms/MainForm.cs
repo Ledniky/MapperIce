@@ -2489,14 +2489,13 @@ public class MainForm : Form
         var tempSettings = new Dictionary<string, AlarmSettings>();
         foreach (var kvp in _alarmSettings)
         {
-            // ИСПРАВЛЕНО: используем DisplayName как ключ
             tempSettings[kvp.Value.DisplayName] = new AlarmSettings
             {
                 Id = kvp.Value.Id,
                 DisplayName = kvp.Value.DisplayName,
                 Icon = kvp.Value.Icon,
                 Color = kvp.Value.Color,
-                AutoLinkDevices = kvp.Value.AutoLinkDevices
+                AutoLinkDevices = true // ИЗМЕНЕНО: теперь true по умолчанию
             };
         }
 
@@ -2525,12 +2524,11 @@ public class MainForm : Form
             var chkAutoLink = new CheckBox
             {
                 Text = "Автопривязка устройств",
-                Checked = alarm.AutoLinkDevices,
+                Checked = true, // ИЗМЕНЕНО: теперь true по умолчанию
                 AutoSize = true,
                 Tag = alarm.DisplayName
             };
 
-            // ИСПРАВЛЕНО: добавляем отладочный вывод и явное сохранение
             chkAutoLink.CheckedChanged += (s, e) =>
             {
                 var chk = (CheckBox)s;
@@ -2540,11 +2538,6 @@ public class MainForm : Form
                     {
                         settings.AutoLinkDevices = chk.Checked;
                         System.Diagnostics.Debug.WriteLine($"ИЗМЕНЕНО: {displayName}: AutoLinkDevices = {settings.AutoLinkDevices}");
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"ОШИБКА: Не найден ключ {displayName} в tempSettings");
-                        System.Diagnostics.Debug.WriteLine($"Доступные ключи: {string.Join(", ", tempSettings.Keys)}");
                     }
                 }
             };
@@ -2569,7 +2562,6 @@ public class MainForm : Form
             // ПРИМЕНЯЕМ ИЗМЕНЕНИЯ К ОРИГИНАЛЬНОМУ СЛОВАРЮ
             foreach (var kvp in tempSettings)
             {
-                // ИСПРАВЛЕНО: ищем по DisplayName в оригинальном словаре
                 var original = _alarmSettings.Values.FirstOrDefault(a => a.DisplayName == kvp.Key);
                 if (original != null)
                 {
@@ -2607,7 +2599,7 @@ public class MainForm : Form
                 if (AlarmSettings.DefaultAlarms.TryGetValue(alarm.DisplayName, out var defaultSettings))
                 {
                     alarm.Id = defaultSettings.Id;
-                    alarm.AutoLinkDevices = defaultSettings.AutoLinkDevices;
+                    alarm.AutoLinkDevices = true; // ИЗМЕНЕНО: теперь true по умолчанию
                 }
             }
             _alarmSettingsForm?.Close();
