@@ -26,7 +26,7 @@ public partial class RoomTypeDialog : Form
         this.ShowInTaskbar = false;
         this.MinimizeBox = false;
         this.MaximizeBox = false;
-        this.TopMost = false; // Окно не блокирует другие окна
+        this.TopMost = false;
 
         // ===== ВЕРХНЯЯ ПАНЕЛЬ С ЗАГОЛОВКОМ =====
         var headerPanel = new Panel
@@ -62,19 +62,19 @@ public partial class RoomTypeDialog : Form
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        // Панель с кнопками (верхняя часть)
+        // Панель с кнопками (верхняя часть) - высота 45px
         var buttonPanel = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(300, 55),
+            Size = new Size(300, 45),
             BackColor = Color.FromArgb(248, 248, 248)
         };
 
-        // Кнопка "Создать тип" - с яркой рамкой
+        // Кнопка "Создать тип"
         var btnCreateType = new Button
         {
             Text = "➕ Создать тип",
-            Location = new Point(5, 40),
+            Location = new Point(5, 8),
             Size = new Size(95, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
@@ -96,7 +96,7 @@ public partial class RoomTypeDialog : Form
         var btnDeleteType = new Button
         {
             Text = "🗑️ Удалить",
-            Location = new Point(105, 40),
+            Location = new Point(105, 8),
             Size = new Size(70, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
@@ -118,7 +118,7 @@ public partial class RoomTypeDialog : Form
         var btnImport = new Button
         {
             Text = "📥 Импорт",
-            Location = new Point(180, 40),
+            Location = new Point(180, 8),
             Size = new Size(55, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
@@ -140,7 +140,7 @@ public partial class RoomTypeDialog : Form
         var btnExport = new Button
         {
             Text = "📤 Экспорт",
-            Location = new Point(240, 40),
+            Location = new Point(240, 8),
             Size = new Size(55, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
@@ -160,11 +160,11 @@ public partial class RoomTypeDialog : Form
 
         leftPanel.Controls.Add(buttonPanel);
 
-        // TreeView - начинается после панели кнопок
+        // TreeView - начинается после панели кнопок (Y = 45)
         _treeView = new TreeView
         {
-            Location = new Point(0, 90),
-            Size = new Size(300, 420),
+            Location = new Point(0, 45),
+            Size = new Size(300, 465),
             Font = new Font("Segoe UI", 10),
             Indent = 20,
             ShowRootLines = true,
@@ -550,14 +550,11 @@ public partial class RoomTypeDialog : Form
         }
     }
 
-    // ===== НОВЫЙ МЕТОД СОЗДАНИЯ ТИПА С ПОЛНЫМИ ПАРАМЕТРАМИ =====
     private void CreateNewType()
     {
-        // Очищаем панель редактора
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
-        // Заголовок
         var titleLabel = new Label
         {
             Text = "✨ Создание нового типа",
@@ -568,13 +565,11 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(titleLabel);
 
-        // Поля ввода
         int y = 45;
         int labelWidth = 120;
         int controlWidth = 330;
         int rowHeight = 35;
 
-        // Значения по умолчанию
         var defaultColor = Color.FromArgb(200, 230, 230, 230);
         var defaultLineColor = Color.FromArgb(255, 180, 180, 180);
 
@@ -656,7 +651,6 @@ public partial class RoomTypeDialog : Form
         var lblPriority = CreateLabel("Приоритет:", 5, y + 5, labelWidth);
         y += rowHeight + 10;
 
-        // Кнопка создания
         var btnCreate = new Button
         {
             Text = "✅ Создать тип",
@@ -672,7 +666,6 @@ public partial class RoomTypeDialog : Form
         {
             try
             {
-                // Проверка обязательных полей
                 if (string.IsNullOrWhiteSpace(txtName.Text))
                 {
                     MessageBox.Show("Введите название типа!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -712,7 +705,6 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(btnCreate);
 
-        // Кнопка отмены
         var btnCancel = new Button
         {
             Text = "❌ Отмена",
@@ -731,7 +723,6 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(btnCancel);
 
-        // Добавляем метки и поля
         _editorPanel.Controls.AddRange(new Control[] { 
             lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
             lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
@@ -739,7 +730,6 @@ public partial class RoomTypeDialog : Form
         });
     }
 
-    // ===== МЕТОД ДЛЯ УДАЛЕНИЯ ВЫБРАННОГО ТИПА =====
     private void DeleteSelectedType()
     {
         if (_selectedType == null)
@@ -764,8 +754,6 @@ public partial class RoomTypeDialog : Form
             MessageBox.Show($"Тип успешно удалён!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
-
-    // ===== МЕТОДЫ ИМПОРТА/ЭКСПОРТА =====
 
     private void ImportType()
     {
@@ -882,7 +870,6 @@ public partial class RoomTypeDialog : Form
     }
 }
 
-// ===== ДИАЛОГ ВЫБОРА КАТЕГОРИИ =====
 public class CategorySelectionDialog : Form
 {
     private ComboBox _categoryComboBox;
@@ -947,7 +934,6 @@ public class CategorySelectionDialog : Form
     }
 }
 
-// Простой диалог ввода
 public static class InputBox
 {
     public static string Show(string prompt, string title)
