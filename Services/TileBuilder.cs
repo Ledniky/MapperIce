@@ -46,7 +46,7 @@ public class TileBuilder
             }
         }
 
-        // 1. ПОЛ (тайлы) - под всей комнатой
+        // 1. ПОЛ (тайлы) - под ВСЕЙ комнатой (включая периметр)
         foreach (var room in allRooms)
         {
             int roomUid = room.GetHashCode();
@@ -72,8 +72,16 @@ public class TileBuilder
                 if (!doorPositions.Contains((x, y)))
                 {
                     var neighbor = GetRoomAt(allRooms, x, y - 1);
-                    string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
-                    tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    // ИСПРАВЛЕНО: используем wall только если есть сосед
+                    if (neighbor != null)
+                    {
+                        string wall = BestWall(room.WallProto, neighbor.WallProto);
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    }
+                    else
+                    {
+                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
+                    }
                 }
             }
 
@@ -84,8 +92,15 @@ public class TileBuilder
                 if (!doorPositions.Contains((x, y)))
                 {
                     var neighbor = GetRoomAt(allRooms, x, y + 1);
-                    string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
-                    tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    if (neighbor != null)
+                    {
+                        string wall = BestWall(room.WallProto, neighbor.WallProto);
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    }
+                    else
+                    {
+                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
+                    }
                 }
             }
 
@@ -96,8 +111,15 @@ public class TileBuilder
                 if (!doorPositions.Contains((x, y)))
                 {
                     var neighbor = GetRoomAt(allRooms, x - 1, y);
-                    string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
-                    tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    if (neighbor != null)
+                    {
+                        string wall = BestWall(room.WallProto, neighbor.WallProto);
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    }
+                    else
+                    {
+                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
+                    }
                 }
             }
 
@@ -108,32 +130,37 @@ public class TileBuilder
                 if (!doorPositions.Contains((x, y)))
                 {
                     var neighbor = GetRoomAt(allRooms, x + 1, y);
-                    string wall = neighbor != null ? BestWall(room.WallProto, neighbor.WallProto) : room.WallProto;
-                    tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    if (neighbor != null)
+                    {
+                        string wall = BestWall(room.WallProto, neighbor.WallProto);
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    }
+                    else
+                    {
+                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
+                    }
                 }
             }
         }
 
-        // Применяем приоритеты стен
-        var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-        foreach (var tile in wallTiles)
-        {
-            string bestWall = GetBestWallForExistingTile(tileGrid, tile.X, tile.Y);
-            tile.ProtoId = bestWall;
-        }
+        // УБИРАЕМ применение приоритетов ко всем стенам - теперь оно применяется только при создании
+        // var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
+        // foreach (var tile in wallTiles)
+        // {
+        //     string bestWall = GetBestWallForExistingTile(tileGrid, tile.X, tile.Y);
+        //     tile.ProtoId = bestWall;
+        // }
 
         // 3. ДВЕРИ
         foreach (var room in allRooms)
         {
             foreach (var door in room.Doors)
             {
-                // Проверяем, был ли здесь пол
                 var existingTile = tileGrid.GetTile(door.X, door.Y);
                 bool hasFloor = existingTile != null && existingTile.Content == TileContent.Floor;
                 
                 tileGrid.SetTile(door.X, door.Y, TileContent.Door, door.Proto, room.RoomType, -1);
                 
-                // Сохраняем информацию о поле под дверью
                 var doorTile = tileGrid.GetTile(door.X, door.Y);
                 if (doorTile != null)
                 {
@@ -149,6 +176,7 @@ public class TileBuilder
         return tileGrid;
     }
 
+    // Этот метод больше не используется, но оставляем для совместимости
     private string GetBestWallForExistingTile(TileGrid tileGrid, int x, int y)
     {
         var tile = tileGrid.GetTile(x, y);

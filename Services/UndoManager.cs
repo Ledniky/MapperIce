@@ -1,5 +1,5 @@
 using MapperIce.Models;
-using MapperIce.Services; // <-- ДОБАВЛЕНО
+using MapperIce.Services;
 
 namespace MapperIce.Services;
 
@@ -7,6 +7,11 @@ public class UndoManager
 {
     private List<GridSnapshot> _history = new();
     private int _currentIndex = -1;
+
+    // Убираем конструктор с параметрами - используем простой конструктор
+    public UndoManager()
+    {
+    }
 
     public void AddState(Grid grid)
     {
@@ -51,9 +56,9 @@ public class GridSnapshot
     public List<Room> Rooms { get; set; } = new();
     public List<Door> Doors { get; set; } = new();
     public List<PipeEntity> Pipes { get; set; } = new();
-    public List<FirelockEntity> Firelocks { get; set; } = new(); // Добавить
-    public List<AirAlarmEntity> AirAlarms { get; set; } = new(); // Добавить
-    public List<FireAlarmEntity> FireAlarms { get; set; } = new(); // Добавить
+    public List<FirelockEntity> Firelocks { get; set; } = new();
+    public List<AirAlarmEntity> AirAlarms { get; set; } = new();
+    public List<FireAlarmEntity> FireAlarms { get; set; } = new();
 
     public GridSnapshot() { }
 
@@ -67,12 +72,10 @@ public class GridSnapshot
             .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType, IsEndpoint = p.IsEndpoint })
             .ToList();
         
-        // Сохраняем пожарные шлюзы
         Firelocks = grid.Entities.OfType<FirelockEntity>()
             .Select(f => new FirelockEntity { X = f.X, Y = f.Y, Proto = f.Proto, IsGlass = f.IsGlass })
             .ToList();
         
-        // Сохраняем сигнализации
         AirAlarms = grid.Entities.OfType<AirAlarmEntity>()
             .Select(a => new AirAlarmEntity { X = a.X, Y = a.Y, Rotation = a.Rotation })
             .ToList();
@@ -110,7 +113,6 @@ public class GridSnapshot
             });
         }
 
-        // Восстанавливаем пожарные шлюзы
         foreach (var firelock in Firelocks)
         {
             grid.Entities.Add(new FirelockEntity
@@ -122,7 +124,6 @@ public class GridSnapshot
             });
         }
 
-        // Восстанавливаем сигнализации
         foreach (var alarm in AirAlarms)
         {
             grid.Entities.Add(new AirAlarmEntity { X = alarm.X, Y = alarm.Y, Rotation = alarm.Rotation });

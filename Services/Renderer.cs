@@ -572,49 +572,68 @@ public class Renderer
             g.DrawLine(pen, 0, y, _buffer.Width, y);
     }
 
-    private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
-    {
-        int innerW = Math.Max(0, room.Width - 1);
-        int innerH = Math.Max(0, room.Height - 1);
-        
-        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+{
+    // Координаты начала комнаты
+    float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+    float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+    
+    // Размеры комнаты в пикселях
+    float width = room.Width * tileSize;
+    float height = room.Height * tileSize;
 
-        var rect = new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
-        int alpha = (int)(room.FillColor.A * opacity);
-        using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
-        g.FillRectangle(brush, rect);
-    }
+    // Уменьшаем на пол-тайла, чтобы заливка была внутри периметра
+    float offset = tileSize / 2f;
+    var rect = new Rectangle(
+        (int)(startX + offset), 
+        (int)(startY + offset), 
+        (int)(width - tileSize),   // Уменьшаем на целый тайл
+        (int)(height - tileSize)   // Уменьшаем на целый тайл
+    );
+    
+    int alpha = (int)(room.FillColor.A * opacity);
+    using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
+    g.FillRectangle(brush, rect);
+}
 
     private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
-        int innerW = Math.Max(0, room.Width - 1);
-        int innerH = Math.Max(0, room.Height - 1);
-        
-        float x = (room.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-        float y = (room.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+        // Координаты начала комнаты
+        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
 
-        var rect = new Rectangle((int)x, (int)y, innerW * tileSize, innerH * tileSize);
+        // Размеры комнаты в пикселях
+        float width = room.Width * tileSize;
+        float height = room.Height * tileSize;
+
+        // Уменьшаем на пол-тайла, чтобы линия шла по центру периметра
+        float offset = tileSize / 2f;
+        var rect = new Rectangle(
+            (int)(startX + offset),
+            (int)(startY + offset),
+            (int)(width - tileSize),   // Уменьшаем на целый тайл
+            (int)(height - tileSize)   // Уменьшаем на целый тайл
+        );
 
         Color color = isCurrent ? Color.Red : Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
         using var pen = new Pen(color, isCurrent ? 3 : 2);
         g.DrawRectangle(pen, rect);
 
+        // Отображаем ВНУТРЕННИЙ размер комнаты (без стен)
         if (!HideRoomOverlay && tileSize > 20 && opacity > 0.3f)
         {
-            int innerWText = Math.Max(0, room.Width - 2);
-            int innerHText = Math.Max(0, room.Height - 2);
-            
-            if (innerWText > 0 && innerHText > 0)
-            {
-                using var font = new Font("Arial", Math.Min(10, tileSize / 3));
-                Color textColor = GetContrastColor(room.FillColor);
-                int alpha = (int)(200 * opacity);
-                using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
-                g.DrawString($"{innerWText}×{innerHText}", font, brush, rect.X + 2, rect.Y + 2);
-            }
+            using var font = new Font("Arial", Math.Min(10, tileSize / 3));
+            Color textColor = GetContrastColor(room.FillColor);
+            int alpha = (int)(200 * opacity);
+            using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
+
+            // Показываем внутренний размер (без стен)
+            int innerWidth = Math.Max(0, room.Width - 2);   // Минус 2 (левая и правая стена)
+            int innerHeight = Math.Max(0, room.Height - 2); // Минус 2 (верхняя и нижняя стена)
+            g.DrawString($"{innerWidth}×{innerHeight}", font, brush, rect.X + 2, rect.Y + 2);
         }
     }
+
 
     private Color GetContrastColor(Color backgroundColor)
     {

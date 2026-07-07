@@ -376,7 +376,7 @@ public partial class RoomTypeDialog : Form
         var btnPickFill = new Button
         {
             Text = "🎨",
-            Location = new Point(controlWidth - 30, y),
+            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
@@ -401,7 +401,7 @@ public partial class RoomTypeDialog : Form
         var btnPickLine = new Button
         {
             Text = "🎨",
-            Location = new Point(controlWidth - 30, y),
+            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },

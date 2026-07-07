@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MapperIce")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+870dd36381a30c3075128adc08c0cc8f1b7ba86f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5116b988c1c198c6873e056a7b367e1fb8b0a43e")]
 [assembly: System.Reflection.AssemblyProductAttribute("MapperIce")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MapperIce")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
