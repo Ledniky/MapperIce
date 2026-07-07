@@ -11,6 +11,11 @@ public partial class RoomTypeDialog : Form
     private readonly Panel _editorPanel;
     private RoomType? _selectedType;
     private bool _isEditing = false;
+    private Button? _btnCreateType;
+    private Button? _btnDeleteType;
+    private Button? _btnImport;
+    private Button? _btnExport;
+    private Button? _btnSave;
 
     public RoomTypeDialog(RoomTypeManager manager)
     {
@@ -62,20 +67,24 @@ public partial class RoomTypeDialog : Form
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        // Панель с кнопками (верхняя часть) - высота 45px
+        // Панель с кнопками (верхняя часть) - высота 40px для одного ряда
         var buttonPanel = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(300, 45),
+            Size = new Size(300, 40),
             BackColor = Color.FromArgb(248, 248, 248)
         };
 
+        // Ширина каждой кнопки = (300 - 5*5) / 4 = 275 / 4 ≈ 68px
+        int btnWidth = 68;
+        int btnSpacing = 5;
+
         // Кнопка "Создать тип"
-        var btnCreateType = new Button
+        _btnCreateType = new Button
         {
-            Text = "➕ Создать тип",
-            Location = new Point(5, 8),
-            Size = new Size(95, 30),
+            Text = "➕",
+            Location = new Point(btnSpacing, 7),
+            Size = new Size(btnWidth, 26),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
             {
@@ -87,17 +96,18 @@ public partial class RoomTypeDialog : Form
             BackColor = Color.FromArgb(220, 235, 250),
             Font = new Font("Segoe UI", 9),
             Cursor = Cursors.Hand,
-            ForeColor = Color.Black
+            ForeColor = Color.Black,
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        btnCreateType.Click += (s, e) => CreateNewType();
-        buttonPanel.Controls.Add(btnCreateType);
+        _btnCreateType.Click += (s, e) => CreateNewType();
+        buttonPanel.Controls.Add(_btnCreateType);
 
-        // Кнопка "Удалить"
-        var btnDeleteType = new Button
+        // Кнопка "Удалить" - чёрный текст
+        _btnDeleteType = new Button
         {
-            Text = "🗑️ Удалить",
-            Location = new Point(105, 8),
-            Size = new Size(70, 30),
+            Text = "🗑️",
+            Location = new Point(btnSpacing + btnWidth + btnSpacing, 7),
+            Size = new Size(btnWidth, 26),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
             {
@@ -109,17 +119,18 @@ public partial class RoomTypeDialog : Form
             BackColor = Color.FromArgb(250, 240, 240),
             Font = new Font("Segoe UI", 9),
             Cursor = Cursors.Hand,
-            ForeColor = Color.Black
+            ForeColor = Color.Black,
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        btnDeleteType.Click += (s, e) => DeleteSelectedType();
-        buttonPanel.Controls.Add(btnDeleteType);
+        _btnDeleteType.Click += (s, e) => DeleteSelectedType();
+        buttonPanel.Controls.Add(_btnDeleteType);
 
         // Кнопка "Импортировать"
-        var btnImport = new Button
+        _btnImport = new Button
         {
-            Text = "📥 Импорт",
-            Location = new Point(180, 8),
-            Size = new Size(55, 30),
+            Text = "📥",
+            Location = new Point(btnSpacing + (btnWidth + btnSpacing) * 2, 7),
+            Size = new Size(btnWidth, 26),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
             {
@@ -131,17 +142,18 @@ public partial class RoomTypeDialog : Form
             BackColor = Color.FromArgb(245, 245, 220),
             Font = new Font("Segoe UI", 9),
             Cursor = Cursors.Hand,
-            ForeColor = Color.Black
+            ForeColor = Color.Black,
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        btnImport.Click += (s, e) => ImportType();
-        buttonPanel.Controls.Add(btnImport);
+        _btnImport.Click += (s, e) => ImportType();
+        buttonPanel.Controls.Add(_btnImport);
 
         // Кнопка "Экспортировать"
-        var btnExport = new Button
+        _btnExport = new Button
         {
-            Text = "📤 Экспорт",
-            Location = new Point(240, 8),
-            Size = new Size(55, 30),
+            Text = "📤",
+            Location = new Point(btnSpacing + (btnWidth + btnSpacing) * 3, 7),
+            Size = new Size(btnWidth, 26),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance =
             {
@@ -153,18 +165,19 @@ public partial class RoomTypeDialog : Form
             BackColor = Color.FromArgb(220, 245, 220),
             Font = new Font("Segoe UI", 9),
             Cursor = Cursors.Hand,
-            ForeColor = Color.Black
+            ForeColor = Color.Black,
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        btnExport.Click += (s, e) => ExportType();
-        buttonPanel.Controls.Add(btnExport);
+        _btnExport.Click += (s, e) => ExportType();
+        buttonPanel.Controls.Add(_btnExport);
 
         leftPanel.Controls.Add(buttonPanel);
 
-        // TreeView - начинается после панели кнопок (Y = 45)
+        // TreeView - начинается после панели кнопок (Y = 40)
         _treeView = new TreeView
         {
-            Location = new Point(0, 45),
-            Size = new Size(300, 465),
+            Location = new Point(0, 40),
+            Size = new Size(300, 470),
             Font = new Font("Segoe UI", 10),
             Indent = 20,
             ShowRootLines = true,
@@ -271,13 +284,28 @@ public partial class RoomTypeDialog : Form
                 UpdateTreeViewSelection();
                 ShowEditor(node.RoomType);
                 OnTypeSelected?.Invoke(_selectedType.Name);
+                
+                // Обновляем состояние кнопки удаления
+                UpdateDeleteButtonState();
             }
             else
             {
                 _selectedType = null;
                 ShowCategoryInfo(node.Name);
+                
+                // Отключаем кнопку удаления
+                if (_btnDeleteType != null)
+                    _btnDeleteType.Enabled = false;
             }
         }
+    }
+
+    private void UpdateDeleteButtonState()
+    {
+        if (_btnDeleteType == null) return;
+        
+        // Кнопка удаления активна только если выбран кастомный тип
+        _btnDeleteType.Enabled = _selectedType != null && _selectedType.IsCustom;
     }
 
     public event Action<string>? OnTypeSelected;
@@ -424,7 +452,8 @@ public partial class RoomTypeDialog : Form
         var lblPriority = CreateLabel("Приоритет:", 5, y + 5, labelWidth);
         y += rowHeight + 10;
 
-        var btnSave = new Button
+        // Кнопка "Сохранить" - полностью невидима для встроенных типов
+        _btnSave = new Button
         {
             Text = "💾 Сохранить изменения",
             Location = new Point(5, y),
@@ -435,7 +464,7 @@ public partial class RoomTypeDialog : Form
             Font = new Font("Segoe UI", 10, FontStyle.Bold),
             Cursor = Cursors.Hand
         };
-        btnSave.Click += (s, e) =>
+        _btnSave.Click += (s, e) =>
         {
             try
             {
@@ -480,7 +509,10 @@ public partial class RoomTypeDialog : Form
                 MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
-        _editorPanel.Controls.Add(btnSave);
+        _editorPanel.Controls.Add(_btnSave);
+
+        // Делаем кнопку невидимой для встроенных типов
+        _btnSave.Visible = type.IsCustom;
 
         // Добавляем метки и поля
         _editorPanel.Controls.AddRange(new Control[] { 
@@ -577,7 +609,8 @@ public partial class RoomTypeDialog : Form
         var lblName = CreateLabel("Название:*", 5, y + 5, labelWidth);
         y += rowHeight;
 
-        var txtCategory = CreateTextBox("General", 5, y, labelWidth, controlWidth);
+        // Категория по умолчанию - "Custom"
+        var txtCategory = CreateTextBox("Custom", 5, y, labelWidth, controlWidth);
         var lblCategory = CreateLabel("Категория:*", 5, y + 5, labelWidth);
         y += rowHeight;
 
@@ -603,7 +636,7 @@ public partial class RoomTypeDialog : Form
         var btnPickFill = new Button
         {
             Text = "🎨",
-            Location = new Point(controlWidth - 30, y),
+            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
@@ -628,7 +661,7 @@ public partial class RoomTypeDialog : Form
         var btnPickLine = new Button
         {
             Text = "🎨",
-            Location = new Point(controlWidth - 30, y),
+            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
@@ -752,6 +785,10 @@ public partial class RoomTypeDialog : Form
             _editorPanel.Controls.Clear();
             ShowCategoryInfo("Все категории");
             MessageBox.Show($"Тип успешно удалён!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            
+            // Отключаем кнопку удаления
+            if (_btnDeleteType != null)
+                _btnDeleteType.Enabled = false;
         }
     }
 
