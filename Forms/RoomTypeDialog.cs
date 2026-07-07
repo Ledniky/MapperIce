@@ -10,6 +10,7 @@ public partial class RoomTypeDialog : Form
     private readonly TreeView _treeView;
     private readonly Panel _editorPanel;
     private RoomType? _selectedType;
+    private RoomType? _previousSelectedType;
     private bool _isEditing = false;
     private Button? _btnCreateType;
     private Button? _btnDeleteType;
@@ -273,6 +274,22 @@ public partial class RoomTypeDialog : Form
         }
     }
 
+    private void SelectTypeInTree(string typeName)
+    {
+        foreach (TreeNode categoryNode in _treeView.Nodes)
+        {
+            foreach (TreeNode typeNode in categoryNode.Nodes)
+            {
+                if (typeNode.Tag is CategoryNode node && node.RoomType != null && node.RoomType.Name == typeName)
+                {
+                    _treeView.SelectedNode = typeNode;
+                    typeNode.EnsureVisible();
+                    return;
+                }
+            }
+        }
+    }
+
     private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
     {
         if (e.Node?.Tag is CategoryNode node)
@@ -280,6 +297,7 @@ public partial class RoomTypeDialog : Form
             if (!node.IsCategory && node.RoomType != null)
             {
                 _selectedType = node.RoomType;
+                _previousSelectedType = node.RoomType; // Сохраняем последний выбранный тип
                 _manager.SelectType(_selectedType.Name);
                 UpdateTreeViewSelection();
                 ShowEditor(node.RoomType);
@@ -367,10 +385,10 @@ public partial class RoomTypeDialog : Form
 
         int y = 34;
         int labelWidth = 85;
-        int rowHeight = 35;           // ← Увеличено с 26 до 28 для большего расстояния
+        int rowHeight = 35;
         int leftMargin = 5;
-        int btnColorSize = 26;
-        int btnColorHeight = 26;
+        int btnColorSize = 30;
+        int btnColorHeight = 30;
         int spacing = 8;
 
         int controlWidthFull = panelWidth - labelWidth - 15;
@@ -413,9 +431,9 @@ public partial class RoomTypeDialog : Form
         var btnPickFill = new Button
         {
             Text = "🎨",
-            Location = new Point(leftMargin + labelWidth + controlWidthWithButton + spacing,
+            Location = new Point(leftMargin + labelWidth + 5 + controlWidthWithButton + spacing,
                                  y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
-            Size = new Size(30, 30),
+            Size = new Size(btnColorSize, btnColorHeight),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
             Cursor = Cursors.Hand,
@@ -441,9 +459,9 @@ public partial class RoomTypeDialog : Form
         var btnPickLine = new Button
         {
             Text = "🎨",
-            Location = new Point(leftMargin + labelWidth + controlWidthWithButton + spacing,
+            Location = new Point(leftMargin + labelWidth + 5 + controlWidthWithButton + spacing,
                                  y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
-            Size = new Size(30, 30),
+            Size = new Size(btnColorSize, btnColorHeight),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
             Cursor = Cursors.Hand,
@@ -468,20 +486,19 @@ public partial class RoomTypeDialog : Form
         y += rowHeight + 6;
 
         // Кнопка "Сохранить"
-        // В методе ShowEditor, найдите кнопку "Сохранить" и замените на:
-_btnSave = new Button
-{
-    Text = "💾 Сохранить",
-    Location = new Point(leftMargin, y),
-    Size = new Size(panelWidth - 10, 35),
-    FlatStyle = FlatStyle.Flat,
-    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(0, 150, 200) },
-    BackColor = Color.FromArgb(180, 230, 255),
-    Font = new Font("Segoe UI", 10, FontStyle.Bold),
-    Cursor = Cursors.Hand,
-    ForeColor = Color.FromArgb(0, 70, 120),
-    Visible = type.IsCustom
-};
+        _btnSave = new Button
+        {
+            Text = "💾 Сохранить",
+            Location = new Point(leftMargin, y),
+            Size = new Size(panelWidth - 10, 35),
+            FlatStyle = FlatStyle.Flat,
+            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(0, 150, 200) },
+            BackColor = Color.FromArgb(180, 230, 255),
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            ForeColor = Color.FromArgb(0, 70, 120),
+            Visible = type.IsCustom
+        };
         _btnSave.Click += (s, e) =>
         {
             try
@@ -599,6 +616,9 @@ _btnSave = new Button
 
     private void CreateNewType()
     {
+        // Сохраняем текущий выбранный тип перед переходом в режим создания
+        _previousSelectedType = _selectedType;
+        
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
@@ -719,7 +739,7 @@ _btnSave = new Button
         var lblPriority = CreateLabel("Приоритет:", leftMargin, y + 3, labelWidth);
         y += rowHeight + 6;
 
-        // Кнопка "Создать тип" - яркая
+        // Кнопка "Создать тип"
         var btnCreate = new Button
         {
             Text = "✅ Создать тип",
@@ -764,8 +784,21 @@ _btnSave = new Button
                 );
 
                 UpdateTreeView();
-                _selectedType = null;
-                ShowCategoryInfo(txtCategory.Text);
+
+                // Находим и выбираем созданный тип в дереве
+                SelectTypeInTree(txtName.Text);
+
+                var createdType = _manager.GetRoomType(txtName.Text);
+                if (createdType != null)
+                {
+                    _selectedType = createdType;
+                    _previousSelectedType = createdType;
+                    _manager.SelectType(createdType.Name);
+                    UpdateTreeViewSelection();
+                    ShowEditor(createdType);
+                    UpdateDeleteButtonState();
+                }
+
                 MessageBox.Show($"Тип '{txtName.Text}' успешно создан!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -790,16 +823,34 @@ _btnSave = new Button
         };
         btnCancel.Click += (s, e) =>
         {
-            _selectedType = null;
-            ShowCategoryInfo("Все категории");
+            // Возвращаемся к предыдущему выбранному типу, если он был
+            if (_previousSelectedType != null)
+            {
+                _selectedType = _previousSelectedType;
+                _manager.SelectType(_selectedType.Name);
+                UpdateTreeViewSelection();
+                ShowEditor(_selectedType);
+                UpdateDeleteButtonState();
+                
+                // Выделяем его в дереве
+                SelectTypeInTree(_selectedType.Name);
+            }
+            else
+            {
+                _selectedType = null;
+                ShowCategoryInfo("Все категории");
+                _treeView.SelectedNode = null;
+                if (_btnDeleteType != null)
+                    _btnDeleteType.Enabled = false;
+            }
         };
         _editorPanel.Controls.Add(btnCancel);
 
         _editorPanel.Controls.AddRange(new Control[] {
-        lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
-        lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
-        lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
-    });
+            lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
+            lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
+            lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
+        });
     }
 
     private void DeleteSelectedType()
