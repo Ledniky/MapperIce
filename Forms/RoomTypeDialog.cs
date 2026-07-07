@@ -23,9 +23,9 @@ public partial class RoomTypeDialog : Form
 
         // Фиксированные размеры окна
         this.Text = "Выбор и настройка типов комнат";
-        this.Size = new Size(800, 600);
-        this.MinimumSize = new Size(700, 500);
-        this.MaximumSize = new Size(1200, 800);
+        this.Size = new Size(670, 600);
+        this.MinimumSize = new Size(600, 500);
+        this.MaximumSize = new Size(1000, 800);
         this.StartPosition = FormStartPosition.CenterParent;
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.ShowInTaskbar = false;
@@ -37,7 +37,7 @@ public partial class RoomTypeDialog : Form
         var headerPanel = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(800, 40),
+            Size = new Size(670, 40),
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.FixedSingle
         };
@@ -56,7 +56,7 @@ public partial class RoomTypeDialog : Form
         var mainPanel = new Panel
         {
             Location = new Point(0, 40),
-            Size = new Size(800, 510)
+            Size = new Size(670, 510)
         };
 
         // ===== ЛЕВАЯ ПАНЕЛЬ (300px) =====
@@ -194,10 +194,10 @@ public partial class RoomTypeDialog : Form
         _editorPanel = new Panel
         {
             Location = new Point(305, 0),
-            Size = new Size(490, 510),
+            Size = new Size(360, 510),
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Color.White,
-            Padding = new Padding(10),
+            Padding = new Padding(8),
             AutoScroll = true
         };
 
@@ -205,7 +205,7 @@ public partial class RoomTypeDialog : Form
         var bottomPanel = new Panel
         {
             Location = new Point(0, 550),
-            Size = new Size(800, 50),
+            Size = new Size(670, 50),
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.FixedSingle
         };
@@ -213,8 +213,8 @@ public partial class RoomTypeDialog : Form
         var btnApply = new Button
         {
             Text = "Применить",
-            Location = new Point(590, 10),
-            Size = new Size(90, 30),
+            Location = new Point(470, 10),
+            Size = new Size(85, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
             BackColor = Color.FromArgb(220, 230, 240),
@@ -227,8 +227,8 @@ public partial class RoomTypeDialog : Form
         var btnClose = new Button
         {
             Text = "Закрыть",
-            Location = new Point(690, 10),
-            Size = new Size(90, 30),
+            Location = new Point(565, 10),
+            Size = new Size(85, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
             BackColor = Color.FromArgb(240, 240, 240),
@@ -284,16 +284,14 @@ public partial class RoomTypeDialog : Form
                 UpdateTreeViewSelection();
                 ShowEditor(node.RoomType);
                 OnTypeSelected?.Invoke(_selectedType.Name);
-                
-                // Обновляем состояние кнопки удаления
+
                 UpdateDeleteButtonState();
             }
             else
             {
                 _selectedType = null;
                 ShowCategoryInfo(node.Name);
-                
-                // Отключаем кнопку удаления
+
                 if (_btnDeleteType != null)
                     _btnDeleteType.Enabled = false;
             }
@@ -303,8 +301,6 @@ public partial class RoomTypeDialog : Form
     private void UpdateDeleteButtonState()
     {
         if (_btnDeleteType == null) return;
-        
-        // Кнопка удаления активна только если выбран кастомный тип
         _btnDeleteType.Enabled = _selectedType != null && _selectedType.IsCustom;
     }
 
@@ -320,7 +316,7 @@ public partial class RoomTypeDialog : Form
             {
                 if (typeNode.Tag is CategoryNode node && node.RoomType != null)
                 {
-                    typeNode.BackColor = node.RoomType.Name == selectedTypeName ? 
+                    typeNode.BackColor = node.RoomType.Name == selectedTypeName ?
                         Color.LightBlue : Color.White;
                 }
             }
@@ -357,58 +353,73 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
-        // Заголовок
+        int panelWidth = _editorPanel.Width - 16;
+
         var titleLabel = new Label
         {
             Text = $"✏️ Редактирование: {type.Name}",
             Location = new Point(5, 5),
-            Size = new Size(470, 30),
-            Font = new Font("Segoe UI", 12, FontStyle.Bold),
+            Size = new Size(panelWidth - 10, 25),
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
             ForeColor = type.IsCustom ? Color.Blue : Color.Black
         };
         _editorPanel.Controls.Add(titleLabel);
 
-        // Поля ввода
-        int y = 45;
-        int labelWidth = 120;
-        int controlWidth = 330;
-        int rowHeight = 35;
+        int y = 34;
+        int labelWidth = 85;
+        int rowHeight = 35;           // ← Увеличено с 26 до 28 для большего расстояния
+        int leftMargin = 5;
+        int btnColorSize = 26;
+        int btnColorHeight = 26;
+        int spacing = 8;
 
-        var txtName = CreateTextBox(type.Name, 5, y, labelWidth, controlWidth);
-        var lblName = CreateLabel("Название:", 5, y + 5, labelWidth);
+        int controlWidthFull = panelWidth - labelWidth - 15;
+        int controlWidthWithButton = panelWidth - labelWidth - 15 - btnColorSize - spacing;
+
+        // Поле "Название"
+        var txtName = CreateTextBox(type.Name, leftMargin, y, labelWidth, controlWidthFull);
+        var lblName = CreateLabel("Название:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtCategory = CreateTextBox(type.Category, 5, y, labelWidth, controlWidth);
-        var lblCategory = CreateLabel("Категория:", 5, y + 5, labelWidth);
+        // Поле "Категория"
+        var txtCategory = CreateTextBox(type.Category, leftMargin, y, labelWidth, controlWidthFull);
+        var lblCategory = CreateLabel("Категория:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtWall = CreateTextBox(type.WallProto, 5, y, labelWidth, controlWidth);
-        var lblWall = CreateLabel("Стена (proto):", 5, y + 5, labelWidth);
+        // Поле "Стена"
+        var txtWall = CreateTextBox(type.WallProto, leftMargin, y, labelWidth, controlWidthFull);
+        var lblWall = CreateLabel("Стена:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtFloor = CreateTextBox(type.FloorProto, 5, y, labelWidth, controlWidth);
-        var lblFloor = CreateLabel("Пол (proto):", 5, y + 5, labelWidth);
+        // Поле "Пол"
+        var txtFloor = CreateTextBox(type.FloorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var lblFloor = CreateLabel("Пол:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtDoor = CreateTextBox(type.DoorProto, 5, y, labelWidth, controlWidth);
-        var lblDoor = CreateLabel("Дверь (proto):", 5, y + 5, labelWidth);
+        // Поле "Дверь"
+        var txtDoor = CreateTextBox(type.DoorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var lblDoor = CreateLabel("Дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtGlassDoor = CreateTextBox(type.GlassDoorProto, 5, y, labelWidth, controlWidth);
-        var lblGlassDoor = CreateLabel("Стекл. дверь:", 5, y + 5, labelWidth);
+        // Поле "Стекл. дверь"
+        var txtGlassDoor = CreateTextBox(type.GlassDoorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}", 
-            5, y, labelWidth, controlWidth - 40);
-        var lblFill = CreateLabel("Цвет заливки:", 5, y + 5, labelWidth);
+        // Цвет заливки
+        var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+            leftMargin, y, labelWidth, controlWidthWithButton);
+        var lblFill = CreateLabel("Цвет заливки:", leftMargin, y + 3, labelWidth);
         var btnPickFill = new Button
         {
             Text = "🎨",
-            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
+            Location = new Point(leftMargin + labelWidth + controlWidthWithButton + spacing,
+                                 y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10)
         };
         btnPickFill.Click += (s, e) =>
         {
@@ -423,17 +434,20 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(btnPickFill);
         y += rowHeight;
 
-        var txtLine = CreateTextBox($"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}", 
-            5, y, labelWidth, controlWidth - 40);
-        var lblLine = CreateLabel("Цвет линии:", 5, y + 5, labelWidth);
+        // Цвет линии
+        var txtLine = CreateTextBox($"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+            leftMargin, y, labelWidth, controlWidthWithButton);
+        var lblLine = CreateLabel("Цвет линии:", leftMargin, y + 3, labelWidth);
         var btnPickLine = new Button
         {
             Text = "🎨",
-            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
+            Location = new Point(leftMargin + labelWidth + controlWidthWithButton + spacing,
+                                 y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
             Size = new Size(30, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10)
         };
         btnPickLine.Click += (s, e) =>
         {
@@ -448,22 +462,26 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(btnPickLine);
         y += rowHeight;
 
-        var txtPriority = CreateTextBox(_manager.GetPriorityForType(type.Name).ToString(), 5, y, labelWidth, controlWidth);
-        var lblPriority = CreateLabel("Приоритет:", 5, y + 5, labelWidth);
-        y += rowHeight + 10;
+        // Поле "Приоритет"
+        var txtPriority = CreateTextBox(_manager.GetPriorityForType(type.Name).ToString(), leftMargin, y, labelWidth, controlWidthFull);
+        var lblPriority = CreateLabel("Приоритет:", leftMargin, y + 3, labelWidth);
+        y += rowHeight + 6;
 
-        // Кнопка "Сохранить" - полностью невидима для встроенных типов
-        _btnSave = new Button
-        {
-            Text = "💾 Сохранить изменения",
-            Location = new Point(5, y),
-            Size = new Size(470, 40),
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(150, 200, 150) },
-            BackColor = Color.FromArgb(220, 240, 220),
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            Cursor = Cursors.Hand
-        };
+        // Кнопка "Сохранить"
+        // В методе ShowEditor, найдите кнопку "Сохранить" и замените на:
+_btnSave = new Button
+{
+    Text = "💾 Сохранить",
+    Location = new Point(leftMargin, y),
+    Size = new Size(panelWidth - 10, 35),
+    FlatStyle = FlatStyle.Flat,
+    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(0, 150, 200) },
+    BackColor = Color.FromArgb(180, 230, 255),
+    Font = new Font("Segoe UI", 10, FontStyle.Bold),
+    Cursor = Cursors.Hand,
+    ForeColor = Color.FromArgb(0, 70, 120),
+    Visible = type.IsCustom
+};
         _btnSave.Click += (s, e) =>
         {
             try
@@ -511,15 +529,12 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(_btnSave);
 
-        // Делаем кнопку невидимой для встроенных типов
-        _btnSave.Visible = type.IsCustom;
-
-        // Добавляем метки и поля
-        _editorPanel.Controls.AddRange(new Control[] { 
-            lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
-            lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
-            lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
-        });
+        // Добавляем все элементы на панель
+        _editorPanel.Controls.AddRange(new Control[] {
+        lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
+        lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
+        lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
+    });
     }
 
     private Label CreateLabel(string text, int x, int y, int width)
@@ -528,8 +543,8 @@ public partial class RoomTypeDialog : Form
         {
             Text = text,
             Location = new Point(x, y),
-            Size = new Size(width, 20),
-            Font = new Font("Segoe UI", 9),
+            Size = new Size(width, 16),
+            Font = new Font("Segoe UI", 8),
             TextAlign = ContentAlignment.MiddleRight
         };
     }
@@ -540,8 +555,8 @@ public partial class RoomTypeDialog : Form
         {
             Text = text,
             Location = new Point(x + labelWidth + 5, y),
-            Size = new Size(controlWidth, 25),
-            Font = new Font("Segoe UI", 9)
+            Size = new Size(controlWidth, 20),
+            Font = new Font("Segoe UI", 8)
         };
     }
 
@@ -553,9 +568,9 @@ public partial class RoomTypeDialog : Form
         var label = new Label
         {
             Text = $"📁 Категория: {categoryName}\n\nВыберите тип для редактирования\nили создайте новый тип в этой категории.",
-            Location = new Point(20, 20),
-            Size = new Size(450, 150),
-            Font = new Font("Segoe UI", 12),
+            Location = new Point(10, 10),
+            Size = new Size(330, 100),
+            Font = new Font("Segoe UI", 10),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.Gray
         };
@@ -587,60 +602,76 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
+        int panelWidth = _editorPanel.Width - 16;
+
         var titleLabel = new Label
         {
             Text = "✨ Создание нового типа",
             Location = new Point(5, 5),
-            Size = new Size(470, 30),
-            Font = new Font("Segoe UI", 12, FontStyle.Bold),
+            Size = new Size(panelWidth - 10, 25),
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
             ForeColor = Color.Blue
         };
         _editorPanel.Controls.Add(titleLabel);
 
-        int y = 45;
-        int labelWidth = 120;
-        int controlWidth = 330;
+        int y = 34;
+        int labelWidth = 85;
         int rowHeight = 35;
+        int leftMargin = 5;
+        int btnColorSize = 30;
+        int btnColorHeight = 30;
+        int spacing = 8;
+
+        int controlWidthFull = panelWidth - labelWidth - 15;
+        int controlWidthWithButton = panelWidth - labelWidth - 15 - btnColorSize - spacing;
 
         var defaultColor = Color.FromArgb(200, 230, 230, 230);
         var defaultLineColor = Color.FromArgb(255, 180, 180, 180);
 
-        var txtName = CreateTextBox("", 5, y, labelWidth, controlWidth);
-        var lblName = CreateLabel("Название:*", 5, y + 5, labelWidth);
+        // Поле "Название"
+        var txtName = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull);
+        var lblName = CreateLabel("Название:*", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        // Категория по умолчанию - "Custom"
-        var txtCategory = CreateTextBox("Custom", 5, y, labelWidth, controlWidth);
-        var lblCategory = CreateLabel("Категория:*", 5, y + 5, labelWidth);
+        // Поле "Категория"
+        var txtCategory = CreateTextBox("Custom", leftMargin, y, labelWidth, controlWidthFull);
+        var lblCategory = CreateLabel("Категория:*", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtWall = CreateTextBox("WallSolid", 5, y, labelWidth, controlWidth);
-        var lblWall = CreateLabel("Стена (proto):", 5, y + 5, labelWidth);
+        // Поле "Стена"
+        var txtWall = CreateTextBox("WallSolid", leftMargin, y, labelWidth, controlWidthFull);
+        var lblWall = CreateLabel("Стена:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtFloor = CreateTextBox("Plating", 5, y, labelWidth, controlWidth);
-        var lblFloor = CreateLabel("Пол (proto):", 5, y + 5, labelWidth);
+        // Поле "Пол"
+        var txtFloor = CreateTextBox("Plating", leftMargin, y, labelWidth, controlWidthFull);
+        var lblFloor = CreateLabel("Пол:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtDoor = CreateTextBox("Airlock", 5, y, labelWidth, controlWidth);
-        var lblDoor = CreateLabel("Дверь (proto):", 5, y + 5, labelWidth);
+        // Поле "Дверь"
+        var txtDoor = CreateTextBox("Airlock", leftMargin, y, labelWidth, controlWidthFull);
+        var lblDoor = CreateLabel("Дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtGlassDoor = CreateTextBox("AirlockGlass", 5, y, labelWidth, controlWidth);
-        var lblGlassDoor = CreateLabel("Стекл. дверь:", 5, y + 5, labelWidth);
+        // Поле "Стекл. дверь"
+        var txtGlassDoor = CreateTextBox("AirlockGlass", leftMargin, y, labelWidth, controlWidthFull);
+        var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}", 
-            5, y, labelWidth, controlWidth - 40);
-        var lblFill = CreateLabel("Цвет заливки:", 5, y + 5, labelWidth);
+        // Цвет заливки
+        var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
+            leftMargin, y, labelWidth, controlWidthWithButton);
+        var lblFill = CreateLabel("Цвет заливки:", leftMargin, y + 3, labelWidth);
         var btnPickFill = new Button
         {
             Text = "🎨",
-            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
-            Size = new Size(30, 30),
+            Location = new Point(leftMargin + labelWidth + 5 + controlWidthWithButton + spacing,
+                                 y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
+            Size = new Size(btnColorSize, btnColorHeight),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10)
         };
         btnPickFill.Click += (s, e) =>
         {
@@ -655,17 +686,20 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(btnPickFill);
         y += rowHeight;
 
-        var txtLine = CreateTextBox($"{defaultLineColor.A},{defaultLineColor.R},{defaultLineColor.G},{defaultLineColor.B}", 
-            5, y, labelWidth, controlWidth - 40);
-        var lblLine = CreateLabel("Цвет линии:", 5, y + 5, labelWidth);
+        // Цвет линии
+        var txtLine = CreateTextBox($"{defaultLineColor.A},{defaultLineColor.R},{defaultLineColor.G},{defaultLineColor.B}",
+            leftMargin, y, labelWidth, controlWidthWithButton);
+        var lblLine = CreateLabel("Цвет линии:", leftMargin, y + 3, labelWidth);
         var btnPickLine = new Button
         {
             Text = "🎨",
-            Location = new Point(5 + labelWidth + 5 + controlWidth - 30, y - 4),
-            Size = new Size(30, 30),
+            Location = new Point(leftMargin + labelWidth + 5 + controlWidthWithButton + spacing,
+                                 y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
+            Size = new Size(btnColorSize, btnColorHeight),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10)
         };
         btnPickLine.Click += (s, e) =>
         {
@@ -680,20 +714,23 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(btnPickLine);
         y += rowHeight;
 
-        var txtPriority = CreateTextBox("0", 5, y, labelWidth, controlWidth);
-        var lblPriority = CreateLabel("Приоритет:", 5, y + 5, labelWidth);
-        y += rowHeight + 10;
+        // Поле "Приоритет"
+        var txtPriority = CreateTextBox("0", leftMargin, y, labelWidth, controlWidthFull);
+        var lblPriority = CreateLabel("Приоритет:", leftMargin, y + 3, labelWidth);
+        y += rowHeight + 6;
 
+        // Кнопка "Создать тип" - яркая
         var btnCreate = new Button
         {
             Text = "✅ Создать тип",
-            Location = new Point(5, y),
-            Size = new Size(470, 40),
+            Location = new Point(leftMargin, y),
+            Size = new Size(panelWidth - 10, 35),
             FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(100, 200, 100) },
-            BackColor = Color.FromArgb(200, 240, 200),
+            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(0, 180, 0) },
+            BackColor = Color.FromArgb(180, 255, 180),
             Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            ForeColor = Color.FromArgb(0, 100, 0)
         };
         btnCreate.Click += (s, e) =>
         {
@@ -738,16 +775,18 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(btnCreate);
 
+        // Кнопка "Отмена"
         var btnCancel = new Button
         {
             Text = "❌ Отмена",
-            Location = new Point(5, y + 45),
-            Size = new Size(470, 30),
+            Location = new Point(leftMargin, y + 40),
+            Size = new Size(panelWidth - 10, 30),
             FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(200, 150, 150) },
             BackColor = Color.FromArgb(240, 220, 220),
             Font = new Font("Segoe UI", 9),
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            ForeColor = Color.FromArgb(150, 0, 0)
         };
         btnCancel.Click += (s, e) =>
         {
@@ -756,11 +795,11 @@ public partial class RoomTypeDialog : Form
         };
         _editorPanel.Controls.Add(btnCancel);
 
-        _editorPanel.Controls.AddRange(new Control[] { 
-            lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
-            lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
-            lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
-        });
+        _editorPanel.Controls.AddRange(new Control[] {
+        lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
+        lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
+        lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
+    });
     }
 
     private void DeleteSelectedType()
@@ -785,8 +824,7 @@ public partial class RoomTypeDialog : Form
             _editorPanel.Controls.Clear();
             ShowCategoryInfo("Все категории");
             MessageBox.Show($"Тип успешно удалён!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            
-            // Отключаем кнопку удаления
+
             if (_btnDeleteType != null)
                 _btnDeleteType.Enabled = false;
         }
@@ -807,7 +845,7 @@ public partial class RoomTypeDialog : Form
             try
             {
                 _manager.ImportType(openFileDialog.FileName);
-                
+
                 var categories = _manager.GetCategories().Keys.ToList();
                 if (categories.Count > 0)
                 {
@@ -840,7 +878,7 @@ public partial class RoomTypeDialog : Form
                         }
                     }
                 }
-                
+
                 UpdateTreeView();
                 MessageBox.Show("Тип успешно импортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
