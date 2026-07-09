@@ -18,9 +18,9 @@ public class RoomTypeManager
         "custom_types.json"
     );
 
-    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions 
-    { 
-        WriteIndented = true 
+    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        WriteIndented = true
     };
 
     // Приоритеты комнат (чем выше число, тем выше приоритет)
@@ -30,6 +30,72 @@ public class RoomTypeManager
         { "General", 0 },
         { "Technical", 0 },
         { "BaseRoom", 0 },
+
+        // ===== COMMON+ (10) =====
+        { "Arrivals", 10 },
+        { "Departures", 10 },
+        { "ToolStorage", 10 },
+        { "Cryo", 10 },
+        { "AI", 10 },
+        { "Satellite", 10 },
+        { "Restaurant", 10 },
+        { "KitchenBackroom", 10 },
+        { "BarBackroom", 10 },
+        { "ChapelMorgue", 10 },
+        { "JanitorCloset", 10 },
+        { "Maintenance", 10 },
+
+        // ===== SERVICE+ (10) =====
+        { "Library", 10 },
+        { "Gym", 10 },
+        { "Garden", 10 },
+        { "Dorms", 10 },
+        { "Toilets", 10 },
+        { "LockerRoom", 10 },
+        { "Arcade", 10 },
+        { "Park", 10 },
+        { "Courtroom", 10 },
+
+        // ===== CARGO+ (10) =====
+        { "CargoOffice", 10 },
+        { "Mailroom", 10 },
+        { "Recycling", 10 },
+
+        // ===== COMMAND+ (10) =====
+        { "ConferenceRoom", 10 },
+        { "NTRep", 10 },
+        { "BlueShield", 10 },
+
+        // ===== MEDICAL+ (10) =====
+        { "MedicalBreakRoom", 10 },
+        { "Cryogenetics", 10 },
+        { "OperatingTheatre", 10 },
+        { "Paramedic", 10 },
+        { "Psychologist", 10 },
+        { "MedicalStorage", 10 },
+
+        // ===== SCIENCE+ (10) =====
+        { "Anomalistics", 10 },
+        { "Robotics", 10 },
+        { "Xenobiology", 10 },
+        { "Toxins", 10 },
+        { "RnD", 10 },
+        { "TestingLab", 10 },
+
+        // ===== ENGINEERING+ (10) =====
+        { "GravityGenerator", 10 },
+        { "Supermatter", 10 },
+        { "Solars", 10 },
+        { "Telecoms", 10 },
+        { "Router", 10 },
+
+        // ===== SECURITY+ (10) =====
+        { "Interrogation", 10 },
+        { "Permabrig", 10 },
+        { "Execution", 10 },
+        { "Checkpoint", 10 },
+        { "SecurityPost", 10 },
+        { "SecurityOffice", 10 },
 
         // Служебные
         { "External", 10 },
@@ -53,18 +119,18 @@ public class RoomTypeManager
         { "EVA", 140 },
 
         // Медицина и Наука
-        { "Medical", 50 },
-        { "Science", 50 },
+        { "Medical", 10 },
+        { "Science", 10 },
         { "ResearchDirector", 50 },
         { "ChiefMedicalOfficer", 50 },
 
         // Инженерия
-        { "Engineering", 50 },
+        { "Engineering", 10 },
         { "ChiefEngineer", 50 },
 
         // Безопасность
         { "Detective", 70 },
-        { "Brig", 70 },
+        { "Brig", 10 },
         { "Armory", 70 },
         { "Security", 100 },
         { "HeadOfSecurity", 100 },
@@ -90,7 +156,7 @@ public class RoomTypeManager
         {
             LoadVanillaTypes();
             LoadCustomTypes();
-            
+
             if (!_types.ContainsKey(SelectedType))
             {
                 SelectedType = _types.Keys.FirstOrDefault() ?? "General";
@@ -100,7 +166,7 @@ public class RoomTypeManager
         {
             System.Diagnostics.Debug.WriteLine($"Ошибка в конструкторе RoomTypeManager: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
-            
+
             InitializeMinimalTypes();
         }
     }
@@ -109,24 +175,28 @@ public class RoomTypeManager
     {
         try
         {
+#pragma warning disable IL2026, IL2070
             var allTypes = Assembly.GetExecutingAssembly().GetTypes();
-            
+
             var roomTypes = allTypes
-                .Where(t => t.IsClass && 
-                           !t.IsAbstract && 
-                           t.IsSubclassOf(typeof(RoomType)) &&
-                           t.GetConstructor(Type.EmptyTypes) != null)
+                .Where(t => t.IsClass &&
+                        !t.IsAbstract &&
+                        t.IsSubclassOf(typeof(RoomType)) &&
+                        t.GetConstructor(Type.EmptyTypes) != null)
                 .ToList();
-            
+#pragma warning restore IL2026, IL2070
+
             foreach (var type in roomTypes)
             {
                 try
                 {
+#pragma warning disable IL2026
                     var instance = Activator.CreateInstance(type) as RoomType;
+#pragma warning restore IL2026
                     if (instance == null) continue;
-                    
+
                     if (instance.IsHidden) continue;
-                    
+
                     _types[instance.Name] = instance;
                     if (!_categories.ContainsKey(instance.Category))
                         _categories[instance.Category] = new List<RoomType>();
@@ -149,6 +219,7 @@ public class RoomTypeManager
     {
         var minimalTypes = new RoomType[]
         {
+            // Существующие основные типы
             new General(),
             new Technical(),
             new Security(),
@@ -158,8 +229,74 @@ public class RoomTypeManager
             new Science(),
             new Cargo(),
             new Service(),
+            
+            // ===== COMMON+ =====
+            new Arrivals(),
+            new Departures(),
+            new ToolStorage(),
+            new Cryo(),
+            new AI(),
+            new Satellite(),
+            new Restaurant(),
+            new KitchenBackroom(),
+            new BarBackroom(),
+            new ChapelMorgue(),
+            new JanitorCloset(),
+            new Maintenance(),
+            
+            // ===== SERVICE+ =====
+            new Library(),
+            new Gym(),
+            new Garden(),
+            new Dorms(),
+            new Toilets(),
+            new LockerRoom(),
+            new Arcade(),
+            new Park(),
+            new Courtroom(),
+            
+            // ===== CARGO+ =====
+            new CargoOffice(),
+            new Mailroom(),
+            new Recycling(),
+            
+            // ===== COMMAND+ =====
+            new ConferenceRoom(),
+            new NTRep(),
+            new BlueShield(),
+            
+            // ===== MEDICAL+ =====
+            new MedicalBreakRoom(),
+            new Cryogenetics(),
+            new OperatingTheatre(),
+            new Paramedic(),
+            new Psychologist(),
+            new MedicalStorage(),
+            
+            // ===== SCIENCE+ =====
+            new Anomalistics(),
+            new Robotics(),
+            new Xenobiology(),
+            new Toxins(),
+            new RnD(),
+            new TestingLab(),
+            
+            // ===== ENGINEERING+ =====
+            new GravityGenerator(),
+            new Supermatter(),
+            new Solars(),
+            new Telecoms(),
+            new Router(),
+            
+            // ===== SECURITY+ =====
+            new Interrogation(),
+            new Permabrig(),
+            new Execution(),
+            new Checkpoint(),
+            new SecurityPost(),
+            new SecurityOffice(),
         };
-        
+
         foreach (var type in minimalTypes)
         {
             if (type.IsHidden) continue;
@@ -168,7 +305,7 @@ public class RoomTypeManager
                 _categories[type.Category] = new List<RoomType>();
             _categories[type.Category].Add(type);
         }
-        
+
         if (!_types.ContainsKey(SelectedType))
             SelectedType = "General";
     }
@@ -230,15 +367,15 @@ public class RoomTypeManager
         // Проверяем встроенные типы
         if (_typePriorities.TryGetValue(typeName, out var priority))
             return priority;
-        
+
         // Проверяем кастомные типы
         if (_types.TryGetValue(typeName, out var type) && type is CustomRoomType custom)
             return custom.Priority;
-        
+
         return 0;
     }
 
-    public void CreateCustomType(string name, string category, string wallProto, string floorProto, 
+    public void CreateCustomType(string name, string category, string wallProto, string floorProto,
         string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
         if (_types.ContainsKey(name))
@@ -270,7 +407,7 @@ public class RoomTypeManager
         OnTypeChanged?.Invoke();
     }
 
-    public void EditCustomType(string oldName, string newName, string category, string wallProto, 
+    public void EditCustomType(string oldName, string newName, string category, string wallProto,
         string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
@@ -493,7 +630,7 @@ public class RoomTypeManager
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
-        
+
         if (skipped > 0)
             MessageBox.Show($"Импортировано: {imported}, пропущено (уже есть): {skipped}");
         else

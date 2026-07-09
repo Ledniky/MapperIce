@@ -18,8 +18,35 @@ public partial class RoomTypeDialog : Form
     private Button? _btnExport;
     private Button? _btnSave;
 
+    private static readonly Dictionary<string, Color> _categoryColors = new()
+{
+    // Основные отделы (более тёмные для контраста на белом фоне)
+    { "Medical", Color.FromArgb(0, 100, 180) },        // Тёмно-синий
+    { "Medical+", Color.FromArgb(0, 100, 180) },
+    { "Science", Color.FromArgb(160, 60, 160) },       // Тёмно-фиолетовый
+    { "Science+", Color.FromArgb(160, 60, 160) },
+    { "Engineering", Color.FromArgb(200, 140, 0) },    // Тёмно-оранжевый
+    { "Engineering+", Color.FromArgb(200, 140, 0) },
+    { "Security", Color.FromArgb(200, 30, 30) },       // Тёмно-красный
+    { "Security+", Color.FromArgb(200, 30, 30) },
+    { "Service", Color.FromArgb(80, 180, 40) },        // Тёмно-зелёный
+    { "Service+", Color.FromArgb(80, 180, 40) },
+    { "Cargo", Color.FromArgb(180, 100, 0) },          // Тёмно-коричневый
+    { "Cargo+", Color.FromArgb(180, 100, 0) },
+    { "Command", Color.FromArgb(30, 50, 100) },        // Тёмно-синий (командный)
+    { "Command+", Color.FromArgb(30, 50, 100) },
+    
+    // Общие (серый)
+    { "Common", Color.FromArgb(80, 80, 80) },
+    { "Common+", Color.FromArgb(80, 80, 80) },
+    
+    // Антагонисты (тёмно-красный)
+    { "Antags", Color.FromArgb(180, 20, 20) },
+};
+
     public RoomTypeDialog(RoomTypeManager manager)
     {
+
         _manager = manager;
 
         // Фиксированные размеры окна
@@ -261,6 +288,12 @@ public partial class RoomTypeDialog : Form
             var node = new TreeNode($"📁 {category.Key}");
             node.Tag = new CategoryNode { Name = category.Key, IsCategory = true };
 
+            // Только цвет текста, без фона
+            if (_categoryColors.TryGetValue(category.Key, out var color))
+            {
+                node.ForeColor = color;
+            }
+
             foreach (var type in category.Value.OrderBy(t => t.Name))
             {
                 var typeNode = new TreeNode(type.Name)
@@ -273,6 +306,8 @@ public partial class RoomTypeDialog : Form
             _treeView.Nodes.Add(node);
         }
     }
+
+
 
     private void SelectTypeInTree(string typeName)
     {
@@ -618,7 +653,7 @@ public partial class RoomTypeDialog : Form
     {
         // Сохраняем текущий выбранный тип перед переходом в режим создания
         _previousSelectedType = _selectedType;
-        
+
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
@@ -831,7 +866,7 @@ public partial class RoomTypeDialog : Form
                 UpdateTreeViewSelection();
                 ShowEditor(_selectedType);
                 UpdateDeleteButtonState();
-                
+
                 // Выделяем его в дереве
                 SelectTypeInTree(_selectedType.Name);
             }
