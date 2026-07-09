@@ -44,19 +44,6 @@ public class Armory : SecurityRoomType
     public override Color LineColor => Color.FromArgb(255, 150, 30, 30);
 }
 
-public class ArmoryVault : SecurityRoomType
-{
-    public override string Name => "Armory";
-    public override string DoorProto => "HighSecArmoryLocked";
-    public override string GlassDoorProto => "HighSecArmoryLocked";
-    public override Color FillColor => Color.FromArgb(100, 150, 30, 30);
-    public override Color LineColor => Color.FromArgb(255, 150, 30, 30);
-}
-
-// ============================================================
-// КАБИНЕТЫ БЕЗОПАСНОСТИ
-// ============================================================
-
 public class Detective : SecurityRoomType
 {
     public override string Name => "Detective";
@@ -66,14 +53,18 @@ public class Detective : SecurityRoomType
     public override Color LineColor => Color.FromArgb(255, 200, 150, 100);
 }
 
+// ============================================================
+// КАБИНЕТЫ БЕЗОПАСНОСТИ
+// ============================================================
+
 public class Warden : Armory
 {
     public override string Name => "Warden";
     public override string DoorProto => "AirlockWardenLocked";
     public override string GlassDoorProto => "AirlockWardenGlassLocked";
     public override string FloorProto => "FloorWhite";
-    public override Color FillColor => Color.FromArgb(100, 180, 50, 50);
-    public override Color LineColor => Color.FromArgb(255, 180, 50, 50);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 222, 58, 58);
 }
 
 public class HeadOfSecurity : SecurityRoomType
@@ -82,6 +73,6 @@ public class HeadOfSecurity : SecurityRoomType
     public override string DoorProto => "AirlockHeadOfSecurityLocked";
     public override string GlassDoorProto => "AirlockHeadOfSecurityGlassLocked";
     public override string FloorProto => "FloorDark";
-    public override Color FillColor => Color.FromArgb(100, 200, 40, 40);
-    public override Color LineColor => Color.FromArgb(255, 200, 40, 40);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 222, 58, 58);
 }

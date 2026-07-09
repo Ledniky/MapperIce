@@ -5,11 +5,13 @@ namespace MapperIce.Models;
 // ============================================================
 // ДОПОЛНИТЕЛЬНЫЕ КОМНАТЫ НАУКИ (Science+)
 // ============================================================
+
 public abstract class SciencePlusRoomType : RoomType
 {
     public override string Category => "Science+";
     public override string FloorProto => "FloorSteel";
 }
+
 public class Anomalistics : SciencePlusRoomType
 {
     public override string Name => "Anomalistics";

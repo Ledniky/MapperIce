@@ -62,6 +62,6 @@ public class ChiefMedicalOfficer : MedicalRoomType
     public override string Name => "ChiefMedicalOfficer";
     public override string DoorProto => "AirlockChiefMedicalOfficerLocked";
     public override string GlassDoorProto => "AirlockChiefMedicalOfficerGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 70, 160, 210);
-    public override Color LineColor => Color.FromArgb(255, 70, 160, 210);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 82, 180, 233);
 }

@@ -52,6 +52,6 @@ public class Quartermaster : CargoRoomType
     public override string Name => "Quartermaster";
     public override string DoorProto => "AirlockQuartermasterLocked";
     public override string GlassDoorProto => "AirlockQuartermasterGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 150, 80, 20);
-    public override Color LineColor => Color.FromArgb(255, 150, 80, 20);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 164, 97, 6);
 }

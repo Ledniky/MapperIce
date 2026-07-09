@@ -34,6 +34,6 @@ public class ResearchDirector : ScienceRoomType
     public override string Name => "ResearchDirector";
     public override string DoorProto => "AirlockResearchDirectorLocked";
     public override string GlassDoorProto => "AirlockResearchDirectorGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 190, 100, 180);
-    public override Color LineColor => Color.FromArgb(255, 190, 100, 180);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 211, 129, 201);
 }

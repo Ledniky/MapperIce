@@ -5,6 +5,7 @@ namespace MapperIce.Models;
 // ============================================================
 // ДОПОЛНИТЕЛЬНЫЕ КОМНАТЫ СЕРВИСА (Service+)
 // ============================================================
+
 public abstract class ServicePlusRoomType : RoomType
 {
     public override string Category => "Service+";
@@ -90,4 +91,36 @@ public class Courtroom : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 170, 150);
     public override Color LineColor => Color.FromArgb(255, 180, 170, 150);
+}
+
+// ============================================================
+// ДОЧЕРНИЕ КОМНАТЫ (находятся внутри Service)
+// ============================================================
+
+// BarBackroom - дочерний для Bar (но остаётся в Service+)
+public class BarBackroom : ServicePlusRoomType
+{
+    public override string Name => "BarBackroom";
+    public override string DoorProto => "AirlockMaintLocked";
+    public override string GlassDoorProto => "AirlockMaintGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 150, 120, 100);
+    public override Color LineColor => Color.FromArgb(255, 150, 120, 100);
+}
+
+// ChapelMorgue - дочерний для Chapel (но остаётся в Service+)
+public class ChapelMorgue : ServicePlusRoomType
+{
+    public override string Name => "ChapelMorgue";
+    public override Color FillColor => Color.FromArgb(100, 180, 160, 140);
+    public override Color LineColor => Color.FromArgb(255, 180, 160, 140);
+}
+
+// KitchenBackroom - дочерний для Kitchen (но остаётся в Service+)
+public class KitchenBackroom : ServicePlusRoomType
+{
+    public override string Name => "KitchenBackroom";
+    public override string DoorProto => "AirlockMaintLocked";
+    public override string GlassDoorProto => "AirlockMaintGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 180, 160, 120);
+    public override Color LineColor => Color.FromArgb(255, 180, 160, 120);
 }

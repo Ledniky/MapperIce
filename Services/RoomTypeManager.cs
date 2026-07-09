@@ -42,7 +42,6 @@ public class RoomTypeManager
         { "KitchenBackroom", 10 },
         { "BarBackroom", 10 },
         { "ChapelMorgue", 10 },
-        { "JanitorCloset", 10 },
         { "Maintenance", 10 },
 
         // ===== SERVICE+ (10) =====
@@ -241,7 +240,6 @@ public class RoomTypeManager
             new KitchenBackroom(),
             new BarBackroom(),
             new ChapelMorgue(),
-            new JanitorCloset(),
             new Maintenance(),
             
             // ===== SERVICE+ =====

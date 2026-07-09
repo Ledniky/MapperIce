@@ -54,8 +54,8 @@ public class Captain : CommandRoomType
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 30, 50, 80);
-    public override Color LineColor => Color.FromArgb(255, 30, 50, 80);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
 }
 
 public class HeadOfPersonnel : CommandRoomType
@@ -63,16 +63,15 @@ public class HeadOfPersonnel : CommandRoomType
     public override string Name => "HeadOfPersonnel";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 70, 90, 130);
-    public override Color LineColor => Color.FromArgb(255, 70, 90, 130);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
 }
 
-public class CentralCommand : CommandRoomType
+public class Bridge : CommandRoomType
 {
-    public override string Name => "CentralCommand";
-    public override string WallProto => "WallReinforced";
-    public override string DoorProto => "AirlockCentralCommandLocked";
-    public override string GlassDoorProto => "AirlockCentralCommandGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 40, 60, 100);
-    public override Color LineColor => Color.FromArgb(255, 40, 60, 100);
+    public override string Name => "Bridge";
+    public override string DoorProto => "AirlockCommandLocked";
+    public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
+    public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
 }

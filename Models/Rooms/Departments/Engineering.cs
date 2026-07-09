@@ -53,6 +53,6 @@ public class ChiefEngineer : EngineeringRoomType
     public override string Name => "ChiefEngineer";
     public override string DoorProto => "AirlockChiefEngineerLocked";
     public override string GlassDoorProto => "AirlockChiefEngineerGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 220, 160, 50);
-    public override Color LineColor => Color.FromArgb(255, 220, 160, 50);
+    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
+    public override Color LineColor => Color.FromArgb(255, 239, 179, 65);
 }
