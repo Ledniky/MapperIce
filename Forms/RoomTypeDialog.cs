@@ -651,9 +651,6 @@ public partial class RoomTypeDialog : Form
 
     private void CreateNewType()
     {
-        // Сохраняем текущий выбранный тип перед переходом в режим создания
-        _previousSelectedType = _selectedType;
-
         _editorPanel.Controls.Clear();
         _isEditing = true;
 
@@ -670,7 +667,7 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(titleLabel);
 
         int y = 34;
-        int labelWidth = 85;
+        int labelWidth = 100;
         int rowHeight = 35;
         int leftMargin = 5;
         int btnColorSize = 30;
@@ -680,8 +677,9 @@ public partial class RoomTypeDialog : Form
         int controlWidthFull = panelWidth - labelWidth - 15;
         int controlWidthWithButton = panelWidth - labelWidth - 15 - btnColorSize - spacing;
 
-        var defaultColor = Color.FromArgb(200, 230, 230, 230);
+        var defaultColor = Color.FromArgb(100, 230, 230, 230);
         var defaultLineColor = Color.FromArgb(255, 180, 180, 180);
+        var defaultCategoryColor = Color.FromArgb(255, 136, 136, 136);
 
         // Поле "Название"
         var txtName = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull);
@@ -691,6 +689,34 @@ public partial class RoomTypeDialog : Form
         // Поле "Категория"
         var txtCategory = CreateTextBox("Custom", leftMargin, y, labelWidth, controlWidthFull);
         var lblCategory = CreateLabel("Категория:*", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Цвет категории - ТУТ ДОЛЖНА БЫТЬ КНОПКА 🎨
+        var txtCategoryColor = CreateTextBox($"{defaultCategoryColor.A},{defaultCategoryColor.R},{defaultCategoryColor.G},{defaultCategoryColor.B}",
+            leftMargin, y, labelWidth, controlWidthWithButton);
+        var lblCategoryColor = CreateLabel("Цвет категории:", leftMargin, y + 3, labelWidth);
+        var btnPickCategoryColor = new Button
+        {
+            Text = "🎨",
+            Location = new Point(leftMargin + labelWidth + 5 + controlWidthWithButton + spacing,
+                                 y + (rowHeight - btnColorHeight) / 2 + 1 - 9),
+            Size = new Size(btnColorSize, btnColorHeight),
+            FlatStyle = FlatStyle.Flat,
+            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10)
+        };
+        btnPickCategoryColor.Click += (s, e) =>
+        {
+            var parts = txtCategoryColor.Text.Split(',').Select(int.Parse).ToArray();
+            using var dialog = new ColorDialog();
+            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                txtCategoryColor.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+            }
+        };
+        _editorPanel.Controls.Add(btnPickCategoryColor);  // ← ЭТА СТРОЧКА ДОБАВЛЯЕТ КНОПКУ
         y += rowHeight;
 
         // Поле "Стена"
@@ -713,10 +739,10 @@ public partial class RoomTypeDialog : Form
         var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
-        // Цвет заливки
+        // Цвет заливки комнаты
         var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
-        var lblFill = CreateLabel("Цвет заливки:", leftMargin, y + 3, labelWidth);
+        var lblFill = CreateLabel("Цвет комнаты:", leftMargin, y + 3, labelWidth);
         var btnPickFill = new Button
         {
             Text = "🎨",
@@ -741,7 +767,7 @@ public partial class RoomTypeDialog : Form
         _editorPanel.Controls.Add(btnPickFill);
         y += rowHeight;
 
-        // Цвет линии
+        // Цвет линии комнаты
         var txtLine = CreateTextBox($"{defaultLineColor.A},{defaultLineColor.R},{defaultLineColor.G},{defaultLineColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
         var lblLine = CreateLabel("Цвет линии:", leftMargin, y + 3, labelWidth);
@@ -806,6 +832,10 @@ public partial class RoomTypeDialog : Form
                 var line = txtLine.Text.Split(',').Select(int.Parse).ToArray();
                 var priority = int.Parse(txtPriority.Text);
 
+                var categoryColorParts = txtCategoryColor.Text.Split(',').Select(int.Parse).ToArray();
+                var categoryColor = Color.FromArgb(categoryColorParts[0], categoryColorParts[1], categoryColorParts[2], categoryColorParts[3]);
+
+                // Создаём тип
                 _manager.CreateCustomType(
                     txtName.Text,
                     txtCategory.Text,
@@ -818,6 +848,13 @@ public partial class RoomTypeDialog : Form
                     priority
                 );
 
+                // Добавляем цвет категории ТОЛЬКО если категория новая
+                if (!_categoryColors.ContainsKey(txtCategory.Text))
+                {
+                    _categoryColors[txtCategory.Text] = categoryColor;
+                }
+                // Если категория уже есть - НЕ МЕНЯЕМ её цвет
+
                 UpdateTreeView();
 
                 // Находим и выбираем созданный тип в дереве
@@ -827,7 +864,6 @@ public partial class RoomTypeDialog : Form
                 if (createdType != null)
                 {
                     _selectedType = createdType;
-                    _previousSelectedType = createdType;
                     _manager.SelectType(createdType.Name);
                     UpdateTreeViewSelection();
                     ShowEditor(createdType);
@@ -841,6 +877,8 @@ public partial class RoomTypeDialog : Form
                 MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
+
+
         _editorPanel.Controls.Add(btnCreate);
 
         // Кнопка "Отмена"
@@ -858,35 +896,65 @@ public partial class RoomTypeDialog : Form
         };
         btnCancel.Click += (s, e) =>
         {
-            // Возвращаемся к предыдущему выбранному типу, если он был
-            if (_previousSelectedType != null)
-            {
-                _selectedType = _previousSelectedType;
-                _manager.SelectType(_selectedType.Name);
-                UpdateTreeViewSelection();
-                ShowEditor(_selectedType);
-                UpdateDeleteButtonState();
-
-                // Выделяем его в дереве
-                SelectTypeInTree(_selectedType.Name);
-            }
-            else
-            {
-                _selectedType = null;
-                ShowCategoryInfo("Все категории");
-                _treeView.SelectedNode = null;
-                if (_btnDeleteType != null)
-                    _btnDeleteType.Enabled = false;
-            }
+            _selectedType = null;
+            ShowCategoryInfo("Все категории");
+            _treeView.SelectedNode = null;
         };
         _editorPanel.Controls.Add(btnCancel);
 
         _editorPanel.Controls.AddRange(new Control[] {
-            lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
-            lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
-            lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
-        });
+        lblName, txtName, lblCategory, txtCategory,
+        lblCategoryColor, txtCategoryColor,
+        lblWall, txtWall,
+        lblFloor, txtFloor,
+        lblDoor, txtDoor,
+        lblGlassDoor, txtGlassDoor,
+        lblFill, txtFill,
+        lblLine, txtLine,
+        lblPriority, txtPriority
+    });
     }
+
+
+
+    // Вспомогательный метод для парсинга цвета из Hex или ARGB
+    private Color ParseColor(string value)
+    {
+        try
+        {
+            if (value.StartsWith("#"))
+            {
+                // Hex формат: #RRGGBB или #AARRGGBB
+                var hex = value.TrimStart('#');
+                if (hex.Length == 6)
+                {
+                    var r = Convert.ToInt32(hex.Substring(0, 2), 16);
+                    var g = Convert.ToInt32(hex.Substring(2, 2), 16);
+                    var b = Convert.ToInt32(hex.Substring(4, 2), 16);
+                    return Color.FromArgb(255, r, g, b);
+                }
+                else if (hex.Length == 8)
+                {
+                    var a = Convert.ToInt32(hex.Substring(0, 2), 16);
+                    var r = Convert.ToInt32(hex.Substring(2, 2), 16);
+                    var g = Convert.ToInt32(hex.Substring(4, 2), 16);
+                    var b = Convert.ToInt32(hex.Substring(6, 2), 16);
+                    return Color.FromArgb(a, r, g, b);
+                }
+            }
+            else
+            {
+                // ARGB формат: A,R,G,B
+                var parts = value.Split(',');
+                if (parts.Length == 4)
+                    return Color.FromArgb(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]));
+            }
+        }
+        catch { }
+        return Color.Gray;
+    }
+
+
 
     private void DeleteSelectedType()
     {
