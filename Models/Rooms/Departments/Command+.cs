@@ -19,9 +19,9 @@ public class ConferenceRoom : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 80, 100, 140);
     public override Color LineColor => Color.FromArgb(255, 80, 100, 140);
+    public override int Priority => 150;
 }
 
-// NTRep - тусклый тёмно-зелёный
 public class NTRep : CommandPlusRoomType
 {
     public override string Name => "NTRep";
@@ -29,9 +29,9 @@ public class NTRep : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 80, 30);
     public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
+    public override int Priority => 360;
 }
 
-// BlueShield - зелёная граница (тусклая), синяя заливка
 public class BlueShield : CommandPlusRoomType
 {
     public override string Name => "BlueShield";
@@ -39,9 +39,9 @@ public class BlueShield : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 60, 150);
     public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
+    public override int Priority => 350;
 }
 
-// CentralCommand - тусклый тёмно-зелёный
 public class CentralCommand : CommandPlusRoomType
 {
     public override string Name => "CentralCommand";
@@ -50,9 +50,9 @@ public class CentralCommand : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockCentralCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 80, 30);
     public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
+    public override int Priority => 400;
 }
 
-// AI - командный доступ и цвет
 public class AI : CommandPlusRoomType
 {
     public override string Name => "AI";
@@ -61,4 +61,14 @@ public class AI : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockAIGlass";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 30, 50, 100);
+    public override int Priority => 170;
+}
+
+public class Satellite : CommandPlusRoomType
+{
+    public override string Name => "Satellite";
+    public override string WallProto => "WallReinforced";
+    public override Color FillColor => Color.FromArgb(100, 150, 150, 180);
+    public override Color LineColor => Color.FromArgb(255, 150, 150, 180);
+    public override int Priority => 160;
 }

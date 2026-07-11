@@ -24,6 +24,7 @@ public class Engineering : EngineeringRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 239, 179, 65);
     public override Color LineColor => Color.FromArgb(255, 239, 179, 65);
+    public override int Priority => 10;
 }
 
 public class Atmospherics : EngineeringRoomType
@@ -33,6 +34,7 @@ public class Atmospherics : EngineeringRoomType
     public override string GlassDoorProto => "AirlockAtmosphericsGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 62, 179, 136);
     public override Color LineColor => Color.FromArgb(255, 62, 179, 136);
+    public override int Priority => 30;
 }
 
 public class External : EngineeringRoomType
@@ -42,6 +44,7 @@ public class External : EngineeringRoomType
     public override string GlassDoorProto => "AirlockExternalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 180, 220);
     public override Color LineColor => Color.FromArgb(255, 100, 180, 220);
+    public override int Priority => 50;
 }
 
 // ============================================================
@@ -55,4 +58,5 @@ public class ChiefEngineer : EngineeringRoomType
     public override string GlassDoorProto => "AirlockChiefEngineerGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 239, 179, 65);
+    public override int Priority => 250;
 }

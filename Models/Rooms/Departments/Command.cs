@@ -23,6 +23,7 @@ public class Command : CommandRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
+    public override int Priority => 150;
 }
 
 public class EVA : CommandRoomType
@@ -32,6 +33,7 @@ public class EVA : CommandRoomType
     public override string GlassDoorProto => "AirlockEVAGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 80, 150, 200);
     public override Color LineColor => Color.FromArgb(255, 80, 150, 200);
+    public override int Priority => 140;
 }
 
 public class Vault : CommandRoomType
@@ -42,6 +44,7 @@ public class Vault : CommandRoomType
     public override string GlassDoorProto => "HighSecCommandLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 180, 50);
     public override Color LineColor => Color.FromArgb(255, 180, 180, 50);
+    public override int Priority => 150;
 }
 
 // ============================================================
@@ -56,6 +59,7 @@ public class Captain : CommandRoomType
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
+    public override int Priority => 200;
 }
 
 public class HeadOfPersonnel : CommandRoomType
@@ -65,6 +69,7 @@ public class HeadOfPersonnel : CommandRoomType
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
+    public override int Priority => 150;
 }
 
 public class Bridge : CommandRoomType
@@ -74,4 +79,5 @@ public class Bridge : CommandRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
+    public override int Priority => 200;
 }

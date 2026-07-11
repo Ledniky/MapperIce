@@ -23,6 +23,7 @@ public class Cargo : CargoRoomType
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 164, 97, 6);
     public override Color LineColor => Color.FromArgb(255, 164, 97, 6);
+    public override int Priority => 15;
 }
 
 public class Salvage : CargoRoomType
@@ -32,6 +33,7 @@ public class Salvage : CargoRoomType
     public override string GlassDoorProto => "AirlockSalvageGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 141, 28, 153);
     public override Color LineColor => Color.FromArgb(255, 141, 28, 153);
+    public override int Priority => 40;
 }
 
 public class Mining : CargoRoomType
@@ -41,6 +43,7 @@ public class Mining : CargoRoomType
     public override string GlassDoorProto => "AirlockMiningGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 80, 40);
     public override Color LineColor => Color.FromArgb(255, 180, 80, 40);
+    public override int Priority => 30;
 }
 
 // ============================================================
@@ -54,4 +57,5 @@ public class Quartermaster : CargoRoomType
     public override string GlassDoorProto => "AirlockQuartermasterGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 164, 97, 6);
+    public override int Priority => 250;
 }

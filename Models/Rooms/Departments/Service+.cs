@@ -19,6 +19,7 @@ public class Library : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 130);
     public override Color LineColor => Color.FromArgb(255, 180, 160, 130);
+    public override int Priority => 10;
 }
 
 public class Gym : ServicePlusRoomType
@@ -28,6 +29,7 @@ public class Gym : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 200, 150);
     public override Color LineColor => Color.FromArgb(255, 200, 200, 150);
+    public override int Priority => 10;
 }
 
 public class Garden : ServicePlusRoomType
@@ -37,6 +39,7 @@ public class Garden : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 200, 100);
     public override Color LineColor => Color.FromArgb(255, 100, 200, 100);
+    public override int Priority => 10;
 }
 
 public class Dorms : ServicePlusRoomType
@@ -46,6 +49,7 @@ public class Dorms : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 200);
+    public override int Priority => 10;
 }
 
 public class Toilets : ServicePlusRoomType
@@ -55,6 +59,7 @@ public class Toilets : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 220, 230);
     public override Color LineColor => Color.FromArgb(255, 180, 220, 230);
+    public override int Priority => 10;
 }
 
 public class LockerRoom : ServicePlusRoomType
@@ -64,6 +69,7 @@ public class LockerRoom : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 190, 180);
     public override Color LineColor => Color.FromArgb(255, 200, 190, 180);
+    public override int Priority => 10;
 }
 
 public class Arcade : ServicePlusRoomType
@@ -73,6 +79,7 @@ public class Arcade : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 150, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 150, 200);
+    public override int Priority => 10;
 }
 
 public class Park : ServicePlusRoomType
@@ -82,6 +89,7 @@ public class Park : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 220, 100);
     public override Color LineColor => Color.FromArgb(255, 100, 220, 100);
+    public override int Priority => 10;
 }
 
 public class Courtroom : ServicePlusRoomType
@@ -91,13 +99,13 @@ public class Courtroom : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 170, 150);
     public override Color LineColor => Color.FromArgb(255, 180, 170, 150);
+    public override int Priority => 15;
 }
 
 // ============================================================
 // ДОЧЕРНИЕ КОМНАТЫ (находятся внутри Service)
 // ============================================================
 
-// BarBackroom - дочерний для Bar (но остаётся в Service+)
 public class BarBackroom : ServicePlusRoomType
 {
     public override string Name => "BarBackroom";
@@ -105,17 +113,17 @@ public class BarBackroom : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 120, 100);
     public override Color LineColor => Color.FromArgb(255, 150, 120, 100);
+    public override int Priority => 15;
 }
 
-// ChapelMorgue - дочерний для Chapel (но остаётся в Service+)
 public class ChapelMorgue : ServicePlusRoomType
 {
     public override string Name => "ChapelMorgue";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 140);
     public override Color LineColor => Color.FromArgb(255, 180, 160, 140);
+    public override int Priority => 15;
 }
 
-// KitchenBackroom - дочерний для Kitchen (но остаётся в Service+)
 public class KitchenBackroom : ServicePlusRoomType
 {
     public override string Name => "KitchenBackroom";
@@ -123,4 +131,5 @@ public class KitchenBackroom : ServicePlusRoomType
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 120);
     public override Color LineColor => Color.FromArgb(255, 180, 160, 120);
+    public override int Priority => 15;
 }

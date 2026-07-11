@@ -16,6 +16,7 @@ public class Arrivals : CommonPlusRoomType
     public override string Name => "Arrivals";
     public override Color FillColor => Color.FromArgb(100, 200, 220, 240);
     public override Color LineColor => Color.FromArgb(255, 200, 220, 240);
+    public override int Priority => 10;
 }
 
 public class Departures : CommonPlusRoomType
@@ -23,6 +24,7 @@ public class Departures : CommonPlusRoomType
     public override string Name => "Departures";
     public override Color FillColor => Color.FromArgb(100, 200, 210, 230);
     public override Color LineColor => Color.FromArgb(255, 200, 210, 230);
+    public override int Priority => 10;
 }
 
 public class ToolStorage : CommonPlusRoomType
@@ -32,6 +34,7 @@ public class ToolStorage : CommonPlusRoomType
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 190, 170);
     public override Color LineColor => Color.FromArgb(255, 200, 190, 170);
+    public override int Priority => 15;
 }
 
 public class Cryo : CommonPlusRoomType
@@ -39,28 +42,14 @@ public class Cryo : CommonPlusRoomType
     public override string Name => "Cryo";
     public override Color FillColor => Color.FromArgb(100, 180, 220, 255);
     public override Color LineColor => Color.FromArgb(255, 180, 220, 255);
+    public override int Priority => 10;
 }
 
-public class Satellite : CommonPlusRoomType
-{
-    public override string Name => "Satellite";
-    public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(100, 150, 150, 180);
-    public override Color LineColor => Color.FromArgb(255, 150, 150, 180);
-}
 
 public class Restaurant : CommonPlusRoomType
 {
     public override string Name => "Restaurant";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 150);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
-}
-
-public class Maintenance : CommonPlusRoomType
-{
-    public override string Name => "Maintenance";
-    public override string DoorProto => "AirlockMaintLocked";
-    public override string GlassDoorProto => "AirlockMaintGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 180, 160, 140);
-    public override Color LineColor => Color.FromArgb(255, 180, 160, 140);
+    public override int Priority => 10;
 }

@@ -18,6 +18,7 @@ public abstract class RoomType
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
     public virtual bool IsHidden => false;
+    public virtual int Priority => 0;  // ← ДОБАВЛЕНО
 }
 
 // ============================================================
@@ -47,11 +48,14 @@ public class General : CommonRoomType
 {
     public override string Name => "General";
     public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
+    public override int Priority => 0;
 }
+
 public class Vox : CommonRoomType
 {
     public override string Name => "Vox";
     public override Color FillColor => Color.FromArgb(100, 254, 1, 64);
+    public override int Priority => 15;
 }
 
 public class Technical : CommonRoomType
@@ -61,6 +65,7 @@ public class Technical : CommonRoomType
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
+    public override int Priority => 0;
 }
 
 public class Hallway : CommonRoomType
@@ -68,12 +73,14 @@ public class Hallway : CommonRoomType
     public override string Name => "Hallway";
     public override Color FillColor => Color.FromArgb(100, 230, 230, 240);
     public override Color LineColor => Color.FromArgb(255, 200, 200, 210);
+    public override int Priority => 0;
 }
 
 public class BaseRoom : CommonRoomType
 {
     public override string Name => "BaseRoom";
     public override bool IsHidden => true;
+    public override int Priority => 0;
 }
 
 // ============================================================
@@ -87,6 +94,7 @@ public class Syndicate : AntagRoomType
     public override string GlassDoorProto => "AirlockSyndicateGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 50, 50);
     public override Color LineColor => Color.FromArgb(255, 200, 50, 50);
+    public override int Priority => 250;
 }
 
 public class Nukeop : AntagRoomType
@@ -96,6 +104,7 @@ public class Nukeop : AntagRoomType
     public override string GlassDoorProto => "AirlockSyndicateNukeopGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 30, 30);
     public override Color LineColor => Color.FromArgb(255, 200, 30, 30);
+    public override int Priority => 300;
 }
 
 // ============================================================

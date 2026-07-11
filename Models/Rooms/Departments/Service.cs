@@ -23,6 +23,7 @@ public class Service : ServiceRoomType
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 159, 237, 88);
     public override Color LineColor => Color.FromArgb(255, 159, 237, 88);
+    public override int Priority => 10;
 }
 
 public class Janitor : ServiceRoomType
@@ -32,6 +33,7 @@ public class Janitor : ServiceRoomType
     public override string GlassDoorProto => "AirlockJanitorGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 140, 52, 127);
     public override Color LineColor => Color.FromArgb(255, 140, 52, 127);
+    public override int Priority => 10;
 }
 
 public class Kitchen : ServiceRoomType
@@ -41,6 +43,7 @@ public class Kitchen : ServiceRoomType
     public override string GlassDoorProto => "AirlockKitchenGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 100);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 100);
+    public override int Priority => 10;
 }
 
 public class Bar : ServiceRoomType
@@ -50,6 +53,7 @@ public class Bar : ServiceRoomType
     public override string GlassDoorProto => "AirlockBarGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 121, 21, 0);
     public override Color LineColor => Color.FromArgb(255, 121, 21, 0);
+    public override int Priority => 10;
 }
 
 public class Hydroponics : ServiceRoomType
@@ -59,6 +63,7 @@ public class Hydroponics : ServiceRoomType
     public override string GlassDoorProto => "AirlockHydroGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 60, 180, 60);
     public override Color LineColor => Color.FromArgb(255, 60, 180, 60);
+    public override int Priority => 10;
 }
 
 public class Chapel : ServiceRoomType
@@ -68,6 +73,7 @@ public class Chapel : ServiceRoomType
     public override string GlassDoorProto => "AirlockChapelGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 150);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
+    public override int Priority => 10;
 }
 
 public class Theatre : ServiceRoomType
@@ -77,6 +83,7 @@ public class Theatre : ServiceRoomType
     public override string GlassDoorProto => "AirlockTheatreGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 100, 150);
     public override Color LineColor => Color.FromArgb(255, 200, 100, 150);
+    public override int Priority => 10;
 }
 
 // ============================================================
@@ -90,4 +97,5 @@ public class Lawyer : ServiceRoomType
     public override string GlassDoorProto => "AirlockLawyerGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 180, 200);
     public override Color LineColor => Color.FromArgb(255, 180, 180, 200);
+    public override int Priority => 10;
 }

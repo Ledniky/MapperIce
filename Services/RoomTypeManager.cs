@@ -23,132 +23,6 @@ public class RoomTypeManager
         WriteIndented = true
     };
 
-    // Приоритеты комнат (чем выше число, тем выше приоритет)
-    private static readonly Dictionary<string, int> _typePriorities = new()
-    {
-        // Общие (самый низкий приоритет)
-        { "General", 0 },
-        { "Technical", 0 },
-        { "BaseRoom", 0 },
-
-        // ===== COMMON+ (10) =====
-        { "Arrivals", 10 },
-        { "Departures", 10 },
-        { "ToolStorage", 10 },
-        { "Cryo", 10 },
-        { "AI", 10 },
-        { "Satellite", 10 },
-        { "Restaurant", 10 },
-        { "KitchenBackroom", 10 },
-        { "BarBackroom", 10 },
-        { "ChapelMorgue", 10 },
-        { "Maintenance", 10 },
-
-        // ===== SERVICE+ (10) =====
-        { "Library", 10 },
-        { "Gym", 10 },
-        { "Garden", 10 },
-        { "Dorms", 10 },
-        { "Toilets", 10 },
-        { "LockerRoom", 10 },
-        { "Arcade", 10 },
-        { "Park", 10 },
-        { "Courtroom", 10 },
-
-        // ===== CARGO+ (10) =====
-        { "CargoOffice", 10 },
-        { "Mailroom", 10 },
-        { "Recycling", 10 },
-
-        // ===== COMMAND+ (10) =====
-        { "ConferenceRoom", 10 },
-        { "NTRep", 10 },
-        { "BlueShield", 10 },
-
-        // ===== MEDICAL+ (10) =====
-        { "MedicalBreakRoom", 10 },
-        { "Cryogenetics", 10 },
-        { "OperatingTheatre", 10 },
-        { "Paramedic", 10 },
-        { "Psychologist", 10 },
-        { "MedicalStorage", 10 },
-
-        // ===== SCIENCE+ (10) =====
-        { "Anomalistics", 10 },
-        { "Robotics", 10 },
-        { "Xenobiology", 10 },
-        { "Toxins", 10 },
-        { "RnD", 10 },
-        { "TestingLab", 10 },
-
-        // ===== ENGINEERING+ (10) =====
-        { "GravityGenerator", 10 },
-        { "Supermatter", 10 },
-        { "Solars", 10 },
-        { "Telecoms", 10 },
-        { "Router", 10 },
-
-        // ===== SECURITY+ (10) =====
-        { "Interrogation", 10 },
-        { "Permabrig", 10 },
-        { "Execution", 10 },
-        { "Checkpoint", 10 },
-        { "SecurityPost", 10 },
-        { "SecurityOffice", 10 },
-
-        // Служебные
-        { "External", 10 },
-        { "Service", 10 },
-        { "Cargo", 10 },
-        { "Janitor", 10 },
-        { "Chapel", 10 },
-        { "Theatre", 10 },
-        { "Lawyer", 10 },
-        { "Kitchen", 10 },
-        { "Bar", 10 },
-        { "Hydroponics", 10 },
-
-        // Средний приоритет
-        { "Mining", 30 },
-        { "Salvage", 40 },
-        { "Atmospherics", 30 },
-        { "Chemistry", 70 },
-        { "Morgue", 30 },
-        { "Virology", 60 },
-        { "EVA", 140 },
-
-        // Медицина и Наука
-        { "Medical", 10 },
-        { "Science", 10 },
-        { "ResearchDirector", 50 },
-        { "ChiefMedicalOfficer", 50 },
-
-        // Инженерия
-        { "Engineering", 10 },
-        { "ChiefEngineer", 50 },
-
-        // Безопасность
-        { "Detective", 70 },
-        { "Brig", 10 },
-        { "Armory", 70 },
-        { "Security", 100 },
-        { "HeadOfSecurity", 100 },
-
-        // Командование
-        { "Command", 150 },
-        { "HeadOfPersonnel", 150 },
-        { "CentralCommand", 160 },
-        { "Vault", 150 },
-
-        // Высшее командование
-        { "Captain", 200 },
-        { "Bridge", 200 },
-
-        // Антагонисты
-        { "Syndicate", 250 },
-        { "Nukeop", 300 },
-    };
-
     public RoomTypeManager()
     {
         try
@@ -166,7 +40,6 @@ public class RoomTypeManager
             System.Diagnostics.Debug.WriteLine($"Ошибка в конструкторе RoomTypeManager: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
 
-            InitializeMinimalTypes();
         }
     }
 
@@ -214,99 +87,6 @@ public class RoomTypeManager
         }
     }
 
-    private void InitializeMinimalTypes()
-    {
-        var minimalTypes = new RoomType[]
-        {
-            // Существующие основные типы
-            new General(),
-            new Technical(),
-            new Security(),
-            new Medical(),
-            new Command(),
-            new Engineering(),
-            new Science(),
-            new Cargo(),
-            new Service(),
-            
-            // ===== COMMON+ =====
-            new Arrivals(),
-            new Departures(),
-            new ToolStorage(),
-            new Cryo(),
-            new AI(),
-            new Satellite(),
-            new Restaurant(),
-            new KitchenBackroom(),
-            new BarBackroom(),
-            new ChapelMorgue(),
-            new Maintenance(),
-            
-            // ===== SERVICE+ =====
-            new Library(),
-            new Gym(),
-            new Garden(),
-            new Dorms(),
-            new Toilets(),
-            new LockerRoom(),
-            new Arcade(),
-            new Park(),
-            new Courtroom(),
-            
-            // ===== CARGO+ =====
-            new CargoOffice(),
-            new Mailroom(),
-            new Recycling(),
-            
-            // ===== COMMAND+ =====
-            new ConferenceRoom(),
-            new NTRep(),
-            new BlueShield(),
-            
-            // ===== MEDICAL+ =====
-            new MedicalBreakRoom(),
-            new Cryogenetics(),
-            new OperatingTheatre(),
-            new Paramedic(),
-            new Psychologist(),
-            new MedicalStorage(),
-            
-            // ===== SCIENCE+ =====
-            new Anomalistics(),
-            new Robotics(),
-            new Xenobiology(),
-            new Toxins(),
-            new RnD(),
-            new TestingLab(),
-            
-            // ===== ENGINEERING+ =====
-            new GravityGenerator(),
-            new Supermatter(),
-            new Solars(),
-            new Telecoms(),
-            new Router(),
-            
-            // ===== SECURITY+ =====
-            new Interrogation(),
-            new Permabrig(),
-            new Execution(),
-            new Checkpoint(),
-            new SecurityPost(),
-            new SecurityOffice(),
-        };
-
-        foreach (var type in minimalTypes)
-        {
-            if (type.IsHidden) continue;
-            _types[type.Name] = type;
-            if (!_categories.ContainsKey(type.Category))
-                _categories[type.Category] = new List<RoomType>();
-            _categories[type.Category].Add(type);
-        }
-
-        if (!_types.ContainsKey(SelectedType))
-            SelectedType = "General";
-    }
 
     private void LoadCustomTypes()
     {
@@ -362,13 +142,9 @@ public class RoomTypeManager
 
     public int GetPriorityForType(string typeName)
     {
-        // Проверяем встроенные типы
-        if (_typePriorities.TryGetValue(typeName, out var priority))
-            return priority;
-
-        // Проверяем кастомные типы
-        if (_types.TryGetValue(typeName, out var type) && type is CustomRoomType custom)
-            return custom.Priority;
+        // Проверяем встроенные типы через свойство Priority
+        if (_types.TryGetValue(typeName, out var type))
+            return type.Priority;
 
         return 0;
     }
@@ -501,6 +277,7 @@ public class RoomTypeManager
         room.FillColor = type.FillColor;
         room.LineColor = type.LineColor;
         room.RoomType = type.Name;
+        room.Priority = type.Priority;
     }
 
     public void ExportType(string typeName, string filePath)
@@ -519,7 +296,7 @@ public class RoomTypeManager
             GlassDoorProto = type.GlassDoorProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
-            Priority = GetPriorityForType(type.Name)
+            Priority = type.Priority
         };
 
         var json = JsonSerializer.Serialize(data, _jsonOptions);
@@ -545,7 +322,7 @@ public class RoomTypeManager
             GlassDoorProto = type.GlassDoorProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
-            Priority = GetPriorityForType(type.Name)
+            Priority = type.Priority
         }).ToList();
 
         var json = JsonSerializer.Serialize(dataList, _jsonOptions);

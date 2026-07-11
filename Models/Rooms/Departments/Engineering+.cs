@@ -20,6 +20,7 @@ public class GravityGenerator : EngineeringPlusRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 180, 220);
     public override Color LineColor => Color.FromArgb(255, 180, 180, 220);
+    public override int Priority => 10;
 }
 
 public class Supermatter : EngineeringPlusRoomType
@@ -29,6 +30,7 @@ public class Supermatter : EngineeringPlusRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 200, 100);
     public override Color LineColor => Color.FromArgb(255, 200, 200, 100);
+    public override int Priority => 10;
 }
 
 public class Solars : EngineeringPlusRoomType
@@ -38,6 +40,7 @@ public class Solars : EngineeringPlusRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 220, 200, 100);
     public override Color LineColor => Color.FromArgb(255, 220, 200, 100);
+    public override int Priority => 10;
 }
 
 public class Telecoms : EngineeringPlusRoomType
@@ -47,6 +50,7 @@ public class Telecoms : EngineeringPlusRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 180, 200);
     public override Color LineColor => Color.FromArgb(255, 150, 180, 200);
+    public override int Priority => 10;
 }
 
 public class Router : EngineeringPlusRoomType
@@ -56,4 +60,5 @@ public class Router : EngineeringPlusRoomType
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 140, 170, 190);
     public override Color LineColor => Color.FromArgb(255, 140, 170, 190);
+    public override int Priority => 10;
 }
