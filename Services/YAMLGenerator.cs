@@ -8,123 +8,158 @@ public static class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
-    public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings>? pipeLayers, Dictionary<string, AlarmSettings> alarmSettings)
+    public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings> pipeLayers, Dictionary<string, AlarmSettings> alarmSettings)
     {
-        if (grid == null)
-            throw new ArgumentNullException(nameof(grid));
-        if (tileBuilder == null)
-            throw new ArgumentNullException(nameof(tileBuilder));
-
-        var tileGrid = tileBuilder.BuildFromRooms(grid);
+        if (grid == null) return "";
 
         var sb = new StringBuilder();
+        var gridName = grid.Name?.Replace(" ", "_") ?? "Grid";
 
-        // ==================== META ====================
-        sb.AppendLine("meta:");
-        sb.AppendLine("  format: 7");
-        sb.AppendLine("  category: Map");
-        sb.AppendLine("  engineVersion: 266.0.0");
-        sb.AppendLine("  forkId: \"\"");
-        sb.AppendLine("  forkVersion: \"\"");
-        sb.AppendLine($"  time: {DateTime.Now:MM/dd/yyyy HH:mm:ss}");
-        sb.AppendLine($"  entityCount: {CountEntities(tileGrid) + CountPipes(grid) + CountAlarms(grid) + CountFirelocks(grid)}");
-
-        // ==================== MAPS & GRIDS ====================
-        sb.AppendLine("maps:");
-        sb.AppendLine("- 1");
-        sb.AppendLine("grids:");
-        sb.AppendLine("- 2");
-
-        sb.AppendLine("orphans: []");
-        sb.AppendLine("nullspace: []");
-
-        // ==================== TILEMAP ====================
-        sb.AppendLine("tilemap:");
-        sb.AppendLine("  0: Space");
-        sb.AppendLine("  1: Plating");
-
-        // ==================== ENTITIES ====================
-        sb.AppendLine("entities:");
-
-        sb.AppendLine("- proto: \"\"");
-        sb.AppendLine("  entities:");
-        sb.AppendLine("  - uid: 1");
-        sb.AppendLine("    components:");
-        sb.AppendLine("    - type: MetaData");
-        sb.AppendLine("      name: Map Entity");
-        sb.AppendLine("    - type: Transform");
-        sb.AppendLine("    - type: Map");
-        sb.AppendLine("      mapPaused: True");
-        sb.AppendLine("    - type: GridTree");
-        sb.AppendLine("    - type: Broadphase");
-        sb.AppendLine("    - type: OccluderTree");
-
-        sb.AppendLine("  - uid: 2");
-        sb.AppendLine("    components:");
-        sb.AppendLine("    - type: MetaData");
-        sb.AppendLine("      name: grid");
-        sb.AppendLine("    - type: Transform");
-        sb.AppendLine("      pos: 0,0");
-        sb.AppendLine("      parent: 1");
-        sb.AppendLine("    - type: MapGrid");
-        sb.AppendLine("      chunks:");
-
-        var chunks = GenerateChunksFromTileGrid(tileGrid);
-        foreach (var chunk in chunks)
+        // Вычисляем размеры грида по комнатам
+        int gridWidth = 0;
+        int gridHeight = 0;
+        foreach (var room in grid.Rooms)
         {
-            sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
-            sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
-            sb.AppendLine($"          tiles: {chunk.Value}");
-            sb.AppendLine($"          version: 7");
+            int roomRight = room.X + room.Width;
+            int roomBottom = room.Y + room.Height;
+            if (roomRight > gridWidth) gridWidth = roomRight;
+            if (roomBottom > gridHeight) gridHeight = roomBottom;
         }
 
-        sb.AppendLine("    - type: Broadphase");
-        sb.AppendLine("    - type: Physics");
-        sb.AppendLine("      bodyStatus: InAir");
-        sb.AppendLine("      fixedRotation: False");
-        sb.AppendLine("      bodyType: Dynamic");
-        sb.AppendLine("    - type: Fixtures");
-        sb.AppendLine("      fixtures: {}");
-        sb.AppendLine("    - type: OccluderTree");
-        sb.AppendLine("    - type: SpreaderGrid");
-        sb.AppendLine("    - type: Shuttle");
-        sb.AppendLine("      dampingModifiers:");
-        sb.AppendLine("        Cruise: 0.0075");
-        sb.AppendLine("        Dampen: 0.25");
-        sb.AppendLine("        Anchor: 2");
-        sb.AppendLine("        None: 0.25");
-        sb.AppendLine("      dampingModifier: 0.25");
-        sb.AppendLine("    - type: ImplicitRoof");
-        sb.AppendLine("    - type: FTLDrive");
-        sb.AppendLine("    - type: GridPathfinding");
-        sb.AppendLine("    - type: Gravity");
-        sb.AppendLine("      gravityShakeSound: !type:SoundPathSpecifier");
-        sb.AppendLine("        path: /Audio/Effects/alert.ogg");
-        sb.AppendLine("    - type: DecalGrid");
-        sb.AppendLine("      chunkCollection:");
-        sb.AppendLine("        version: 2");
-        sb.AppendLine("        nodes: []");
-        sb.AppendLine("    - type: GridAtmosphere");
-        sb.AppendLine("      version: 2");
-        sb.AppendLine("      data:");
-        sb.AppendLine("        chunkSize: 4");
-        sb.AppendLine("    - type: GasTileOverlay");
-        sb.AppendLine("    - type: RadiationGridResistance");
+        // Заголовок карты
+        sb.AppendLine($"- type: {gridName}");
+        sb.AppendLine($"  name: {grid.Name ?? "Unknown"}");
+        sb.AppendLine($"  tileset: 1");
+        sb.AppendLine($"  width: {gridWidth}");
+        sb.AppendLine($"  height: {gridHeight}");
+        sb.AppendLine($"  offset: {grid.Position.X},{grid.Position.Y}");
+        sb.AppendLine($"  color: #{grid.Color.R:X2}{grid.Color.G:X2}{grid.Color.B:X2}");
+        sb.AppendLine($"  tilemap:");
 
-        int uid = 3;
+        // Получаем все комнаты
+        var rooms = grid.Rooms.ToList();
+        if (rooms.Count == 0)
+        {
+            sb.AppendLine("    [];");
+            return sb.ToString();
+        }
 
-        // 1. СНАЧАЛА генерируем ВСЕ устройства (стены, двери, трубы, вентиляции)
-        GenerateWallsFromTileGrid(sb, tileGrid, tileBuilder, ref uid);
-        GenerateDoorsFromTileGrid(sb, tileGrid, ref uid);
-        
-        // Генерируем трубы и запоминаем UID вентиляций/скрубберов
-        var ventUids = GeneratePipesFromEntities(sb, grid, ref uid, pipeLayers);
-        
-        // Генерируем пожарные шлюзы и запоминаем их UID
-        var firelockUids = GenerateFirelocks(sb, grid, ref uid);
-        
-        // 2. ПОТОМ генерируем сигнализации с DeviceList
-        GenerateAlarms(sb, grid, ref uid, alarmSettings, ventUids, firelockUids);
+        // Строим TileGrid
+        var tileGrid = tileBuilder.BuildFromRooms(grid);
+        var allTiles = tileGrid.GetAllTiles().ToList();
+
+        // Группируем тайлы по прототипу
+        var tilesByProto = allTiles
+            .Where(t => !string.IsNullOrEmpty(t.ProtoId))
+            .GroupBy(t => t.ProtoId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Экспортируем тайлы
+        foreach (var kvp in tilesByProto)
+        {
+            var protoId = kvp.Key;
+            var tiles = kvp.Value;
+
+            sb.AppendLine($"    - proto: {protoId}");
+            sb.AppendLine($"      coords:");
+
+            var coordGroups = tiles
+                .GroupBy(t => (t.X, t.Y))
+                .Select(g => $"        - {g.Key.X},{g.Key.Y}")
+                .ToList();
+
+            foreach (var coord in coordGroups)
+            {
+                sb.AppendLine(coord);
+            }
+        }
+
+        // Экспортируем объекты (двери, пожарные шлюзы, сигнализации, трубы)
+        var entities = grid.Entities.ToList();
+        if (entities.Count > 0)
+        {
+            sb.AppendLine($"  entities:");
+
+            // Группируем объекты по типу
+            var doors = entities.OfType<Door>().ToList();
+            var firelocks = entities.OfType<FirelockEntity>().ToList();
+            var fireAlarms = entities.OfType<FireAlarmEntity>().ToList();
+            var airAlarms = entities.OfType<AirAlarmEntity>().ToList();
+            var pipes = entities.OfType<PipeEntity>().ToList();
+
+            // Экспортируем двери
+            foreach (var door in doors)
+            {
+                sb.AppendLine($"    - proto: {door.Proto}");
+                sb.AppendLine($"      pos: {door.X},{door.Y}");
+            }
+
+            // Экспортируем пожарные шлюзы
+            foreach (var firelock in firelocks)
+            {
+                sb.AppendLine($"    - proto: {(firelock.IsGlass ? "FirelockGlass" : "Firelock")}");
+                sb.AppendLine($"      pos: {firelock.X},{firelock.Y}");
+            }
+
+            // Экспортируем пожарные сигнализации
+            foreach (var alarm in fireAlarms)
+            {
+                sb.AppendLine($"    - proto: FireAlarm");
+                sb.AppendLine($"      pos: {alarm.X},{alarm.Y}");
+                if (alarm.Rotation != 0)
+                    sb.AppendLine($"      rot: {alarm.Rotation}");
+            }
+
+            // Экспортируем воздушные сигнализации
+            foreach (var alarm in airAlarms)
+            {
+                sb.AppendLine($"    - proto: AirAlarm");
+                sb.AppendLine($"      pos: {alarm.X},{alarm.Y}");
+                if (alarm.Rotation != 0)
+                    sb.AppendLine($"      rot: {alarm.Rotation}");
+            }
+
+            // Экспортируем трубы
+            foreach (var pipe in pipes)
+            {
+                string pipeProto = pipe.PipeType switch
+                {
+                    "Distra" => "PipeDistra",
+                    "Waste" => "PipeWaste",
+                    "Normal" => "PipeNormal",
+                    _ => "Pipe"
+                };
+                sb.AppendLine($"    - proto: {pipeProto}");
+                sb.AppendLine($"      pos: {pipe.X},{pipe.Y}");
+                if (pipe.IsEndpoint)
+                    sb.AppendLine($"      is_endpoint: true");
+            }
+
+            // Экспортируем связи сигнализаций с устройствами
+            if (alarmSettings != null)
+            {
+                var networkBuilder = new AlarmNetworkBuilder(alarmSettings);
+                var network = networkBuilder.BuildNetwork(grid);
+
+                foreach (var connection in network.Connections)
+                {
+                    if (connection.Source is FireAlarmDevice fireAlarm && connection.Target is FirelockDevice firelock)
+                    {
+                        sb.AppendLine($"    - proto: AlarmLink");
+                        sb.AppendLine($"      source: {fireAlarm.X},{fireAlarm.Y}");
+                        sb.AppendLine($"      target: {firelock.X},{firelock.Y}");
+                        sb.AppendLine($"      type: Firelock");
+                    }
+                    else if (connection.Source is AirAlarmDevice airAlarm && connection.Target is PipeDevice pipe)
+                    {
+                        sb.AppendLine($"    - proto: AlarmLink");
+                        sb.AppendLine($"      source: {airAlarm.X},{airAlarm.Y}");
+                        sb.AppendLine($"      target: {pipe.X},{pipe.Y}");
+                        sb.AppendLine($"      type: Pipe");
+                    }
+                }
+            }
+        }
 
         return sb.ToString();
     }
@@ -298,7 +333,7 @@ public static class YAMLGenerator
     private static List<int> GenerateFirelocks(StringBuilder sb, Grid grid, ref int uid)
     {
         var firelockUids = new List<int>();
-        
+
         foreach (var entity in grid.Entities)
         {
             if (entity is FirelockEntity firelock)
@@ -316,7 +351,7 @@ public static class YAMLGenerator
                 uid++;
             }
         }
-        
+
         return firelockUids;
     }
 
@@ -491,15 +526,14 @@ public static class YAMLGenerator
                 string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
                 bool autoLink = settings?.AutoLinkDevices ?? true;
 
-                // ПОНЯТНАЯ КОНСТРУКЦИЯ:
                 List<int> linkedDevices;
                 if (autoLink == true)
                 {
-                    linkedDevices = allDeviceUids; // Привязываем ВСЕ устройства
+                    linkedDevices = allDeviceUids;
                 }
                 else
                 {
-                    linkedDevices = new List<int>(); // Не привязываем НИЧЕГО (пустой список)
+                    linkedDevices = new List<int>();
                 }
 
                 GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid, linkedDevices);
@@ -509,15 +543,14 @@ public static class YAMLGenerator
                 string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
                 bool autoLink = settings?.AutoLinkDevices ?? true;
 
-                // ПОНЯТНАЯ КОНСТРУКЦИЯ:
                 List<int> linkedDevices;
                 if (autoLink == true)
                 {
-                    linkedDevices = allDeviceUids; // Привязываем ВСЕ устройства
+                    linkedDevices = allDeviceUids;
                 }
                 else
                 {
-                    linkedDevices = new List<int>(); // Не привязываем НИЧЕГО (пустой список)
+                    linkedDevices = new List<int>();
                 }
 
                 GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid, linkedDevices);

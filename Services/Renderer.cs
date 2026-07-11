@@ -25,6 +25,8 @@ public class Renderer
 
     // Интерполяция для масштабирования
     private readonly InterpolationMode _interpolationMode = InterpolationMode.NearestNeighbor;
+    private AlarmNetwork? _currentNetwork;
+    public bool ShowAlarmConnections { get; set; } = true;
 
     public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
@@ -57,22 +59,22 @@ public class Renderer
             if (_buffer.Width == 0 || _buffer.Height == 0) return _buffer;
 
             using var g = Graphics.FromImage(_buffer);
-            
+
             g.InterpolationMode = _interpolationMode;
             g.SmoothingMode = SmoothingMode.None;
             g.PixelOffsetMode = PixelOffsetMode.Half;
-            
+
             g.Clear(Color.White);
 
             int tileSize = (int)(Constants.TILE_SIZE * scale);
-            
+
             if (_cachedTileSize != tileSize)
             {
                 _cachedTileSize = tileSize;
             }
 
             var visibleGrids = map.Grids.Where(g => g.IsVisible).ToList();
-            
+
             foreach (var grid in visibleGrids)
             {
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
@@ -111,7 +113,7 @@ public class Renderer
                 {
                     var rooms = grid.Rooms.ToList();
                     DrawRoomFillsBatch(g, rooms, tileSize, viewOffset, grid.Position, opacity);
-                    
+
                     if (currentRoom != null && isActive)
                     {
                         DrawRoomFill(g, currentRoom, tileSize, viewOffset, grid.Position, 1.0f);
@@ -145,9 +147,15 @@ public class Renderer
                 // ИСПРАВЛЕНО: передаём как List<MapEntity>
                 var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
                 var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
-                
+
                 DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
                 DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
+                
+                if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
+                {
+                    DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, grid.Position);
+                }
+
             }
 
             DrawInfo(g, scale, toolName, map);
@@ -163,12 +171,12 @@ public class Renderer
         if (tiles.Count == 0) return;
 
         var grouped = tiles.GroupBy(t => t.ProtoId ?? "Plating");
-        
+
         foreach (var group in grouped)
         {
             string protoId = group.Key;
             Image? texture = GetOrLoadTexture(protoId);
-            
+
             foreach (var tile in group)
             {
                 float tileX = (tile.X + gridOffset.X) * tileSize - viewOffset.X;
@@ -194,7 +202,7 @@ public class Renderer
         if (tiles.Count == 0) return;
 
         var grouped = new Dictionary<string, List<TileData>>();
-        
+
         foreach (var tile in tiles)
         {
             string wallProto = _tileBuilder.GetBestWallAt(tileGrid, tile.X, tile.Y);
@@ -207,7 +215,7 @@ public class Renderer
         {
             string wallProto = group.Key;
             Image? texture = GetOrLoadTexture(wallProto);
-            
+
             foreach (var tile in group.Value)
             {
                 float wx = (tile.X + gridOffset.X) * tileSize - viewOffset.X;
@@ -233,12 +241,12 @@ public class Renderer
         if (tiles.Count == 0) return;
 
         var grouped = tiles.GroupBy(t => t.ProtoId ?? "Airlock");
-        
+
         foreach (var group in grouped)
         {
             string protoId = group.Key;
             Image? texture = GetOrLoadTexture(protoId);
-            
+
             foreach (var tile in group)
             {
                 float x = (tile.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X - tileSize / 2f;
@@ -275,7 +283,7 @@ public class Renderer
             var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
 
             Image? texture = GetOrLoadTexture(firelock.Proto);
-            
+
             if (texture != null)
             {
                 var srcRect = GetSourceRect(firelock.Proto, texture);
@@ -333,9 +341,9 @@ public class Renderer
         if (pipes.Count == 0) return;
 
         float dotSize = Math.Max(4, tileSize / 6);
-        
+
         var grouped = pipes.GroupBy(p => p.PipeType);
-        
+
         foreach (var group in grouped)
         {
             Color color = GetPipeDotColor(group.Key);
@@ -346,7 +354,7 @@ public class Renderer
             {
                 float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
                 float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-                
+
                 g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
                 g.DrawEllipse(borderPen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
             }
@@ -361,7 +369,7 @@ public class Renderer
         if (alarms.Count == 0) return;
 
         Image? texture = GetOrLoadTexture(protoId);
-        
+
         foreach (var entity in alarms)
         {
             float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
@@ -377,7 +385,7 @@ public class Renderer
             if (texture != null)
             {
                 var oldTransform = g.Transform;
-                
+
                 if (rotation != 0)
                 {
                     var matrix = new Matrix();
@@ -385,10 +393,10 @@ public class Renderer
                     matrix.RotateAt(angleDegrees, new PointF(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
                     g.Transform = matrix;
                 }
-                
+
                 var srcRect = GetSourceRect(protoId, texture);
                 g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                
+
                 g.Transform = oldTransform;
             }
             else
@@ -397,12 +405,12 @@ public class Renderer
                 g.FillRectangle(brush, rect);
                 using var pen = new Pen(Color.Black, 1);
                 g.DrawRectangle(pen, rect);
-                
+
                 string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
                 using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
                 using var textBrush = new SolidBrush(Color.Black);
                 g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
-                
+
                 using var arrowPen = new Pen(Color.Red, 2);
                 float cx = rect.X + rect.Width / 2;
                 float cy = rect.Y + rect.Height / 2;
@@ -480,7 +488,7 @@ public class Renderer
                             }
                         }
                     }
-                    
+
                     texture = Image.FromFile(texturePath);
                 }
                 catch { }
@@ -501,7 +509,7 @@ public class Renderer
 
         int w = img.Width, h = img.Height;
         Rectangle rect;
-        
+
         if (w == 32 && h == 32) rect = new Rectangle(0, 0, 32, 32);
         else if (w == 32 && h >= 32) rect = new Rectangle(0, 0, 32, 32);
         else if (w >= 32 && h == 32) rect = new Rectangle(0, 0, 32, 32);
@@ -572,29 +580,29 @@ public class Renderer
             g.DrawLine(pen, 0, y, _buffer.Width, y);
     }
 
-private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
-{
-    // Координаты начала комнаты
-    float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
-    float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-    
-    // Размеры комнаты в пикселях
-    float width = room.Width * tileSize;
-    float height = room.Height * tileSize;
+    private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        // Координаты начала комнаты
+        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
 
-    // Уменьшаем на пол-тайла, чтобы заливка была внутри периметра
-    float offset = tileSize / 2f;
-    var rect = new Rectangle(
-        (int)(startX + offset), 
-        (int)(startY + offset), 
-        (int)(width - tileSize),   // Уменьшаем на целый тайл
-        (int)(height - tileSize)   // Уменьшаем на целый тайл
-    );
-    
-    int alpha = (int)(room.FillColor.A * opacity);
-    using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
-    g.FillRectangle(brush, rect);
-}
+        // Размеры комнаты в пикселях
+        float width = room.Width * tileSize;
+        float height = room.Height * tileSize;
+
+        // Уменьшаем на пол-тайла, чтобы заливка была внутри периметра
+        float offset = tileSize / 2f;
+        var rect = new Rectangle(
+            (int)(startX + offset),
+            (int)(startY + offset),
+            (int)(width - tileSize),   // Уменьшаем на целый тайл
+            (int)(height - tileSize)   // Уменьшаем на целый тайл
+        );
+
+        int alpha = (int)(room.FillColor.A * opacity);
+        using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
+        g.FillRectangle(brush, rect);
+    }
 
     private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
@@ -648,14 +656,15 @@ private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset
         var name = map.ActiveGrid?.Name ?? "Нет";
         string mode = HideRoomOverlay ? " [ОВЕРЛЕЙ СКРЫТ]" : "";
         string pipeMode = ShowPipeOverlay ? "" : " [ТРУБЫ СКРЫТЫ]";
-        g.DrawString($"Инструмент: {toolName}{mode}{pipeMode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
+        string connectionsMode = ShowAlarmConnections ? "" : " [СВЯЗИ СКРЫТЫ]";
+        g.DrawString($"Инструмент: {toolName}{mode}{pipeMode}{connectionsMode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
             font, brush, 10, 10);
     }
 
     private List<(int x, int y)> CalculatePipePath((int x, int y) start, (int x, int y) end)
     {
         var positions = new List<(int x, int y)>();
-        
+
         int startX = start.x;
         int startY = start.y;
         int endX = end.x;
@@ -675,6 +684,42 @@ private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset
         }
 
         return positions;
+    }
+
+    private void DrawAlarmConnections(Graphics g, AlarmNetwork network, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        if (network == null || network.Connections.Count == 0) return;
+
+        foreach (var connection in network.Connections)
+        {
+            // Координаты источника
+            float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            // Координаты цели
+            float tx = (connection.Target.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float ty = (connection.Target.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            // Рисуем пунктирную линию
+            using (var pen = new Pen(connection.LineColor, connection.LineWidth))
+            {
+                pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+                g.DrawLine(pen, sx, sy, tx, ty);
+            }
+
+            // Рисуем маленькие кружки на концах
+            float dotSize = 4;
+            using (var brush = new SolidBrush(connection.LineColor))
+            {
+                g.FillEllipse(brush, sx - dotSize / 2, sy - dotSize / 2, dotSize, dotSize);
+                g.FillEllipse(brush, tx - dotSize / 2, ty - dotSize / 2, dotSize, dotSize);
+            }
+        }
+    }
+
+    public void SetAlarmNetwork(AlarmNetwork network)
+    {
+        _currentNetwork = network;
     }
 
     #endregion

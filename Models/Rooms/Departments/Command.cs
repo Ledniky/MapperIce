@@ -59,7 +59,7 @@ public class Captain : CommandRoomType
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
-    public override int Priority => 200;
+    public override int Priority => 300;
 }
 
 public class HeadOfPersonnel : CommandRoomType
@@ -69,7 +69,7 @@ public class HeadOfPersonnel : CommandRoomType
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
-    public override int Priority => 150;
+    public override int Priority => 250;
 }
 
 public class Bridge : CommandRoomType
@@ -79,5 +79,5 @@ public class Bridge : CommandRoomType
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
-    public override int Priority => 200;
+    public override int Priority => 150;
 }
