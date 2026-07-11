@@ -11,6 +11,7 @@ public class RoomTypeManager
 
     private Dictionary<string, RoomType> _types = new();
     private Dictionary<string, List<RoomType>> _categories = new();
+    public Dictionary<string, Color> _categoryColors { get; set; } = new();
 
     private string _customTypesPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -280,29 +281,36 @@ public class RoomTypeManager
         room.Priority = type.Priority;
     }
 
-    public void ExportType(string typeName, string filePath)
+public void ExportType(string typeName, string filePath)
+{
+    var type = GetRoomType(typeName);
+    if (type == null) return;
+
+    // Получаем цвет категории из словаря (если есть)
+    string categoryColor = "255,136,136,136"; // по умолчанию серый
+    if (_categoryColors != null && _categoryColors.TryGetValue(type.Category, out var color))
     {
-        var type = GetRoomType(typeName);
-        if (type == null) return;
-
-        var data = new ExportData
-        {
-            Type = "Single",
-            Name = type.Name,
-            Category = type.Category,
-            WallProto = type.WallProto,
-            FloorProto = type.FloorProto,
-            DoorProto = type.DoorProto,
-            GlassDoorProto = type.GlassDoorProto,
-            FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
-            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
-            Priority = type.Priority
-        };
-
-        var json = JsonSerializer.Serialize(data, _jsonOptions);
-        File.WriteAllText(filePath, json);
+        categoryColor = $"{color.A},{color.R},{color.G},{color.B}";
     }
 
+    var data = new ExportData
+    {
+        Type = "Single",
+        Name = type.Name,
+        Category = type.Category,
+        CategoryColor = categoryColor,  // ← ДОБАВИТЬ
+        WallProto = type.WallProto,
+        FloorProto = type.FloorProto,
+        DoorProto = type.DoorProto,
+        GlassDoorProto = type.GlassDoorProto,
+        FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+        LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+        Priority = type.Priority
+    };
+
+    var json = JsonSerializer.Serialize(data, _jsonOptions);
+    File.WriteAllText(filePath, json);
+}
     public void ExportCategory(string categoryName, string filePath)
     {
         if (!_categories.TryGetValue(categoryName, out var types) || types.Count == 0)
@@ -311,11 +319,19 @@ public class RoomTypeManager
             return;
         }
 
+        // Получаем цвет категории
+        string categoryColor = "255,136,136,136";
+        if (_categoryColors != null && _categoryColors.TryGetValue(categoryName, out var color))
+        {
+            categoryColor = $"{color.A},{color.R},{color.G},{color.B}";
+        }
+
         var dataList = types.Select(type => new ExportData
         {
             Type = "Category",
             Name = type.Name,
             Category = type.Category,
+            CategoryColor = categoryColor,  // ← ДОБАВИТЬ
             WallProto = type.WallProto,
             FloorProto = type.FloorProto,
             DoorProto = type.DoorProto,

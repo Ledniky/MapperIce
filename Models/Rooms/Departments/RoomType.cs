@@ -167,6 +167,7 @@ public class ExportData
     public string Type { get; set; } = "Single";
     public string Name { get; set; } = "";
     public string Category { get; set; } = "Custom";
+    public string CategoryColor { get; set; } = "255,136,136,136";  // ← ДОБАВИТЬ
     public string WallProto { get; set; } = "WallSolid";
     public string FloorProto { get; set; } = "Plating";
     public string DoorProto { get; set; } = "Airlock";
