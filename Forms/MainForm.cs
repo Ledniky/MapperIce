@@ -1010,33 +1010,33 @@ public class MainForm : Form
 
     // === ДИАЛОГ ВЫБОРА ТИПА КОМНАТЫ ===
 
-private void ShowRoomTypeDialog()
-{
-    if (_roomTypeForm != null && !_roomTypeForm.IsDisposed)
+    private void ShowRoomTypeDialog()
     {
-        _roomTypeForm.Focus();
-        return;
-    }
+        if (_roomTypeForm != null && !_roomTypeForm.IsDisposed)
+        {
+            _roomTypeForm.Focus();
+            return;
+        }
 
-    var dialog = new RoomTypeDialog(_roomTypeManager);
-    
-    // Подписываемся на событие выбора типа
-    dialog.OnTypeSelected += (typeName) =>
-    {
-        UpdateTypeLabel();
-        Render();
-    };
-    
-    dialog.FormClosed += (s, e) =>
-    {
-        _roomTypeForm = null;
-        UpdateTypeLabel();
-        Render();
-    };
-    
-    _roomTypeForm = dialog;
-    dialog.Show(this);
-}
+        var dialog = new RoomTypeDialog(_roomTypeManager);
+
+        // Подписываемся на событие выбора типа
+        dialog.OnTypeSelected += (typeName) =>
+        {
+            UpdateTypeLabel();
+            Render();
+        };
+
+        dialog.FormClosed += (s, e) =>
+        {
+            _roomTypeForm = null;
+            UpdateTypeLabel();
+            Render();
+        };
+
+        _roomTypeForm = dialog;
+        dialog.Show(this);
+    }
 
 
     private Button CreateButton(string text, EventHandler click)
@@ -1075,175 +1075,175 @@ private void ShowRoomTypeDialog()
 
     // === ПАНЕЛЬ ГРИДОВ ===
 
-private void CreateGridPanel()
-{
-    var panel = new Panel
+    private void CreateGridPanel()
     {
-        Dock = DockStyle.Top,
-        Height = 55,
-        BackColor = Color.FromArgb(230, 230, 230),
-        Padding = new Padding(10, 5, 10, 5),
-        BorderStyle = BorderStyle.FixedSingle
-    };
-
-    var label = new Label
-    {
-        Text = "Грид:",
-        Location = new Point(10, 10),
-        AutoSize = true
-    };
-    panel.Controls.Add(label);
-
-    _gridSelector = new ComboBox
-    {
-        Location = new Point(60, 7),
-        Width = 150,
-        DropDownStyle = ComboBoxStyle.DropDownList
-    };
-    _gridSelector.SelectedIndexChanged += (s, e) =>
-    {
-        if (_gridSelector.SelectedItem is Grid grid)
+        var panel = new Panel
         {
-            _map.ActiveGridUid = grid.Uid;
-            UpdateTileGrid();
-            Render();
-        }
-    };
-    panel.Controls.Add(_gridSelector);
-
-    var btnAddGrid = new Button
-    {
-        Text = "+",
-        Location = new Point(220, 7),
-        Width = 30,
-        Height = 25
-    };
-    btnAddGrid.Click += (s, e) =>
-    {
-        var newUid = _map.Grids.Max(g => g.Uid) + 1;
-        var grid = new Grid
-        {
-            Uid = newUid,
-            Name = $"Грид {newUid}",
-            Position = new PointF(10, 10),
-            Color = Color.FromArgb(
-                Random.Shared.Next(100, 200),
-                Random.Shared.Next(100, 200),
-                Random.Shared.Next(100, 200)
-            )
+            Dock = DockStyle.Top,
+            Height = 55,
+            BackColor = Color.FromArgb(230, 230, 230),
+            Padding = new Padding(10, 5, 10, 5),
+            BorderStyle = BorderStyle.FixedSingle
         };
-        _map.AddGrid(grid);
-        UpdateGridSelector();
-        UpdateTileGrid();
-        Render();
-    };
-    panel.Controls.Add(btnAddGrid);
 
-    var btnRemoveGrid = new Button
-    {
-        Text = "−",
-        Location = new Point(255, 7),
-        Width = 30,
-        Height = 25
-    };
-    btnRemoveGrid.Click += (s, e) =>
-    {
-        if (_map.ActiveGrid != null && _map.Grids.Count > 1)
+        var label = new Label
         {
-            _map.RemoveGrid(_map.ActiveGrid.Uid);
+            Text = "Грид:",
+            Location = new Point(10, 10),
+            AutoSize = true
+        };
+        panel.Controls.Add(label);
+
+        _gridSelector = new ComboBox
+        {
+            Location = new Point(60, 7),
+            Width = 150,
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        _gridSelector.SelectedIndexChanged += (s, e) =>
+        {
+            if (_gridSelector.SelectedItem is Grid grid)
+            {
+                _map.ActiveGridUid = grid.Uid;
+                UpdateTileGrid();
+                Render();
+            }
+        };
+        panel.Controls.Add(_gridSelector);
+
+        var btnAddGrid = new Button
+        {
+            Text = "+",
+            Location = new Point(220, 7),
+            Width = 30,
+            Height = 25
+        };
+        btnAddGrid.Click += (s, e) =>
+        {
+            var newUid = _map.Grids.Max(g => g.Uid) + 1;
+            var grid = new Grid
+            {
+                Uid = newUid,
+                Name = $"Грид {newUid}",
+                Position = new PointF(10, 10),
+                Color = Color.FromArgb(
+                    Random.Shared.Next(100, 200),
+                    Random.Shared.Next(100, 200),
+                    Random.Shared.Next(100, 200)
+                )
+            };
+            _map.AddGrid(grid);
             UpdateGridSelector();
             UpdateTileGrid();
             Render();
-        }
-    };
-    panel.Controls.Add(btnRemoveGrid);
+        };
+        panel.Controls.Add(btnAddGrid);
 
-    // Кнопка переключения оверлея комнат
-    var btnToggleOverlay = new Button
-    {
-        Text = "🗺️",
-        Location = new Point(0, 7),
-        Width = 40,
-        Height = 40,
-        BackColor = Color.LightGreen,
-        FlatStyle = FlatStyle.Flat,
-        Font = new Font("Segoe UI", 12),
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnToggleOverlay.Click += (s, e) =>
-    {
-        _hideRoomOverlay = !_hideRoomOverlay;
-        btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
-        btnToggleOverlay.Text = _hideRoomOverlay ? "❌" : "🗺️";
-        Render();
-    };
-    panel.Controls.Add(btnToggleOverlay);
+        var btnRemoveGrid = new Button
+        {
+            Text = "−",
+            Location = new Point(255, 7),
+            Width = 30,
+            Height = 25
+        };
+        btnRemoveGrid.Click += (s, e) =>
+        {
+            if (_map.ActiveGrid != null && _map.Grids.Count > 1)
+            {
+                _map.RemoveGrid(_map.ActiveGrid.Uid);
+                UpdateGridSelector();
+                UpdateTileGrid();
+                Render();
+            }
+        };
+        panel.Controls.Add(btnRemoveGrid);
 
-    // Кнопка переключения оверлея труб
-    var btnTogglePipe = new Button
-    {
-        Text = "🔧",
-        Location = new Point(45, 7),
-        Width = 40,
-        Height = 40,
-        BackColor = Color.LightGreen,
-        FlatStyle = FlatStyle.Flat,
-        Font = new Font("Segoe UI", 12),
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnTogglePipe.Click += (s, e) =>
-    {
-        _showPipeOverlay = !_showPipeOverlay;
-        btnTogglePipe.BackColor = _showPipeOverlay ? Color.LightGreen : Color.LightGray;
-        btnTogglePipe.Text = _showPipeOverlay ? "🔧" : "❌";
-        Render();
-    };
-    panel.Controls.Add(btnTogglePipe);
+        // Кнопка переключения оверлея комнат
+        var btnToggleOverlay = new Button
+        {
+            Text = "🗺️",
+            Location = new Point(0, 7),
+            Width = 40,
+            Height = 40,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 12),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnToggleOverlay.Click += (s, e) =>
+        {
+            _hideRoomOverlay = !_hideRoomOverlay;
+            btnToggleOverlay.BackColor = _hideRoomOverlay ? Color.LightGray : Color.LightGreen;
+            btnToggleOverlay.Text = _hideRoomOverlay ? "❌" : "🗺️";
+            Render();
+        };
+        panel.Controls.Add(btnToggleOverlay);
 
-    // Кнопка переключения связей сигнализаций
-    var btnToggleConnections = new Button
-    {
-        Text = "🔗",
-        Location = new Point(90, 7),
-        Width = 40,
-        Height = 40,
-        BackColor = Color.LightGreen,
-        FlatStyle = FlatStyle.Flat,
-        Font = new Font("Segoe UI", 12),
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnToggleConnections.Click += (s, e) =>
-    {
-        _showAlarmConnections = !_showAlarmConnections;
-        btnToggleConnections.BackColor = _showAlarmConnections ? Color.LightGreen : Color.LightGray;
-        btnToggleConnections.Text = _showAlarmConnections ? "🔗" : "❌";
-        Render();
-    };
-    panel.Controls.Add(btnToggleConnections);
+        // Кнопка переключения оверлея труб
+        var btnTogglePipe = new Button
+        {
+            Text = "🔧",
+            Location = new Point(45, 7),
+            Width = 40,
+            Height = 40,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 12),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnTogglePipe.Click += (s, e) =>
+        {
+            _showPipeOverlay = !_showPipeOverlay;
+            btnTogglePipe.BackColor = _showPipeOverlay ? Color.LightGreen : Color.LightGray;
+            btnTogglePipe.Text = _showPipeOverlay ? "🔧" : "❌";
+            Render();
+        };
+        panel.Controls.Add(btnTogglePipe);
 
-    // Кнопка магнита (привязка к сетке)
-    var btnSnap = new Button
-    {
-        Text = "🧲",
-        Location = new Point(135, 7),
-        Width = 40,
-        Height = 40,
-        BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray,
-        FlatStyle = FlatStyle.Flat,
-        Font = new Font("Segoe UI", 10),
-        Anchor = AnchorStyles.Top | AnchorStyles.Right
-    };
-    btnSnap.Click += (s, e) =>
-    {
-        _snapToGrid = !_snapToGrid;
-        btnSnap.BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray;
-        btnSnap.Text = _snapToGrid ? "🧲" : "❌";
-        Render();
-    };
-    panel.Controls.Add(btnSnap);
+        // Кнопка переключения связей сигнализаций
+        var btnToggleConnections = new Button
+        {
+            Text = "🔗",
+            Location = new Point(90, 7),
+            Width = 40,
+            Height = 40,
+            BackColor = Color.LightGreen,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 12),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnToggleConnections.Click += (s, e) =>
+        {
+            _showAlarmConnections = !_showAlarmConnections;
+            btnToggleConnections.BackColor = _showAlarmConnections ? Color.LightGreen : Color.LightGray;
+            btnToggleConnections.Text = _showAlarmConnections ? "🔗" : "❌";
+            Render();
+        };
+        panel.Controls.Add(btnToggleConnections);
 
-    Controls.Add(panel);
-}
+        // Кнопка магнита (привязка к сетке)
+        var btnSnap = new Button
+        {
+            Text = "🧲",
+            Location = new Point(135, 7),
+            Width = 40,
+            Height = 40,
+            BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 10),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnSnap.Click += (s, e) =>
+        {
+            _snapToGrid = !_snapToGrid;
+            btnSnap.BackColor = _snapToGrid ? Color.LightGreen : Color.LightGray;
+            btnSnap.Text = _snapToGrid ? "🧲" : "❌";
+            Render();
+        };
+        panel.Controls.Add(btnSnap);
+
+        Controls.Add(panel);
+    }
     private void UpdateGridSelector()
     {
         _gridSelector.Items.Clear();
@@ -1366,9 +1366,11 @@ private void CreateGridPanel()
                 float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
                 _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F0}° (СКМ для вращения)";
                 break;
+            
             default:
                 _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
                 break;
+            
         }
 
         Cursor = tool switch
@@ -1403,26 +1405,26 @@ private void CreateGridPanel()
         }
     }
 
-private void Render()
-{
-    _renderer.HideRoomOverlay = _hideRoomOverlay;
-    _renderer.ShowPipeOverlay = _showPipeOverlay;
-    _renderer.ShowAlarmConnections = _showAlarmConnections;
-    
-    // Строим сеть сигнализаций
-    if (_map.ActiveGrid != null)
+    private void Render()
     {
-        var networkBuilder = new AlarmNetworkBuilder(_alarmSettings);
-        var network = networkBuilder.BuildNetwork(_map.ActiveGrid);
-        _renderer.SetAlarmNetwork(network);  // ← ЭТА СТРОЧКА ДОЛЖНА БЫТЬ
+        _renderer.HideRoomOverlay = _hideRoomOverlay;
+        _renderer.ShowPipeOverlay = _showPipeOverlay;
+        _renderer.ShowAlarmConnections = _showAlarmConnections;
+
+        // Строим сеть сигнализаций
+        if (_map.ActiveGrid != null)
+        {
+            var networkBuilder = new AlarmNetworkBuilder(_alarmSettings);
+            var network = networkBuilder.BuildNetwork(_map.ActiveGrid);
+            _renderer.SetAlarmNetwork(network);
+        }
+        else
+        {
+            _renderer.SetAlarmNetwork(null);
+        }
+
+        _canvas.Invalidate();
     }
-    else
-    {
-        _renderer.SetAlarmNetwork(null);
-    }
-    
-    _canvas.Invalidate();
-}
 
     private void UpdateBuffer()
     {
@@ -2143,13 +2145,11 @@ private void Render()
         return _currentAlarmRotation; // Если стены нет - используем текущую ротацию
     }
 
+
     private void AddAirAlarm(Grid grid, int x, int y)
     {
         if (grid == null) return;
         if (grid.Entities.OfType<AirAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
-
-        // Убираем проверку на пол - сигнализация ставится на стену
-        // if (!HasFloorAt(grid, x, y)) return;
 
         if (_snapToGrid)
         {
@@ -2167,8 +2167,6 @@ private void Render()
         if (grid == null) return;
         if (grid.Entities.OfType<FireAlarmEntity>().Any(e => (int)e.X == x && (int)e.Y == y)) return;
 
-        System.Diagnostics.Debug.WriteLine($"AddAirAlarm: x={x}, y={y}, rotation={_currentAlarmRotation}");
-
         if (_snapToGrid)
         {
             if (!HasWallAt(grid, x, y)) return;
@@ -2179,8 +2177,6 @@ private void Render()
             grid.Entities.Add(new FireAlarmEntity { X = x, Y = y, Rotation = _currentAlarmRotation });
         }
     }
-
-
     private bool HasFloorAt(Grid grid, int x, int y)
     {
         return grid.Rooms.Any(r =>

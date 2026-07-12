@@ -1,71 +1,113 @@
 using System.Drawing;
 
-namespace MapperIce.Models;
+namespace MapperIce.Services;
 
+/// <summary>
+/// Базовый класс для устройств сигнализации
+/// </summary>
+public abstract class AlarmDevice
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public float Rotation { get; set; }
+    public abstract string Type { get; }
+}
+
+/// <summary>
+/// Пожарная сигнализация
+/// </summary>
+public class FireAlarmDevice : AlarmDevice
+{
+    public override string Type => "FireAlarm";
+}
+
+/// <summary>
+/// Воздушная сигнализация
+/// </summary>
+public class AirAlarmDevice : AlarmDevice
+{
+    public override string Type => "AirAlarm";
+}
+
+/// <summary>
+/// Пожарный шлюз
+/// </summary>
+public class FirelockDevice : AlarmDevice
+{
+    public bool IsGlass { get; set; }
+    public override string Type => "Firelock";
+}
+
+/// <summary>
+/// Труба (конец трубы)
+/// </summary>
+public class PipeDevice : AlarmDevice
+{
+    public string PipeType { get; set; } = "";
+    public override string Type => "Pipe";
+}
+
+/// <summary>
+/// Сеть сигнализации
+/// </summary>
 public class AlarmNetwork
 {
-    public List<AlarmConnection> Connections { get; set; } = new();
+    private readonly List<AlarmConnection> _connections = new();
+    
+    public IReadOnlyList<AlarmConnection> Connections => _connections;
     
     public void Connect(AlarmDevice source, AlarmDevice target)
     {
-        if (source == null || target == null) return;
-        if (source == target) return;
-        
-        // Проверяем, есть ли уже такая связь
-        if (Connections.Any(c => c.Source == source && c.Target == target))
-            return;
-            
-        Connections.Add(new AlarmConnection(source, target));
+        _connections.Add(new AlarmConnection(source, target));
     }
     
-    public void Disconnect(AlarmDevice source, AlarmDevice target)
+    public void Connect(AlarmDevice source, AlarmDevice target, Color lineColor)
     {
-        var connection = Connections.FirstOrDefault(c => c.Source == source && c.Target == target);
-        if (connection != null)
-            Connections.Remove(connection);
+        _connections.Add(new AlarmConnection(source, target, lineColor));
     }
     
-    public List<AlarmConnection> GetConnectionsFor(AlarmDevice device)
+    public void Connect(AlarmDevice source, AlarmDevice target, Color lineColor, float lineWidth)
     {
-        return Connections.Where(c => c.Source == device || c.Target == device).ToList();
+        _connections.Add(new AlarmConnection(source, target, lineColor, lineWidth));
+    }
+    
+    public void Clear()
+    {
+        _connections.Clear();
     }
 }
 
+/// <summary>
+/// Соединение между сигнализацией и устройством
+/// </summary>
 public class AlarmConnection
 {
-    public AlarmDevice Source { get; set; }
-    public AlarmDevice Target { get; set; }
-    public Color LineColor { get; set; } = Color.FromArgb(255, 255, 200, 50);
-    public int LineWidth { get; set; } = 2;
+    public AlarmDevice Source { get; }
+    public AlarmDevice Target { get; }
+    public Color LineColor { get; set; }
+    public float LineWidth { get; set; }
     
     public AlarmConnection(AlarmDevice source, AlarmDevice target)
     {
         Source = source;
         Target = target;
+        LineColor = Color.FromArgb(255, 0, 255, 0); // Зелёный по умолчанию
+        LineWidth = 2.0f;
     }
-}
-
-public abstract class AlarmDevice
-{
-    public int X { get; set; }
-    public int Y { get; set; }
-    public string Id { get; set; } = "";
-    public virtual string Type { get; set; } = "";  // ← virtual ДОБАВЛЕНО
-    public List<AlarmDevice> ConnectedDevices { get; set; } = new();
-}
-
-public class FireAlarmDevice : AlarmDevice
-{
-    public List<FirelockEntity> ConnectedFirelocks { get; set; } = new();
-    public List<PipeEntity> ConnectedPipes { get; set; } = new();
-    public float Rotation { get; set; }
-    public override string Type => "FireAlarm";  // ← override ДОБАВЛЕНО
-}
-
-public class AirAlarmDevice : AlarmDevice
-{
-    public List<FirelockEntity> ConnectedFirelocks { get; set; } = new();
-    public List<PipeEntity> ConnectedPipes { get; set; } = new();
-    public float Rotation { get; set; }
-    public override string Type => "AirAlarm";  // ← override ДОБАВЛЕНО
+    
+    public AlarmConnection(AlarmDevice source, AlarmDevice target, Color lineColor)
+    {
+        Source = source;
+        Target = target;
+        LineColor = lineColor;
+        LineWidth = 2.0f;
+    }
+    
+    public AlarmConnection(AlarmDevice source, AlarmDevice target, Color lineColor, float lineWidth)
+    {
+        Source = source;
+        Target = target;
+        LineColor = lineColor;
+        LineWidth = lineWidth;
+    }
 }
