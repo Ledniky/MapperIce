@@ -71,6 +71,8 @@ public class MainForm : Form
     private DeleteSettings _deleteSettings = new DeleteSettings();
     private Form? _deleteSettingsForm = null;
     private bool _showAlarmConnections = true;
+    private Point _lastMousePosition;
+    private bool _showAlarmPreview = false;
 
     public MainForm()
     {
@@ -1272,9 +1274,9 @@ public class MainForm : Form
         _canvas.Paint += OnPaint;
         _canvas.Resize += OnResize;
         _canvas.MouseWheel += OnMouseWheel;
+        _canvas.MouseLeave += OnMouseLeave; // Добавляем обработчик
         Controls.Add(_canvas);
     }
-
     // === МЕНЮ ===
 
     private void CreateMenu()
@@ -1366,11 +1368,11 @@ public class MainForm : Form
                 float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
                 _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F0}° (СКМ для вращения)";
                 break;
-            
+
             default:
                 _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
                 break;
-            
+
         }
 
         Cursor = tool switch
@@ -1616,6 +1618,21 @@ public class MainForm : Form
         }
 
         if (_map.ActiveGrid == null) return;
+
+        // === ПРЕДПРОСМОТР СИГНАЛИЗАЦИИ ===
+        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
+            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            var tilePos = GetTilePosition(e.Location);
+            string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
+            _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
+            Render();
+            return;
+        }
+        else
+        {
+            _renderer.ClearAlarmPreview();
+        }
 
         // === УДАЛЕНИЕ ОБЛАСТИ ===
         if (_isDeletingArea)
@@ -2507,6 +2524,19 @@ public class MainForm : Form
                       _deleteSettings.DeletePipes ? "Трубы" : "Ничего";
         _typeLabel.Text = $"Удаление области: {mode}";
     }
+
+    private void OnMouseLeave(object? sender, EventArgs e)
+    {
+        // Очищаем предпросмотр сигнализации при уходе мыши с холста
+        if (_renderer != null)
+        {
+            _renderer.ClearAlarmPreview();
+            Render();
+        }
+    }
+
+
+
 
 
 

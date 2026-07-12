@@ -27,6 +27,13 @@ public class Renderer
     private readonly InterpolationMode _interpolationMode = InterpolationMode.NearestNeighbor;
     private AlarmNetwork? _currentNetwork;
     public bool ShowAlarmConnections { get; set; } = true;
+    
+    // Предпросмотр сигнализации
+    private bool _showAlarmPreview = false;
+    private int _previewX;
+    private int _previewY;
+    private float _previewRotation;
+    private string _previewType = "";
 
     public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
@@ -144,21 +151,25 @@ public class Renderer
                     }
                 }
 
-                // ИСПРАВЛЕНО: передаём как List<MapEntity>
                 var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
                 var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
 
                 DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
                 DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
-                
+
                 if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
                 {
                     DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, grid.Position);
                 }
 
+                // Рисуем стрелки направления у существующих сигнализаций
+                DrawAlarmDirectionArrows(g, grid, scale, viewOffset);
             }
 
             DrawInfo(g, scale, toolName, map);
+            
+            // Рисуем предпросмотр сигнализации под курсором
+            DrawAlarmPreview(g, scale, viewOffset);
 
             return _buffer;
         }
@@ -582,21 +593,17 @@ public class Renderer
 
     private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
-        // Координаты начала комнаты
         float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
         float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-
-        // Размеры комнаты в пикселях
         float width = room.Width * tileSize;
         float height = room.Height * tileSize;
 
-        // Уменьшаем на пол-тайла, чтобы заливка была внутри периметра
         float offset = tileSize / 2f;
         var rect = new Rectangle(
             (int)(startX + offset),
             (int)(startY + offset),
-            (int)(width - tileSize),   // Уменьшаем на целый тайл
-            (int)(height - tileSize)   // Уменьшаем на целый тайл
+            (int)(width - tileSize),
+            (int)(height - tileSize)
         );
 
         int alpha = (int)(room.FillColor.A * opacity);
@@ -606,28 +613,23 @@ public class Renderer
 
     private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
-        // Координаты начала комнаты
         float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
         float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-
-        // Размеры комнаты в пикселях
         float width = room.Width * tileSize;
         float height = room.Height * tileSize;
 
-        // Уменьшаем на пол-тайла, чтобы линия шла по центру периметра
         float offset = tileSize / 2f;
         var rect = new Rectangle(
             (int)(startX + offset),
             (int)(startY + offset),
-            (int)(width - tileSize),   // Уменьшаем на целый тайл
-            (int)(height - tileSize)   // Уменьшаем на целый тайл
+            (int)(width - tileSize),
+            (int)(height - tileSize)
         );
 
         Color color = isCurrent ? Color.Red : Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
         using var pen = new Pen(color, isCurrent ? 3 : 2);
         g.DrawRectangle(pen, rect);
 
-        // Отображаем ВНУТРЕННИЙ размер комнаты (без стен)
         if (!HideRoomOverlay && tileSize > 20 && opacity > 0.3f)
         {
             using var font = new Font("Arial", Math.Min(10, tileSize / 3));
@@ -635,13 +637,11 @@ public class Renderer
             int alpha = (int)(200 * opacity);
             using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
 
-            // Показываем внутренний размер (без стен)
-            int innerWidth = Math.Max(0, room.Width - 2);   // Минус 2 (левая и правая стена)
-            int innerHeight = Math.Max(0, room.Height - 2); // Минус 2 (верхняя и нижняя стена)
+            int innerWidth = Math.Max(0, room.Width - 2);
+            int innerHeight = Math.Max(0, room.Height - 2);
             g.DrawString($"{innerWidth}×{innerHeight}", font, brush, rect.X + 2, rect.Y + 2);
         }
     }
-
 
     private Color GetContrastColor(Color backgroundColor)
     {
@@ -692,22 +692,18 @@ public class Renderer
 
         foreach (var connection in network.Connections)
         {
-            // Координаты источника
             float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-            // Координаты цели
             float tx = (connection.Target.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float ty = (connection.Target.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-            // Рисуем пунктирную линию
             using (var pen = new Pen(connection.LineColor, connection.LineWidth))
             {
                 pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
                 g.DrawLine(pen, sx, sy, tx, ty);
             }
 
-            // Рисуем маленькие кружки на концах
             float dotSize = 4;
             using (var brush = new SolidBrush(connection.LineColor))
             {
@@ -720,6 +716,133 @@ public class Renderer
     public void SetAlarmNetwork(AlarmNetwork network)
     {
         _currentNetwork = network;
+    }
+
+    public void SetAlarmPreview(int x, int y, float rotation, string type)
+    {
+        _previewX = x;
+        _previewY = y;
+        _previewRotation = rotation;
+        _previewType = type;
+        _showAlarmPreview = true;
+    }
+
+    public void ClearAlarmPreview()
+    {
+        _showAlarmPreview = false;
+    }
+
+    private void DrawAlarmPreview(Graphics g, float scale, PointF viewOffset)
+    {
+        if (!_showAlarmPreview || string.IsNullOrEmpty(_previewType)) return;
+        if (_currentMap?.ActiveGrid == null) return;
+
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+
+        float screenX = _previewX * tileSize + gridOffsetX - viewOffset.X;
+        float screenY = _previewY * tileSize + gridOffsetY - viewOffset.Y;
+
+        // Рисуем полупрозрачный фон тайла
+        using (var brush = new SolidBrush(Color.FromArgb(60, 100, 200, 255)))
+        {
+            g.FillRectangle(brush, screenX, screenY, tileSize, tileSize);
+        }
+
+        // Рисуем рамку
+        using (var pen = new Pen(Color.FromArgb(200, 0, 200, 255), 2))
+        {
+            g.DrawRectangle(pen, screenX, screenY, tileSize, tileSize);
+        }
+
+        // Рисуем иконку сигнализации
+        float centerX = screenX + tileSize / 2;
+        float centerY = screenY + tileSize / 2;
+        float iconSize = tileSize * 0.4f;
+
+        var state = g.Save();
+
+        g.TranslateTransform(centerX, centerY);
+        g.RotateTransform(_previewRotation * 180 / (float)Math.PI);
+
+        string iconText = _previewType == "AirAlarm" ? "🔊" : "🔥";
+        using (var font = new Font("Segoe UI", iconSize, FontStyle.Regular))
+        using (var brush = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
+        {
+            var size = g.MeasureString(iconText, font);
+            g.DrawString(iconText, font, brush, -size.Width / 2, -size.Height / 2);
+        }
+
+        // Стрелка направления
+        float arrowLength = tileSize * 0.35f;
+        using (var pen = new Pen(Color.FromArgb(200, 0, 255, 255), 3))
+        {
+            pen.EndCap = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
+            g.DrawLine(pen, 0, 0, 0, -arrowLength);
+        }
+
+        // Круг в центре
+        using (var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255)))
+        {
+            g.FillEllipse(brush, -4, -4, 8, 8);
+        }
+
+        g.Restore(state);
+
+        // Текст с типом сигнализации под тайлом
+        using (var font = new Font("Arial", 8, FontStyle.Bold))
+        using (var brush = new SolidBrush(Color.White))
+        using (var shadow = new SolidBrush(Color.FromArgb(180, 0, 0, 0)))
+        {
+            string label = _previewType == "AirAlarm" ? "Воздух" : "Пожар";
+            var size = g.MeasureString(label, font);
+            float textX = screenX + tileSize / 2 - size.Width / 2;
+            float textY = screenY + tileSize + 2;
+
+            g.DrawString(label, font, shadow, textX + 1, textY + 1);
+            g.DrawString(label, font, brush, textX, textY);
+        }
+    }
+
+    private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
+    {
+        if (!ShowAlarmConnections) return;
+
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        float gridOffsetX = grid.Position.X * tileSize;
+        float gridOffsetY = grid.Position.Y * tileSize;
+
+        var alarms = grid.Entities
+            .OfType<AirAlarmEntity>()
+            .Cast<MapEntity>()
+            .Concat(grid.Entities.OfType<FireAlarmEntity>())
+            .ToList();
+
+        foreach (var alarm in alarms)
+        {
+            float screenX = (float)alarm.X * tileSize + gridOffsetX - viewOffset.X;
+            float screenY = (float)alarm.Y * tileSize + gridOffsetY - viewOffset.Y;
+            float centerX = screenX + tileSize / 2;
+            float centerY = screenY + tileSize / 2;
+
+            float rotation = alarm is AirAlarmEntity air ? air.Rotation :
+                            (alarm as FireAlarmEntity)?.Rotation ?? 0;
+
+            float arrowLength = tileSize * 0.4f;
+
+            var state = g.Save();
+            g.TranslateTransform(centerX, centerY);
+            g.RotateTransform(rotation * 180 / (float)Math.PI);
+
+            using (var pen = new Pen(Color.FromArgb(180, 255, 255, 0), 2))
+            {
+                pen.EndCap = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
+                g.DrawLine(pen, 0, 0, 0, -arrowLength);
+            }
+
+            g.Restore(state);
+        }
     }
 
     #endregion
