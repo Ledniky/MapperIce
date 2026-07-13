@@ -8,175 +8,611 @@ public static class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
-    public static string Generate(Grid grid, TileBuilder tileBuilder, Dictionary<string, PipeSettings> pipeLayers, Dictionary<string, AlarmSettings> alarmSettings)
+    public static string Generate(
+        Grid grid, 
+        TileBuilder tileBuilder, 
+        Dictionary<string, PipeSettings>? pipeLayers,
+        Dictionary<string, AlarmSettings> alarmSettings)
     {
-        if (grid == null) return "";
+        if (grid == null)
+            throw new ArgumentNullException(nameof(grid));
+        if (tileBuilder == null)
+            throw new ArgumentNullException(nameof(tileBuilder));
+
+        var tileGrid = tileBuilder.BuildFromRooms(grid);
 
         var sb = new StringBuilder();
-        var gridName = grid.Name?.Replace(" ", "_") ?? "Grid";
 
-        // Вычисляем размеры грида по комнатам
-        int gridWidth = 0;
-        int gridHeight = 0;
-        foreach (var room in grid.Rooms)
+        // ==================== META ====================
+        sb.AppendLine("meta:");
+        sb.AppendLine("  format: 7");
+        sb.AppendLine("  category: Map");
+        sb.AppendLine("  engineVersion: 266.0.0");
+        sb.AppendLine("  forkId: \"\"");
+        sb.AppendLine("  forkVersion: \"\"");
+        sb.AppendLine($"  time: {DateTime.Now:MM.dd.yyyy HH:mm:ss}");
+        sb.AppendLine($"  entityCount: {CalculateEntityCount(grid, tileGrid)}");
+
+        // ==================== MAPS & GRIDS ====================
+        sb.AppendLine("maps:");
+        sb.AppendLine("- 1");
+        sb.AppendLine("grids:");
+        sb.AppendLine("- 2");
+        sb.AppendLine("orphans: []");
+        sb.AppendLine("nullspace: []");
+
+        // ==================== TILEMAP ====================
+        sb.AppendLine("tilemap:");
+        sb.AppendLine("  0: Space");
+        sb.AppendLine("  1: Plating");
+
+        // ==================== ENTITIES ====================
+        sb.AppendLine("entities:");
+
+        // === MAP ENTITY ===
+        sb.AppendLine("- proto: \"\"");
+        sb.AppendLine("  entities:");
+        sb.AppendLine("  - uid: 1");
+        sb.AppendLine("    components:");
+        sb.AppendLine("    - type: MetaData");
+        sb.AppendLine("      name: Map Entity");
+        sb.AppendLine("    - type: Transform");
+        sb.AppendLine("    - type: Map");
+        sb.AppendLine("      mapPaused: True");
+        sb.AppendLine("    - type: GridTree");
+        sb.AppendLine("    - type: Broadphase");
+        sb.AppendLine("    - type: OccluderTree");
+
+        // === GRID ENTITY ===
+        sb.AppendLine("  - uid: 2");
+        sb.AppendLine("    components:");
+        sb.AppendLine("    - type: MetaData");
+        sb.AppendLine("      name: grid");
+        sb.AppendLine("    - type: Transform");
+        sb.AppendLine("      pos: 0,0");
+        sb.AppendLine("      parent: 1");
+        sb.AppendLine("    - type: MapGrid");
+        sb.AppendLine("      chunks:");
+
+        var chunks = GenerateChunksFromTileGrid(tileGrid);
+        foreach (var chunk in chunks)
         {
-            int roomRight = room.X + room.Width;
-            int roomBottom = room.Y + room.Height;
-            if (roomRight > gridWidth) gridWidth = roomRight;
-            if (roomBottom > gridHeight) gridHeight = roomBottom;
+            sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
+            sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
+            sb.AppendLine($"          tiles: {chunk.Value}");
+            sb.AppendLine($"          version: 7");
         }
 
-        // Заголовок карты
-        sb.AppendLine($"- type: {gridName}");
-        sb.AppendLine($"  name: {grid.Name ?? "Unknown"}");
-        sb.AppendLine($"  tileset: 1");
-        sb.AppendLine($"  width: {gridWidth}");
-        sb.AppendLine($"  height: {gridHeight}");
-        sb.AppendLine($"  offset: {grid.Position.X},{grid.Position.Y}");
-        sb.AppendLine($"  color: #{grid.Color.R:X2}{grid.Color.G:X2}{grid.Color.B:X2}");
-        sb.AppendLine($"  tilemap:");
+        sb.AppendLine("    - type: Broadphase");
+        sb.AppendLine("    - type: Physics");
+        sb.AppendLine("      bodyStatus: InAir");
+        sb.AppendLine("      fixedRotation: False");
+        sb.AppendLine("      bodyType: Dynamic");
+        sb.AppendLine("    - type: Fixtures");
+        sb.AppendLine("      fixtures: {}");
+        sb.AppendLine("    - type: OccluderTree");
+        sb.AppendLine("    - type: SpreaderGrid");
+        sb.AppendLine("    - type: Shuttle");
+        sb.AppendLine("      dampingModifiers:");
+        sb.AppendLine("        Cruise: 0.0075");
+        sb.AppendLine("        Dampen: 0.25");
+        sb.AppendLine("        Anchor: 2");
+        sb.AppendLine("        None: 0.25");
+        sb.AppendLine("      dampingModifier: 0.25");
+        sb.AppendLine("    - type: ImplicitRoof");
+        sb.AppendLine("    - type: FTLDrive");
+        sb.AppendLine("    - type: GridPathfinding");
+        sb.AppendLine("    - type: Gravity");
+        sb.AppendLine("      gravityShakeSound: !type:SoundPathSpecifier");
+        sb.AppendLine("        path: /Audio/Effects/alert.ogg");
+        sb.AppendLine("    - type: DecalGrid");
+        sb.AppendLine("      chunkCollection:");
+        sb.AppendLine("        version: 2");
+        sb.AppendLine("        nodes: []");
+        sb.AppendLine("    - type: GridAtmosphere");
+        sb.AppendLine("      version: 2");
+        sb.AppendLine("      data:");
+        sb.AppendLine("        chunkSize: 4");
+        sb.AppendLine("    - type: GasTileOverlay");
+        sb.AppendLine("    - type: RadiationGridResistance");
 
-        // Получаем все комнаты
-        var rooms = grid.Rooms.ToList();
-        if (rooms.Count == 0)
-        {
-            sb.AppendLine("    [];");
-            return sb.ToString();
-        }
+        int uid = 3;
 
-        // Строим TileGrid
-        var tileGrid = tileBuilder.BuildFromRooms(grid);
-        var allTiles = tileGrid.GetAllTiles().ToList();
+        // Храним маппинг позиция -> UID для устройств
+        var positionToUid = new Dictionary<(int x, int y), int>();
 
-        // Группируем тайлы по прототипу
-        var tilesByProto = allTiles
-            .Where(t => !string.IsNullOrEmpty(t.ProtoId))
-            .GroupBy(t => t.ProtoId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        // === ГЕНЕРИРУЕМ ВСЕ ОБЪЕКТЫ С ГРУППИРОВКОЙ ===
 
-        // Экспортируем тайлы
-        foreach (var kvp in tilesByProto)
-        {
-            var protoId = kvp.Key;
-            var tiles = kvp.Value;
+        // 1. Стены (группируем по прототипу)
+        GenerateWallsGrouped(sb, tileGrid, tileBuilder, ref uid);
 
-            sb.AppendLine($"    - proto: {protoId}");
-            sb.AppendLine($"      coords:");
+        // 2. Двери (группируем по прототипу)
+        GenerateDoorsGrouped(sb, tileGrid, ref uid);
 
-            var coordGroups = tiles
-                .GroupBy(t => (t.X, t.Y))
-                .Select(g => $"        - {g.Key.X},{g.Key.Y}")
-                .ToList();
+        // 3. Трубы и вентиляции
+        GeneratePipesGrouped(sb, grid, ref uid, pipeLayers, positionToUid);
 
-            foreach (var coord in coordGroups)
-            {
-                sb.AppendLine(coord);
-            }
-        }
+        // 4. Пожарные шлюзы
+        GenerateFirelocksGrouped(sb, grid, ref uid, positionToUid);
 
-        // Экспортируем объекты (двери, пожарные шлюзы, сигнализации, трубы)
-        var entities = grid.Entities.ToList();
-        if (entities.Count > 0)
-        {
-            sb.AppendLine($"  entities:");
-
-            // Группируем объекты по типу
-            var doors = entities.OfType<Door>().ToList();
-            var firelocks = entities.OfType<FirelockEntity>().ToList();
-            var fireAlarms = entities.OfType<FireAlarmEntity>().ToList();
-            var airAlarms = entities.OfType<AirAlarmEntity>().ToList();
-            var pipes = entities.OfType<PipeEntity>().ToList();
-
-            // Экспортируем двери
-            foreach (var door in doors)
-            {
-                sb.AppendLine($"    - proto: {door.Proto}");
-                sb.AppendLine($"      pos: {door.X},{door.Y}");
-            }
-
-            // Экспортируем пожарные шлюзы
-            foreach (var firelock in firelocks)
-            {
-                sb.AppendLine($"    - proto: {(firelock.IsGlass ? "FirelockGlass" : "Firelock")}");
-                sb.AppendLine($"      pos: {firelock.X},{firelock.Y}");
-            }
-
-            // Экспортируем пожарные сигнализации
-            foreach (var alarm in fireAlarms)
-            {
-                sb.AppendLine($"    - proto: FireAlarm");
-                sb.AppendLine($"      pos: {alarm.X},{alarm.Y}");
-                if (alarm.Rotation != 0)
-                    sb.AppendLine($"      rot: {alarm.Rotation}");
-            }
-
-            // Экспортируем воздушные сигнализации
-            foreach (var alarm in airAlarms)
-            {
-                sb.AppendLine($"    - proto: AirAlarm");
-                sb.AppendLine($"      pos: {alarm.X},{alarm.Y}");
-                if (alarm.Rotation != 0)
-                    sb.AppendLine($"      rot: {alarm.Rotation}");
-            }
-
-            // Экспортируем трубы
-            foreach (var pipe in pipes)
-            {
-                string pipeProto = pipe.PipeType switch
-                {
-                    "Distra" => "PipeDistra",
-                    "Waste" => "PipeWaste",
-                    "Normal" => "PipeNormal",
-                    _ => "Pipe"
-                };
-                sb.AppendLine($"    - proto: {pipeProto}");
-                sb.AppendLine($"      pos: {pipe.X},{pipe.Y}");
-                if (pipe.IsEndpoint)
-                    sb.AppendLine($"      is_endpoint: true");
-            }
-
-            // Экспортируем связи сигнализаций с устройствами
-            if (alarmSettings != null)
-            {
-                var networkBuilder = new AlarmNetworkBuilder(alarmSettings);
-                var network = networkBuilder.BuildNetwork(grid);
-
-                foreach (var connection in network.Connections)
-                {
-                    if (connection.Source is FireAlarmDevice fireAlarm && connection.Target is FirelockDevice firelock)
-                    {
-                        sb.AppendLine($"    - proto: AlarmLink");
-                        sb.AppendLine($"      source: {fireAlarm.X},{fireAlarm.Y}");
-                        sb.AppendLine($"      target: {firelock.X},{firelock.Y}");
-                        sb.AppendLine($"      type: Firelock");
-                    }
-                    else if (connection.Source is AirAlarmDevice airAlarm && connection.Target is PipeDevice pipe)
-                    {
-                        sb.AppendLine($"    - proto: AlarmLink");
-                        sb.AppendLine($"      source: {airAlarm.X},{airAlarm.Y}");
-                        sb.AppendLine($"      target: {pipe.X},{pipe.Y}");
-                        sb.AppendLine($"      type: Pipe");
-                    }
-                }
-            }
-        }
+        // 5. Сигнализации
+        GenerateAlarmsGrouped(sb, grid, ref uid, alarmSettings, positionToUid);
 
         return sb.ToString();
     }
 
-    private static int CountPipes(Grid grid)
+    #region Группированная генерация
+
+    private static void GenerateWallsGrouped(
+        StringBuilder sb,
+        TileGrid tileGrid,
+        TileBuilder tileBuilder,
+        ref int uid)
     {
-        return grid.Entities.OfType<PipeEntity>().Count();
+        var wallGroups = new Dictionary<string, List<(int x, int y)>>();
+
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
+        {
+            string bestWall = tileBuilder.GetBestWallAt(tileGrid, tile.X, tile.Y);
+
+            if (!wallGroups.ContainsKey(bestWall))
+                wallGroups[bestWall] = new List<(int x, int y)>();
+
+            wallGroups[bestWall].Add((tile.X, tile.Y));
+        }
+
+        foreach (var group in wallGroups)
+        {
+            if (group.Value.Count == 0) continue;
+
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var (x, y) in group.Value)
+            {
+                int invY = -y;
+                float posX = x + 0.5f;
+                float posY = invY + 0.5f;
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
     }
 
-    private static int CountAlarms(Grid grid)
+    private static void GenerateDoorsGrouped(
+        StringBuilder sb,
+        TileGrid tileGrid,
+        ref int uid)
     {
-        return grid.Entities.OfType<AirAlarmEntity>().Count() + grid.Entities.OfType<FireAlarmEntity>().Count();
+        var doorGroups = new Dictionary<string, List<(int x, int y)>>();
+
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+        {
+            if (string.IsNullOrEmpty(tile.ProtoId)) continue;
+
+            if (!doorGroups.ContainsKey(tile.ProtoId))
+                doorGroups[tile.ProtoId] = new List<(int x, int y)>();
+
+            doorGroups[tile.ProtoId].Add((tile.X, tile.Y));
+        }
+
+        foreach (var group in doorGroups)
+        {
+            if (group.Value.Count == 0) continue;
+
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var (x, y) in group.Value)
+            {
+                int invY = -y;
+                float posX = x + 0.5f;
+                float posY = invY + 0.5f;
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
     }
 
-    private static int CountFirelocks(Grid grid)
+    private static void GeneratePipesGrouped(
+        StringBuilder sb,
+        Grid grid,
+        ref int uid,
+        Dictionary<string, PipeSettings>? pipeLayers,
+        Dictionary<(int x, int y), int> positionToUid)
     {
-        return grid.Entities.OfType<FirelockEntity>().Count();
+        if (grid == null) return;
+
+        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
+        if (pipes.Count == 0) return;
+
+        var grouped = pipes.GroupBy(p => p.PipeType);
+
+        foreach (var group in grouped)
+        {
+            var pipeList = group.ToList();
+
+            string suffix = group.Key switch
+            {
+                "Distra" => "Alt2",
+                "Waste" => "Alt1",
+                "Normal" => "",
+                _ => ""
+            };
+
+            bool hasColor = pipeLayers != null &&
+                            pipeLayers.TryGetValue(group.Key, out var settings) &&
+                            settings.HasColor;
+            string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
+
+            var endpoints = new List<PipeEntity>();
+            foreach (var pipe in pipeList)
+            {
+                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                if (neighbors == 1)
+                {
+                    endpoints.Add(pipe);
+                }
+            }
+
+            // Группируем трубы по прототипу
+            var pipeProtos = new Dictionary<string, List<PipeEntity>>();
+
+            foreach (var pipe in pipeList)
+            {
+                if (endpoints.Contains(pipe)) continue;
+
+                int pipeX = (int)pipe.X;
+                int pipeY = (int)pipe.Y;
+                var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
+                string protoType = GetPipeProto(suffix, neighbors);
+                float rotation = GetPipeRotation(neighbors);
+
+                string key = $"{protoType}_{rotation}";
+                if (!pipeProtos.ContainsKey(key))
+                    pipeProtos[key] = new List<PipeEntity>();
+
+                pipeProtos[key].Add(pipe);
+            }
+
+            // Генерируем трубы по группам
+            foreach (var protoGroup in pipeProtos)
+            {
+                string protoName = protoGroup.Key.Split('_')[0];
+                float rotation = float.Parse(protoGroup.Key.Split('_')[1]);
+
+                sb.AppendLine($"- proto: {protoName}");
+                sb.AppendLine("  entities:");
+
+                foreach (var pipe in protoGroup.Value)
+                {
+                    float posX = pipe.X + 0.5f;
+                    float posY = -pipe.Y + 0.5f;
+
+                    sb.AppendLine($"  - uid: {uid}");
+                    sb.AppendLine($"    components:");
+                    sb.AppendLine($"    - type: Transform");
+
+                    if (rotation != 0)
+                    {
+                        string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                        sb.AppendLine($"      rot: {rotStr} rad");
+                    }
+
+                    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                    sb.AppendLine($"      parent: 2");
+
+                    if (hasColor)
+                    {
+                        sb.AppendLine($"    - type: AtmosPipeColor");
+                        sb.AppendLine($"      color: '{hexColor}'");
+                    }
+
+                    uid++;
+                }
+            }
+
+            // Генерируем вентиляции
+            if (endpoints.Count > 0)
+            {
+                string ventProto = group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber";
+                string pipeLayer = group.Key == "Distra" ? "Tertiary" : "Secondary";
+
+                sb.AppendLine($"- proto: {ventProto}");
+                sb.AppendLine("  entities:");
+
+                foreach (var endpoint in endpoints)
+                {
+                    int ventUid = uid;
+
+                    var key = ((int)endpoint.X, (int)endpoint.Y);
+                    positionToUid[key] = ventUid;
+
+                    float posX = endpoint.X + 0.5f;
+                    float posY = -endpoint.Y + 0.5f;
+
+                    var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
+                    float ventRotation = 0;
+
+                    if (neighbors.Count > 0)
+                    {
+                        var (dx, dy) = neighbors[0];
+                        if (dx == 1) ventRotation = (float)(Math.PI / 2);
+                        else if (dx == -1) ventRotation = (float)(-Math.PI / 2);
+                        else if (dy == 1) ventRotation = 0;
+                        else if (dy == -1) ventRotation = (float)Math.PI;
+                    }
+
+                    sb.AppendLine($"  - uid: {ventUid}");
+                    sb.AppendLine($"    components:");
+                    sb.AppendLine($"    - type: Transform");
+
+                    if (ventRotation != 0)
+                    {
+                        string rotStr = ventRotation.ToString("0.000000000000000").Replace(',', '.');
+                        sb.AppendLine($"      rot: {rotStr} rad");
+                    }
+
+                    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                    sb.AppendLine($"      parent: 2");
+                    sb.AppendLine($"    - type: AtmosPipeLayers");
+                    sb.AppendLine($"      pipeLayer: {pipeLayer}");
+
+                    if (hasColor)
+                    {
+                        sb.AppendLine($"    - type: AtmosPipeColor");
+                        sb.AppendLine($"      color: '{hexColor}'");
+                    }
+
+                    uid++;
+                }
+            }
+        }
+    }
+
+    private static void GenerateFirelocksGrouped(
+        StringBuilder sb,
+        Grid grid,
+        ref int uid,
+        Dictionary<(int x, int y), int> positionToUid)
+    {
+        var firelocks = grid.Entities.OfType<FirelockEntity>().ToList();
+        if (firelocks.Count == 0) return;
+
+        // Группируем по прототипу
+        var groups = firelocks.GroupBy(f => f.Proto);
+
+        foreach (var group in groups)
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var firelock in group)
+            {
+                int currentUid = uid;
+                var key = ((int)firelock.X, (int)firelock.Y);
+                positionToUid[key] = currentUid;
+
+                float posX = firelock.X + 0.5f;
+                float posY = -firelock.Y + 0.5f;
+
+                sb.AppendLine($"  - uid: {currentUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                uid++;
+            }
+        }
+    }
+
+    private static void GenerateAlarmsGrouped(
+        StringBuilder sb,
+        Grid grid,
+        ref int uid,
+        Dictionary<string, AlarmSettings> alarmSettings,
+        Dictionary<(int x, int y), int> positionToUid)
+    {
+        var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
+        var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
+
+        // Генерируем воздушные сигнализации
+        if (airAlarms.Count > 0)
+        {
+            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+
+            sb.AppendLine($"- proto: {protoId}");
+            sb.AppendLine("  entities:");
+
+            foreach (var alarm in airAlarms)
+            {
+                int alarmUid = uid;
+
+                float posX = alarm.X + 0.5f;
+                float posY = -alarm.Y + 0.5f;
+
+                sb.AppendLine($"  - uid: {alarmUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (alarm.Rotation != 0)
+                {
+                    string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                // Находим устройства для привязки (по комнате)
+                var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
+
+                if (linkedDevices.Count > 0)
+                {
+                    sb.AppendLine($"    - type: DeviceList");
+                    sb.AppendLine($"      devices:");
+                    foreach (var deviceUid in linkedDevices.Distinct())
+                    {
+                        sb.AppendLine($"      - {deviceUid}");
+                    }
+                }
+
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+
+                uid++;
+            }
+        }
+
+        // Генерируем пожарные сигнализации
+        if (fireAlarms.Count > 0)
+        {
+            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+
+            sb.AppendLine($"- proto: {protoId}");
+            sb.AppendLine("  entities:");
+
+            foreach (var alarm in fireAlarms)
+            {
+                int alarmUid = uid;
+
+                float posX = alarm.X + 0.5f;
+                float posY = -alarm.Y + 0.5f;
+
+                sb.AppendLine($"  - uid: {alarmUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (alarm.Rotation != 0)
+                {
+                    string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                // Находим устройства для привязки
+                var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
+
+                if (linkedDevices.Count > 0)
+                {
+                    sb.AppendLine($"    - type: DeviceList");
+                    sb.AppendLine($"      devices:");
+                    foreach (var deviceUid in linkedDevices.Distinct())
+                    {
+                        sb.AppendLine($"      - {deviceUid}");
+                    }
+                }
+
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+
+                uid++;
+            }
+        }
+    }
+
+    private static List<int> FindDevicesForAlarm(
+        Grid grid,
+        int x,
+        int y,
+        float rotation,
+        Dictionary<(int x, int y), int> positionToUid)
+    {
+        var result = new List<int>();
+
+        // Находим комнату, куда направлена сигнализация
+        int dx = 0, dy = 0;
+        float normalized = rotation % (float)(2 * Math.PI);
+        if (normalized < 0) normalized += (float)(2 * Math.PI);
+
+        if (Math.Abs(normalized) < 0.1f || Math.Abs(normalized - (float)(2 * Math.PI)) < 0.1f)
+            dy = 1;
+        else if (Math.Abs(normalized - (float)(Math.PI / 2)) < 0.1f)
+            dx = -1;
+        else if (Math.Abs(normalized - (float)Math.PI) < 0.1f)
+            dy = -1;
+        else if (Math.Abs(normalized - (float)(3 * Math.PI / 2)) < 0.1f)
+            dx = 1;
+
+        // Проверяем комнату в направлении сигнализации
+        int targetX = x + dx;
+        int targetY = y + dy;
+
+        Room? room = grid.Rooms.FirstOrDefault(r =>
+            targetX >= r.X && targetX < r.X + r.Width &&
+            targetY >= r.Y && targetY < r.Y + r.Height);
+
+        if (room == null)
+        {
+            targetX = x + dx * 2;
+            targetY = y + dy * 2;
+            room = grid.Rooms.FirstOrDefault(r =>
+                targetX >= r.X && targetX < r.X + r.Width &&
+                targetY >= r.Y && targetY < r.Y + r.Height);
+        }
+
+        if (room == null) return result;
+
+        // Ищем все устройства в этой комнате
+        foreach (var kvp in positionToUid)
+        {
+            var pos = kvp.Key;
+            if (pos.x >= room.X && pos.x < room.X + room.Width &&
+                pos.y >= room.Y && pos.y < room.Y + room.Height)
+            {
+                result.Add(kvp.Value);
+            }
+        }
+
+        return result;
+    }
+
+    #endregion
+
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+
+    private static int CalculateEntityCount(Grid grid, TileGrid tileGrid)
+    {
+        int count = 2; // Map Entity + Grid
+        count += tileGrid.GetTilesByContent(TileContent.Wall).Count();
+        count += tileGrid.GetTilesByContent(TileContent.Door).Count();
+
+        // Считаем только концы труб (вентиляции)
+        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
+        foreach (var group in pipes.GroupBy(p => p.PipeType))
+        {
+            var pipeList = group.ToList();
+            foreach (var pipe in pipeList)
+            {
+                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                if (neighbors == 1)
+                {
+                    count++; // Вентиляция
+                }
+                else
+                {
+                    count++; // Труба
+                }
+            }
+        }
+
+        count += grid.Entities.OfType<FirelockEntity>().Count();
+        count += grid.Entities.OfType<AirAlarmEntity>().Count();
+        count += grid.Entities.OfType<FireAlarmEntity>().Count();
+        return count;
     }
 
     private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
@@ -235,359 +671,6 @@ public static class YAMLGenerator
             bytes.Add(0);
         }
         return Convert.ToBase64String(bytes.ToArray());
-    }
-
-    private static int CountEntities(TileGrid tileGrid)
-    {
-        int count = 2;
-        count += tileGrid.GetTilesByContent(TileContent.Wall).Count();
-        count += tileGrid.GetTilesByContent(TileContent.Door).Count();
-        return count;
-    }
-
-    private static void GenerateWallsFromTileGrid(
-        StringBuilder sb,
-        TileGrid tileGrid,
-        TileBuilder tileBuilder,
-        ref int uid)
-    {
-        var wallsByProto = new Dictionary<string, List<(int x, int y)>>();
-
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
-        {
-            string bestWall = tileBuilder.GetBestWallAt(tileGrid, tile.X, tile.Y);
-
-            if (!wallsByProto.ContainsKey(bestWall))
-                wallsByProto[bestWall] = new List<(int x, int y)>();
-
-            wallsByProto[bestWall].Add((tile.X, tile.Y));
-        }
-
-        foreach (var group in wallsByProto)
-        {
-            sb.AppendLine($"- proto: {group.Key}");
-            sb.AppendLine("  entities:");
-
-            foreach (var (x, y) in group.Value)
-            {
-                int invY = -y;
-                float posX = x + 0.5f;
-                float posY = invY + 0.5f;
-
-                string posXStr = posX.ToString("0.0").Replace(',', '.');
-                string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-                sb.AppendLine($"      pos: {posXStr},{posYStr}");
-                sb.AppendLine($"      parent: 2");
-                uid++;
-            }
-        }
-    }
-
-    private static void GenerateDoorsFromTileGrid(
-        StringBuilder sb,
-        TileGrid tileGrid,
-        ref int uid)
-    {
-        var doorsByProto = new Dictionary<string, List<(int x, int y)>>();
-
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
-        {
-            if (string.IsNullOrEmpty(tile.ProtoId)) continue;
-
-            if (!doorsByProto.ContainsKey(tile.ProtoId))
-                doorsByProto[tile.ProtoId] = new List<(int x, int y)>();
-
-            doorsByProto[tile.ProtoId].Add((tile.X, tile.Y));
-        }
-
-        foreach (var group in doorsByProto)
-        {
-            if (group.Value.Count == 0) continue;
-
-            sb.AppendLine($"- proto: {group.Key}");
-            sb.AppendLine("  entities:");
-
-            foreach (var (x, y) in group.Value)
-            {
-                int invY = -y;
-                float posX = x + 0.5f;
-                float posY = invY + 0.5f;
-
-                string posXStr = posX.ToString("0.0").Replace(',', '.');
-                string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-                sb.AppendLine($"      pos: {posXStr},{posYStr}");
-                sb.AppendLine($"      parent: 2");
-                uid++;
-            }
-        }
-    }
-
-    private static List<int> GenerateFirelocks(StringBuilder sb, Grid grid, ref int uid)
-    {
-        var firelockUids = new List<int>();
-
-        foreach (var entity in grid.Entities)
-        {
-            if (entity is FirelockEntity firelock)
-            {
-                firelockUids.Add(uid);
-                float posX = firelock.X + 0.5f;
-                float posY = -firelock.Y + 0.5f;
-                sb.AppendLine($"- proto: {firelock.Proto}");
-                sb.AppendLine("  entities:");
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
-                uid++;
-            }
-        }
-
-        return firelockUids;
-    }
-
-    private static List<int> GeneratePipesFromEntities(
-        StringBuilder sb,
-        Grid grid,
-        ref int uid,
-        Dictionary<string, PipeSettings>? pipeLayers)
-    {
-        if (grid == null) return new List<int>();
-
-        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
-        if (pipes.Count == 0) return new List<int>();
-
-        var ventUids = new List<int>();
-        var grouped = pipes.GroupBy(p => p.PipeType);
-
-        foreach (var group in grouped)
-        {
-            var pipeList = group.ToList();
-
-            string suffix = group.Key switch
-            {
-                "Distra" => "Alt2",
-                "Waste" => "Alt1",
-                "Normal" => "",
-                _ => ""
-            };
-
-            bool hasColor = pipeLayers != null &&
-                            pipeLayers.TryGetValue(group.Key, out var settings) &&
-                            settings.HasColor;
-            string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
-
-            var endpoints = new List<PipeEntity>();
-            foreach (var pipe in pipeList)
-            {
-                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
-                if (neighbors == 1)
-                {
-                    endpoints.Add(pipe);
-                }
-            }
-
-            // Генерируем трубы
-            foreach (var pipe in pipeList)
-            {
-                if (endpoints.Contains(pipe)) continue;
-
-                int pipeX = (int)pipe.X;
-                int pipeY = (int)pipe.Y;
-
-                var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
-                string protoType = GetPipeProto(suffix, neighbors);
-                float rotation = GetPipeRotation(neighbors);
-
-                sb.AppendLine($"- proto: {protoType}");
-                sb.AppendLine("  entities:");
-
-                float posX = pipe.X + 0.5f;
-                float posY = -pipe.Y + 0.5f;
-
-                string posXStr = posX.ToString("0.0").Replace(',', '.');
-                string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-
-                if (rotation != 0)
-                {
-                    string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-                    sb.AppendLine($"      rot: {rotStr} rad");
-                }
-
-                sb.AppendLine($"      pos: {posXStr},{posYStr}");
-                sb.AppendLine($"      parent: 2");
-
-                if (hasColor)
-                {
-                    sb.AppendLine($"    - type: AtmosPipeColor");
-                    sb.AppendLine($"      color: '{hexColor}'");
-                }
-
-                uid++;
-            }
-
-            // Генерируем вентиляции/скрубберы на концах
-            foreach (var endpoint in endpoints)
-            {
-                string ventProto;
-                string pipeLayer;
-
-                if (group.Key == "Distra")
-                {
-                    ventProto = "GasVentPump";
-                    pipeLayer = "Tertiary";
-                }
-                else if (group.Key == "Waste")
-                {
-                    ventProto = "GasVentScrubber";
-                    pipeLayer = "Secondary";
-                }
-                else
-                {
-                    continue;
-                }
-
-                int ventUid = uid;
-                ventUids.Add(ventUid);
-
-                float posX = endpoint.X + 0.5f;
-                float posY = -endpoint.Y + 0.5f;
-
-                string posXStr = posX.ToString("0.0").Replace(',', '.');
-                string posYStr = posY.ToString("0.0").Replace(',', '.');
-
-                var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
-                float ventRotation = 0;
-
-                if (neighbors.Count > 0)
-                {
-                    var (dx, dy) = neighbors[0];
-                    if (dx == 1) ventRotation = (float)(Math.PI / 2);
-                    else if (dx == -1) ventRotation = (float)(-Math.PI / 2);
-                    else if (dy == 1) ventRotation = 0;
-                    else if (dy == -1) ventRotation = (float)Math.PI;
-                }
-
-                sb.AppendLine($"- proto: {ventProto}");
-                sb.AppendLine("  entities:");
-
-                sb.AppendLine($"  - uid: {ventUid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-
-                if (ventRotation != 0)
-                {
-                    string rotStr = ventRotation.ToString("0.000000000000000").Replace(',', '.');
-                    sb.AppendLine($"      rot: {rotStr} rad");
-                }
-
-                sb.AppendLine($"      pos: {posXStr},{posYStr}");
-                sb.AppendLine($"      parent: 2");
-                sb.AppendLine($"    - type: AtmosPipeLayers");
-                sb.AppendLine($"      pipeLayer: {pipeLayer}");
-
-                if (hasColor)
-                {
-                    sb.AppendLine($"    - type: AtmosPipeColor");
-                    sb.AppendLine($"      color: '{hexColor}'");
-                }
-
-                uid++;
-            }
-        }
-
-        return ventUids;
-    }
-
-    private static void GenerateAlarms(StringBuilder sb, Grid grid, ref int uid, Dictionary<string, AlarmSettings> alarmSettings, List<int> ventUids, List<int> firelockUids)
-    {
-        // Собираем все UID устройств для привязки
-        var allDeviceUids = new List<int>();
-        allDeviceUids.AddRange(ventUids);
-        allDeviceUids.AddRange(firelockUids);
-
-        foreach (var entity in grid.Entities)
-        {
-            if (entity is AirAlarmEntity airAlarm)
-            {
-                string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
-                bool autoLink = settings?.AutoLinkDevices ?? true;
-
-                List<int> linkedDevices;
-                if (autoLink == true)
-                {
-                    linkedDevices = allDeviceUids;
-                }
-                else
-                {
-                    linkedDevices = new List<int>();
-                }
-
-                GenerateAlarmEntity(sb, protoId, airAlarm.X, airAlarm.Y, airAlarm.Rotation, ref uid, linkedDevices);
-            }
-            else if (entity is FireAlarmEntity fireAlarm)
-            {
-                string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
-                bool autoLink = settings?.AutoLinkDevices ?? true;
-
-                List<int> linkedDevices;
-                if (autoLink == true)
-                {
-                    linkedDevices = allDeviceUids;
-                }
-                else
-                {
-                    linkedDevices = new List<int>();
-                }
-
-                GenerateAlarmEntity(sb, protoId, fireAlarm.X, fireAlarm.Y, fireAlarm.Rotation, ref uid, linkedDevices);
-            }
-        }
-    }
-
-    private static void GenerateAlarmEntity(StringBuilder sb, string protoId, float x, float y, float rotation, ref int uid, List<int> linkedDevices)
-    {
-        float posX = x + 0.5f;
-        float posY = -y + 0.5f;
-        sb.AppendLine($"- proto: {protoId}");
-        sb.AppendLine("  entities:");
-        sb.AppendLine($"  - uid: {uid}");
-        sb.AppendLine($"    components:");
-        sb.AppendLine($"    - type: Transform");
-        if (rotation != 0)
-        {
-            string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
-            sb.AppendLine($"      rot: {rotStr} rad");
-        }
-        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-        sb.AppendLine($"      parent: 2");
-
-        if (linkedDevices.Count > 0)
-        {
-            sb.AppendLine($"    - type: DeviceList");
-            sb.AppendLine($"      devices:");
-            foreach (var deviceUid in linkedDevices)
-            {
-                sb.AppendLine($"      - {deviceUid}");
-            }
-        }
-
-        sb.AppendLine($"    - type: Fixtures");
-        sb.AppendLine($"      fixtures: {{}}");
-        uid++;
     }
 
     private static string GetPipeHexColor(Dictionary<string, PipeSettings>? pipeLayers, string layer)
