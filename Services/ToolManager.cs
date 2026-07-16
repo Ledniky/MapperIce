@@ -18,7 +18,8 @@ public class ToolManager
         PipeWaste,
         PipeNormal,
         AirAlarm,
-        FireAlarm
+        FireAlarm,
+        PlacePrototype
     }
 
     private Tool _currentTool = Tool.None;
@@ -44,6 +45,11 @@ public class ToolManager
     public void ResetTool()
     {
         _currentTool = Tool.None;
+        ToolChanged?.Invoke(_currentTool);
+    }
+    public void ForceSetTool(Tool tool)
+    {
+        _currentTool = tool;
         ToolChanged?.Invoke(_currentTool);
     }
 }

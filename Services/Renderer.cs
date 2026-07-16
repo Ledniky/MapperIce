@@ -27,7 +27,7 @@ public class Renderer
     private readonly InterpolationMode _interpolationMode = InterpolationMode.NearestNeighbor;
     private AlarmNetwork? _currentNetwork;
     public bool ShowAlarmConnections { get; set; } = true;
-    
+
     // Предпросмотр сигнализации
     private bool _showAlarmPreview = false;
     private int _previewX;
@@ -116,6 +116,13 @@ public class Renderer
                 var firelocks = grid.Entities.OfType<FirelockEntity>().ToList();
                 DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, grid.Position);
 
+                var genericEntities = grid.Entities
+                    .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+                                e is not AirAlarmEntity && e is not FireAlarmEntity)
+                    .ToList();
+                DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, grid.Position);
+
+
                 if (!HideRoomOverlay)
                 {
                     var rooms = grid.Rooms.ToList();
@@ -167,7 +174,7 @@ public class Renderer
             }
 
             DrawInfo(g, scale, toolName, map);
-            
+
             // Рисуем предпросмотр сигнализации под курсором
             DrawAlarmPreview(g, scale, viewOffset);
 
@@ -844,6 +851,49 @@ public class Renderer
             g.Restore(state);
         }
     }
+
+    private void DrawGenericEntitiesBatch(Graphics g, List<MapEntity> entities, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        if (entities.Count == 0) return;
+
+        foreach (var group in entities.GroupBy(e => e.Proto))
+        {
+            string protoId = group.Key;
+            Image? texture = GetOrLoadTexture(protoId);
+
+            foreach (var entity in group)
+            {
+                float cx = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+                var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+
+                if (texture != null)
+                {
+                    var srcRect = GetSourceRect(protoId, texture);
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                }
+                else
+                {
+                    using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+                    g.FillRectangle(brush, rect);
+                    using var pen = new Pen(Color.Black, 1);
+                    g.DrawRectangle(pen, rect);
+
+                    if (tileSize > 16)
+                    {
+                        using var font = new Font("Segoe UI", 6);
+                        using var textBrush = new SolidBrush(Color.White);
+                        string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                        g.DrawString(label, font, textBrush, rect.X + 1, rect.Y + 1);
+                    }
+                }
+            }
+        }
+    }
+
+
+
+
 
     #endregion
 }

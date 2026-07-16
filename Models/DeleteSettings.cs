@@ -7,6 +7,7 @@ public class DeleteSettings
     public bool DeletePipes { get; set; } = true;
     public bool DeleteWires { get; set; } = false;
     public bool DeleteEntities { get; set; } = false;
+    public bool DeleteAlarms { get; set; } = true;
     
     public static DeleteSettings Default = new DeleteSettings();
 }

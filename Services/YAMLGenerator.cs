@@ -9,8 +9,8 @@ public static class YAMLGenerator
     private const int CHUNK_SIZE = 16;
 
     public static string Generate(
-        Grid grid, 
-        TileBuilder tileBuilder, 
+        Grid grid,
+        TileBuilder tileBuilder,
         Dictionary<string, PipeSettings>? pipeLayers,
         Dictionary<string, AlarmSettings> alarmSettings)
     {
@@ -137,6 +137,9 @@ public static class YAMLGenerator
 
         // 5. Сигнализации
         GenerateAlarmsGrouped(sb, grid, ref uid, alarmSettings, positionToUid);
+
+        // 6. Прочие сущности
+        GenerateGenericEntitiesGrouped(sb, grid, ref uid);
 
         return sb.ToString();
     }
@@ -612,6 +615,10 @@ public static class YAMLGenerator
         count += grid.Entities.OfType<FirelockEntity>().Count();
         count += grid.Entities.OfType<AirAlarmEntity>().Count();
         count += grid.Entities.OfType<FireAlarmEntity>().Count();
+        count += grid.Entities
+        .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+                    e is not AirAlarmEntity && e is not FireAlarmEntity)
+        .Count(e => !string.IsNullOrEmpty(e.Proto));
         return count;
     }
 
@@ -781,5 +788,34 @@ public static class YAMLGenerator
         }
 
         return 0;
+    }
+    private static void GenerateGenericEntitiesGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var generic = grid.Entities
+            .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+                        e is not AirAlarmEntity && e is not FireAlarmEntity)
+            .Where(e => !string.IsNullOrEmpty(e.Proto))
+            .ToList();
+
+        if (generic.Count == 0) return;
+
+        foreach (var group in generic.GroupBy(e => e.Proto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+foreach (var entity in group)
+{
+    float posX = entity.X;
+    float posY = -entity.Y;
+
+    sb.AppendLine($"  - uid: {uid}");
+    sb.AppendLine($"    components:");
+    sb.AppendLine($"    - type: Transform");
+    sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+    sb.AppendLine($"      parent: 2");
+    uid++;
+}
+        }
     }
 }

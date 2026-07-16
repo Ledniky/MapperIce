@@ -7,6 +7,7 @@ public class UndoManager
 {
     private List<GridSnapshot> _history = new();
     private int _currentIndex = -1;
+    public List<MapEntity> GenericEntities { get; set; } = new();
 
     // Убираем конструктор с параметрами - используем простой конструктор
     public UndoManager()
@@ -59,6 +60,7 @@ public class GridSnapshot
     public List<FirelockEntity> Firelocks { get; set; } = new();
     public List<AirAlarmEntity> AirAlarms { get; set; } = new();
     public List<FireAlarmEntity> FireAlarms { get; set; } = new();
+    public List<MapEntity> GenericEntities { get; set; } = new();
 
     public GridSnapshot() { }
 
@@ -71,16 +73,22 @@ public class GridSnapshot
         Pipes = grid.Entities.OfType<PipeEntity>()
             .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType, IsEndpoint = p.IsEndpoint })
             .ToList();
-        
+
         Firelocks = grid.Entities.OfType<FirelockEntity>()
             .Select(f => new FirelockEntity { X = f.X, Y = f.Y, Proto = f.Proto, IsGlass = f.IsGlass })
             .ToList();
-        
+
         AirAlarms = grid.Entities.OfType<AirAlarmEntity>()
             .Select(a => new AirAlarmEntity { X = a.X, Y = a.Y, Rotation = a.Rotation })
             .ToList();
         FireAlarms = grid.Entities.OfType<FireAlarmEntity>()
             .Select(f => new FireAlarmEntity { X = f.X, Y = f.Y, Rotation = f.Rotation })
+            .ToList();
+
+        GenericEntities = grid.Entities
+            .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+                        e is not AirAlarmEntity && e is not FireAlarmEntity)
+            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid })
             .ToList();
     }
 
@@ -132,5 +140,19 @@ public class GridSnapshot
         {
             grid.Entities.Add(new FireAlarmEntity { X = alarm.X, Y = alarm.Y, Rotation = alarm.Rotation });
         }
+
+        foreach (var entity in GenericEntities)
+        {
+            grid.Entities.Add(new MapEntity
+            {
+                Proto = entity.Proto,
+                X = entity.X,
+                Y = entity.Y,
+                ParentGridUid = entity.ParentGridUid
+            });
+        }
     }
 }
+
+
+
