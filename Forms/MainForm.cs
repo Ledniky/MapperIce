@@ -75,6 +75,8 @@ public class MainForm : Form
     private bool _showAlarmPreview = false;
     private string? _protoToPlace = null;
     private Button? _btnPlaceProto;
+    private bool _snapEntityToCenter = false;
+    private Button? _btnSnapEntityCenter;
 
     public MainForm()
     {
@@ -251,53 +253,77 @@ public class MainForm : Form
         searchPanel.Controls.Add(_filterCombo);
         panel.Controls.Add(searchPanel);
 
-        var btnPanel = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 2, 0, 2) };
+        var btnPanel = new Panel { Dock = DockStyle.Top, Height = 65, Padding = new Padding(0, 2, 0, 2) };
 
-        _btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
-        _btnAddRepo.Click += (s, e) => AddRepository();
-        btnPanel.Controls.Add(_btnAddRepo);
+_btnAddRepo = new Button { Text = "➕", Location = new Point(5, 5), Width = 30, Height = 25 };
+_btnAddRepo.Click += (s, e) => AddRepository();
+btnPanel.Controls.Add(_btnAddRepo);
 
-        _btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
-        _btnRemoveRepo.Click += (s, e) => RemoveRepository();
-        btnPanel.Controls.Add(_btnRemoveRepo);
+_btnRemoveRepo = new Button { Text = "🗑", Location = new Point(40, 5), Width = 30, Height = 25, Enabled = false };
+_btnRemoveRepo.Click += (s, e) => RemoveRepository();
+btnPanel.Controls.Add(_btnRemoveRepo);
 
-        _btnIndexRepo = new Button
-        {
-            Text = "🔄 Обновить",
-            Location = new Point(75, 5),
-            Width = 40,
-            Height = 25,
-            Enabled = false,
-            BackColor = Color.LightGreen,
-            FlatStyle = FlatStyle.Flat
-        };
-        _btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
-        btnPanel.Controls.Add(_btnIndexRepo);
+_btnIndexRepo = new Button
+{
+    Text = "🔄 Обновить",
+    Location = new Point(75, 5),
+    Width = 40,
+    Height = 25,
+    Enabled = false,
+    BackColor = Color.LightGreen,
+    FlatStyle = FlatStyle.Flat
+};
+_btnIndexRepo.Click += (s, e) => IndexSelectedRepository();
+btnPanel.Controls.Add(_btnIndexRepo);
 
-        _btnPlaceProto = new Button
-        {
-            Text = "📍",
-            Location = new Point(120, 5),
-            Width = 30,
-            Height = 25,
-            Enabled = false,
-            BackColor = Color.FromArgb(255, 245, 200),
-            FlatStyle = FlatStyle.Flat
-        };
-        _btnPlaceProto.Click += (s, e) => ArmPrototypePlacement();
-        btnPanel.Controls.Add(_btnPlaceProto);
+// Вторая строка: кнопка размещения + автоцентрирование
+_btnPlaceProto = new Button
+{
+    Text = "🎯",
+    Location = new Point(5, 35),
+    Width = 30,
+    Height = 25,
+    Enabled = false,
+    BackColor = Color.FromArgb(255, 245, 200),
+    FlatStyle = FlatStyle.Flat
+};
+_btnPlaceProto.Click += (s, e) => ArmPrototypePlacement();
+btnPanel.Controls.Add(_btnPlaceProto);
 
-        _protoList.SelectedIndexChanged += (s, e) =>
-        {
-            var id = _protoList.SelectedItem?.ToString();
-            bool valid = !string.IsNullOrEmpty(id) &&
-                         !id.StartsWith("(") && !id.StartsWith("⚠") &&
-                         !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
-                         !id.StartsWith("Нажмите");
-            if (_btnPlaceProto != null) _btnPlaceProto.Enabled = valid;
-        };
+_btnSnapEntityCenter = new Button
+{
+    Text = "⌖",
+    Location = new Point(40, 35),
+    Width = 30,
+    Height = 25,
+    BackColor = _snapEntityToCenter ? Color.LightGreen : Color.White,
+    FlatStyle = FlatStyle.Flat
+};
+_btnSnapEntityCenter.Click += (s, e) =>
+{
+    _snapEntityToCenter = !_snapEntityToCenter;
+    _btnSnapEntityCenter.BackColor = _snapEntityToCenter ? Color.LightGreen : Color.White;
+};
+btnPanel.Controls.Add(_btnSnapEntityCenter);
 
-        panel.Controls.Add(btnPanel);
+_protoList.SelectedIndexChanged += (s, e) =>
+{
+    var id = _protoList.SelectedItem?.ToString();
+    bool valid = !string.IsNullOrEmpty(id) &&
+                 !id.StartsWith("(") && !id.StartsWith("⚠") &&
+                 !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
+                 !id.StartsWith("Нажмите");
+    if (_btnPlaceProto != null) _btnPlaceProto.Enabled = valid;
+
+    // Если инструмент размещения уже активен — прототип меняется прямо по выбору в списке
+    if (valid && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+    {
+        _protoToPlace = id;
+        _typeLabel.Text = $"Размещение: {_protoToPlace}  (клик — поставить)";
+    }
+};
+
+panel.Controls.Add(btnPanel);
 
         _repoSelector = new ComboBox
         {
@@ -1478,163 +1504,177 @@ public class MainForm : Form
     }
 
     private (float x, float y) GetPrecisePosition(Point mouseLocation)
-{
-    if (_map.ActiveGrid == null) return (0f, 0f);
-
-    int tileSize = (int)(Constants.TILE_SIZE * _scale);
-    float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-    float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
-    float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
-    float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
-
-    return (worldX, worldY);
-}
-
-    private void OnMouseDown(object? sender, MouseEventArgs e)
     {
-        if (_canvas.Width == 0 || _canvas.Height == 0) return;
-        if (_map.ActiveGrid == null) return;
+        if (_map.ActiveGrid == null) return (0f, 0f);
 
-        if (e.Button == MouseButtons.Right)
+        int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
+        float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
+
+        return (worldX, worldY);
+    }
+
+private void OnMouseDown(object? sender, MouseEventArgs e)
+{
+    if (_canvas.Width == 0 || _canvas.Height == 0) return;
+    if (_map.ActiveGrid == null) return;
+
+    if (e.Button == MouseButtons.Right)
+    {
+        if (_pipeBuilder.IsDrawing)
         {
-            if (_pipeBuilder.IsDrawing)
-            {
-                _pipeBuilder.ResetDrawing();
-                Render();
-                return;
-            }
-            _isPanning = true;
-            _panStart = new PointF(e.Location.X, e.Location.Y);
-            Cursor = Cursors.SizeAll;
+            _pipeBuilder.ResetDrawing();
+            Render();
+            return;
+        }
+        _isPanning = true;
+        _panStart = new PointF(e.Location.X, e.Location.Y);
+        Cursor = Cursors.SizeAll;
+        return;
+    }
+
+    if (e.Button == MouseButtons.Middle)
+    {
+        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
+            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            _currentAlarmRotation += (float)(Math.PI / 2);
+            if (_currentAlarmRotation >= (float)(Math.PI * 2))
+                _currentAlarmRotation -= (float)(Math.PI * 2);
+            Render();
+            return;
+        }
+        return;
+    }
+
+    if (e.Button == MouseButtons.Left)
+    {
+        var tilePos = GetTilePosition(e.Location);
+        int tileX = tilePos.x;
+        int tileY = tilePos.y;
+
+        // ===== УНИВЕРСАЛЬНОЕ УДАЛЕНИЕ =====
+        if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+        {
+            var grid = _map.ActiveGrid;
+
+            // 1. Сигнализации
+            var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
+            if (alarm != null) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); return; }
+
+            var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
+            if (fireAlarm != null) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); return; }
+
+            // 2. Трубы
+            var pipe = grid.Entities.OfType<PipeEntity>().FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY);
+            if (pipe != null) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); return; }
+
+            // 3. Двери
+            if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { SaveState(); UpdateTileGrid(); Render(); return; }
+
+            // 4. ЛЮБАЯ другая сущность (в т.ч. ферлоки и размещённые прототипы) — ПРОВЕРЯЕМ РАНЬШЕ КОМНАТЫ
+            var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
+            if (anyEntity != null) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); return; }
+
+            // 5. Комнаты — только если на тайле нет вообще никакой сущности
+            var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
+            if (room != null) { grid.Rooms.Remove(room); SaveState(); UpdateTileGrid(); Render(); return; }
+        }
+
+        // ===== УДАЛЕНИЕ ОБЛАСТИ =====
+        else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
+        {
+            _isDeletingArea = true;
+            _deleteStartPoint = new Point(tileX, tileY);
+            _deleteEndPoint = new Point(tileX, tileY);
+            Render();
             return;
         }
 
-        if (e.Button == MouseButtons.Middle)
+        // ===== ОСТАЛЬНЫЕ ИНСТРУМЕНТЫ (без изменений) =====
+        else if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
         {
-            if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
-                _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-            {
-                _currentAlarmRotation += (float)(Math.PI / 2);
-                if (_currentAlarmRotation >= (float)(Math.PI * 2))
-                    _currentAlarmRotation -= (float)(Math.PI * 2);
-                Render();
-                return;
-            }
-            return;
+            _isDrawing = true;
+            _startPoint = e.Location;
+            _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
         }
-
-        if (e.Button == MouseButtons.Left)
+        else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
         {
-            var tilePos = GetTilePosition(e.Location);
-            int tileX = tilePos.x;
-            int tileY = tilePos.y;
-
-            // ===== УНИВЕРСАЛЬНОЕ УДАЛЕНИЕ =====
-            if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out _, _snapToGrid))
+            { SaveState(); UpdateTileGrid(); Render(); }
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
+        {
+            if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out _, _snapToGrid))
+            { SaveState(); UpdateTileGrid(); Render(); }
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
+                 _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+        {
+            if (!_pipeBuilder.IsDrawing)
+            {
+                _pipeBuilder.StartDrawing(tileX, tileY);
+                Render();
+            }
+            else
+            {
+                string pipeType = _toolManager.CurrentTool switch
+                {
+                    ToolManager.Tool.PipeDistra => "Distra",
+                    ToolManager.Tool.PipeWaste => "Waste",
+                    _ => "Normal"
+                };
+                _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+        {
+            if (!string.IsNullOrEmpty(_protoToPlace))
             {
                 var grid = _map.ActiveGrid;
 
-                // 1. Сигнализации
-                var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
-                if (alarm != null) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); return; }
-
-                var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
-                if (fireAlarm != null) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); return; }
-
-                // 2. Трубы
-                var pipe = grid.Entities.OfType<PipeEntity>().FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY);
-                if (pipe != null) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); return; }
-
-                // 3. Двери
-                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { SaveState(); UpdateTileGrid(); Render(); return; }
-
-                // 4. Комнаты
-                var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
-                if (room != null) { grid.Rooms.Remove(room); SaveState(); UpdateTileGrid(); Render(); return; }
-
-                // 5. ЛЮБАЯ другая сущность
-                var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
-                if (anyEntity != null) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); return; }
-            }
-
-            // ===== УДАЛЕНИЕ ОБЛАСТИ =====
-            else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
-            {
-                _isDeletingArea = true;
-                _deleteStartPoint = new Point(tileX, tileY);
-                _deleteEndPoint = new Point(tileX, tileY);
-                Render();
-                return;
-            }
-
-            // ===== ОСТАЛЬНЫЕ ИНСТРУМЕНТЫ (без изменений) =====
-            else if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
-            {
-                _isDrawing = true;
-                _startPoint = e.Location;
-                _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
-            {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out _, _snapToGrid))
-                { SaveState(); UpdateTileGrid(); Render(); }
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
-            {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out _, _snapToGrid))
-                { SaveState(); UpdateTileGrid(); Render(); }
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
-            {
-                if (!_pipeBuilder.IsDrawing)
+                float finalX, finalY;
+                if (_snapEntityToCenter)
                 {
-                    _pipeBuilder.StartDrawing(tileX, tileY);
-                    Render();
+                    var centerTile = GetTilePosition(e.Location);
+                    finalX = centerTile.x + 0.5f;
+                    finalY = centerTile.y + 0.5f;
                 }
                 else
                 {
-                    string pipeType = _toolManager.CurrentTool switch
-                    {
-                        ToolManager.Tool.PipeDistra => "Distra",
-                        ToolManager.Tool.PipeWaste => "Waste",
-                        _ => "Normal"
-                    };
-                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
-                    SaveState();
-                    UpdateTileGrid();
-                    Render();
+                    var precise = GetPrecisePosition(e.Location);
+                    finalX = precise.x;
+                    finalY = precise.y;
                 }
-            }
-else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
-{
-    if (!string.IsNullOrEmpty(_protoToPlace))
-    {
-        var grid = _map.ActiveGrid;
-        var precise = GetPrecisePosition(e.Location);
 
-        grid.Entities.Add(new MapEntity { X = precise.x, Y = precise.y, Proto = _protoToPlace });
-        SaveState();
-        Render();
-    }
-}
-            else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
-            {
-                AddAirAlarm(_map.ActiveGrid, tileX, tileY);
+                grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace });
                 SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-            {
-                AddFireAlarm(_map.ActiveGrid, tileX, tileY);
-                SaveState();
-                UpdateTileGrid();
                 Render();
             }
         }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
+        {
+            AddAirAlarm(_map.ActiveGrid, tileX, tileY);
+            SaveState();
+            UpdateTileGrid();
+            Render();
+        }
+        else if (_toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            AddFireAlarm(_map.ActiveGrid, tileX, tileY);
+            SaveState();
+            UpdateTileGrid();
+            Render();
+        }
     }
+}
+
 
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
@@ -1756,24 +1796,48 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
                 if (_deleteSettings.DeletePipes)
                     toRemove.AddRange(grid.Entities.OfType<PipeEntity>().Where(p => p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY));
 
-                // СИГНАЛИЗАЦИИ - ДОБАВИТЬ
+                // Комнаты
+                if (_deleteSettings.DeleteRooms)
+                {
+                    var roomsToRemove = grid.Rooms
+                        .Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY))
+                        .ToList();
+                    foreach (var room in roomsToRemove) grid.Rooms.Remove(room);
+                }
+
+                // СИГНАЛИЗАЦИИ
                 if (_deleteSettings.DeleteAlarms)
                 {
                     toRemove.AddRange(grid.Entities.OfType<AirAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
                     toRemove.AddRange(grid.Entities.OfType<FireAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
                 }
 
-                // Другие сущности
+                // Сущности — то, что заспавнено через левое меню (репозиторий, инструмент PlacePrototype)
                 if (_deleteSettings.DeleteEntities)
                 {
-                    // Удаляем всё, что не попало в другие категории
-                    var existingIds = new HashSet<Type> { typeof(PipeEntity), typeof(AirAlarmEntity), typeof(FireAlarmEntity) };
+                    var repoEntities = grid.Entities
+                        .Where(e => e.GetType() == typeof(MapEntity)) // ровно базовый тип, не подклассы
+                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
+                        .ToList();
+                    toRemove.AddRange(repoEntities);
+                }
+
+                // Другое (настоящий catch-all: всё, что не попало ни в одну явную категорию)
+                if (_deleteSettings.DeleteOther)
+                {
+                    var knownTypes = new HashSet<Type>
+        {
+            typeof(PipeEntity), typeof(AirAlarmEntity), typeof(FireAlarmEntity),
+            typeof(FirelockEntity), typeof(MapEntity)
+        };
                     var otherEntities = grid.Entities
                         .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
-                        .Where(e => !existingIds.Contains(e.GetType()))
+                        .Where(e => !knownTypes.Contains(e.GetType()))
                         .ToList();
                     toRemove.AddRange(otherEntities);
                 }
+
+                // Декали — заглушка, функционала пока нет
             }
 
             foreach (var entity in toRemove) grid.Entities.Remove(entity);
@@ -2442,7 +2506,7 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(15),
-            RowCount = 6,
+            RowCount = 9,
             ColumnCount = 2,
             AutoSize = true
         };
@@ -2482,6 +2546,20 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
         };
         panel.Controls.Add(chkAll, 0, row);
         panel.SetColumnSpan(chkAll, 2);
+        row++;
+
+        // Комнаты
+        var chkRooms = new CheckBox
+        {
+            Text = "Комнаты",
+            Checked = _deleteSettings.DeleteRooms,
+            AutoSize = true,
+            Tag = "rooms",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkRooms.CheckedChanged += (s, e) => { _deleteSettings.DeleteRooms = chkRooms.Checked; };
+        panel.Controls.Add(chkRooms, 0, row);
+        panel.SetColumnSpan(chkRooms, 2);
         row++;
 
         // Газовые трубы
@@ -2526,10 +2604,10 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
         panel.SetColumnSpan(chkWires, 2);
         row++;
 
-        // Другие сущности (заглушка)
+        // Сущности (из левого меню — репозиторий прототипов)
         var chkEntities = new CheckBox
         {
-            Text = "Другие сущности",
+            Text = "Сущности",
             Checked = _deleteSettings.DeleteEntities,
             AutoSize = true,
             Tag = "entities",
@@ -2539,6 +2617,36 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
         panel.Controls.Add(chkEntities, 0, row);
         panel.SetColumnSpan(chkEntities, 2);
         row++;
+
+        // Другое
+        var chkOther = new CheckBox
+        {
+            Text = "Другое",
+            Checked = _deleteSettings.DeleteOther,
+            AutoSize = true,
+            Tag = "other",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkOther.CheckedChanged += (s, e) => { _deleteSettings.DeleteOther = chkOther.Checked; };
+        panel.Controls.Add(chkOther, 0, row);
+        panel.SetColumnSpan(chkOther, 2);
+        row++;
+
+        // Декали (заглушка)
+        var chkDecals = new CheckBox
+        {
+            Text = "Декали (скоро)",
+            Checked = _deleteSettings.DeleteDecals,
+            AutoSize = true,
+            Tag = "decals",
+            Enabled = !_deleteSettings.DeleteAll
+        };
+        chkDecals.CheckedChanged += (s, e) => { _deleteSettings.DeleteDecals = chkDecals.Checked; };
+        panel.Controls.Add(chkDecals, 0, row);
+        panel.SetColumnSpan(chkDecals, 2);
+        row++;
+
+
 
         // Кнопки OK/Cancel (без изменений)
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
@@ -2593,15 +2701,15 @@ else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
         }
     }
 
-private void ArmPrototypePlacement()
-{
-    if (_protoList.SelectedItem == null) return;
-    string? id = _protoList.SelectedItem.ToString();
-    if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
+    private void ArmPrototypePlacement()
+    {
+        if (_protoList.SelectedItem == null) return;
+        string? id = _protoList.SelectedItem.ToString();
+        if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
 
-    _protoToPlace = id;
-    _toolManager.ForceSetTool(ToolManager.Tool.PlacePrototype);
-}
+        _protoToPlace = id;
+        _toolManager.ForceSetTool(ToolManager.Tool.PlacePrototype);
+    }
 
 
 

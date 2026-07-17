@@ -804,18 +804,19 @@ public static class YAMLGenerator
             sb.AppendLine($"- proto: {group.Key}");
             sb.AppendLine("  entities:");
 
-foreach (var entity in group)
-{
-    float posX = entity.X;
-    float posY = -entity.Y;
+            foreach (var entity in group)
+            {
+                float posX = entity.X;
+                float posY = -entity.Y;
 
-    sb.AppendLine($"  - uid: {uid}");
-    sb.AppendLine($"    components:");
-    sb.AppendLine($"    - type: Transform");
-    sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-    sb.AppendLine($"      parent: 2");
-    uid++;
-}
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+
         }
     }
 }
