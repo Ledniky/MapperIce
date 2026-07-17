@@ -119,9 +119,9 @@ public class Renderer
                 var genericEntities = grid.Entities
                     .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                                 e is not AirAlarmEntity && e is not FireAlarmEntity)
+                    .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
                     .ToList();
                 DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, grid.Position);
-
 
                 if (!HideRoomOverlay)
                 {
@@ -867,6 +867,16 @@ public class Renderer
                 float cy = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
                 var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
 
+                var oldTransform = g.Transform;
+
+                if (entity.Rotation != 0)
+                {
+                    var matrix = new Matrix();
+                    float angleDegrees = entity.Rotation * 180 / (float)Math.PI;
+                    matrix.RotateAt(angleDegrees, new PointF(cx, cy));
+                    g.Transform = matrix;
+                }
+
                 if (texture != null)
                 {
                     var srcRect = GetSourceRect(protoId, texture);
@@ -887,10 +897,11 @@ public class Renderer
                         g.DrawString(label, font, textBrush, rect.X + 1, rect.Y + 1);
                     }
                 }
+
+                g.Transform = oldTransform;
             }
         }
     }
-
 
 
 

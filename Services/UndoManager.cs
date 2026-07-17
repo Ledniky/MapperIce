@@ -148,7 +148,8 @@ public class GridSnapshot
                 Proto = entity.Proto,
                 X = entity.X,
                 Y = entity.Y,
-                ParentGridUid = entity.ParentGridUid
+                ParentGridUid = entity.ParentGridUid,
+                Rotation = entity.Rotation
             });
         }
     }

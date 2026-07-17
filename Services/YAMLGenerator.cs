@@ -812,11 +812,17 @@ public static class YAMLGenerator
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
+
+                if (entity.Rotation != 0)
+                {
+                    string rotStr = entity.Rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
                 sb.AppendLine($"      parent: 2");
                 uid++;
             }
-
         }
     }
 }

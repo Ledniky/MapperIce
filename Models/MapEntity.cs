@@ -9,4 +9,6 @@ public class MapEntity
     public float X { get; set; }                 // Координата X в тайлах (с дробной частью)
     public float Y { get; set; }                 // Координата Y в тайлах (с дробной частью)
     public int? ParentGridUid { get; set; }      // К какому гриду привязан (если null - к карте)
+    public float Rotation { get; set; } = 0;     // Угол поворота в радианах
+
 }

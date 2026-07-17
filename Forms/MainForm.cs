@@ -80,6 +80,9 @@ public class MainForm : Form
     private Button? _btnCenterSettings;
     private PointF _centerOffset = new PointF(0.5f, 0.5f);
     private Form? _centerSettingsForm = null;
+    private bool _snapEntityRotation = false;
+    private Button? _btnEntityRotationSnap;
+    private float _currentEntityRotation = 0f;
 
     public MainForm()
     {
@@ -345,6 +348,33 @@ public class MainForm : Form
         _btnCenterSettings.Click += (s, e) => ShowCenterSettingsDialog();
         btnPanel.Controls.Add(_btnCenterSettings);
 
+
+
+
+
+
+
+
+        _btnEntityRotationSnap = new Button
+        {
+            Text = "📐",
+            Location = new Point(195, 35),
+            Width = 30,
+            Height = 25,
+            BackColor = _snapEntityRotation ? Color.LightGreen : Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        _btnEntityRotationSnap.Click += (s, e) =>
+        {
+            _snapEntityRotation = !_snapEntityRotation;
+            _btnEntityRotationSnap.BackColor = _snapEntityRotation ? Color.LightGreen : Color.White;
+        };
+        btnPanel.Controls.Add(_btnEntityRotationSnap);
+
+
+
+
+
         // ============================================================
         // КОНЕЦ ПАНЕЛИ КНОПОК
         // ============================================================
@@ -526,11 +556,11 @@ public class MainForm : Form
                         break;
                 }
 
-filteredIds = filteredIds
-    .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
-    .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
-    .ToList();
-    
+                filteredIds = filteredIds
+                    .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
+                    .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
+                    .ToList();
+
                 var result = filteredIds.Take(100000).ToList();
 
                 if (token.IsCancellationRequested) return;
@@ -1445,7 +1475,8 @@ filteredIds = filteredIds
                 _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F0}° (СКМ для вращения)";
                 break;
             case ToolManager.Tool.PlacePrototype:
-                _typeLabel.Text = $"Размещение: {_protoToPlace}  (клик — поставить)";
+                float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
+                _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (CTRL+колесо — вращение)";
                 break;
 
             default:
@@ -1640,6 +1671,7 @@ filteredIds = filteredIds
                     Render();
                 }
             }
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 if (!string.IsNullOrEmpty(_protoToPlace))
@@ -1660,11 +1692,20 @@ filteredIds = filteredIds
                         finalY = precise.y;
                     }
 
-                    grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace });
+                    grid.Entities.Add(new MapEntity
+                    {
+                        X = finalX,  // <-- используем finalX
+                        Y = finalY,  // <-- используем finalY
+                        Proto = _protoToPlace,
+                        Rotation = _currentEntityRotation
+                    });
+
                     SaveState();
                     Render();
                 }
             }
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
             {
                 AddAirAlarm(_map.ActiveGrid, tileX, tileY);
@@ -1684,6 +1725,29 @@ filteredIds = filteredIds
 
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
+        if (ModifierKeys.HasFlag(Keys.Control) && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+        {
+            if (_snapEntityRotation)
+            {
+                float step = (float)(Math.PI / 2);
+                _currentEntityRotation += e.Delta > 0 ? step : -step;
+            }
+            else
+            {
+                float step = (float)(Math.PI / 36); // 5° за "щелчок" колеса
+                _currentEntityRotation += e.Delta > 0 ? step : -step;
+            }
+
+            float fullCircle = (float)(Math.PI * 2);
+            _currentEntityRotation %= fullCircle;
+            if (_currentEntityRotation < 0)
+                _currentEntityRotation += fullCircle;
+
+            Render();
+            return;
+        }
+
+        // Только зум, вращение теперь на ПКМ
         float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
         _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
         Render();
@@ -2562,7 +2626,7 @@ filteredIds = filteredIds
 
         var chkEntities = new CheckBox
         {
-            Text = "Сущности",
+            Text = "Прототипы",
             Checked = _deleteSettings.DeleteEntities,
             AutoSize = true,
             Tag = "entities",
@@ -2668,7 +2732,7 @@ filteredIds = filteredIds
     {
         if (_btnCenterSettings != null)
         {
-        _btnCenterSettings.Text = $"⚙ {_centerOffset.X:F1}/{_centerOffset.Y:F1}";
+            _btnCenterSettings.Text = $"⚙ {_centerOffset.X:F1}/{_centerOffset.Y:F1}";
         }
     }
 
@@ -2719,8 +2783,8 @@ filteredIds = filteredIds
             Value = (decimal)_centerOffset.X,
             Minimum = -2m,
             Maximum = 2m,
-            Increment = 0.1m,
-            DecimalPlaces = 1,
+            Increment = 0.01m,
+            DecimalPlaces = 2,
             Width = 80
         };
         panel.Controls.Add(nudX, 1, row);
