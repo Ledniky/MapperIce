@@ -1,4 +1,5 @@
 using MapperIce.Models;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace MapperIce.Services;
@@ -15,43 +16,112 @@ public class PrototypeIndexer
 
     public string GetRootPath() => _rootPath;
 
-    public void IndexRepository(Repository repo)
+public void IndexRepository(Repository repo)
+{
+    _rootPath = repo.Path;
+    _currentRepoId = repo.Id;
+    _currentRepoPath = repo.Path;
+
+    // Сначала пробуем быстро восстановить индекс из кэша на диске,
+    // чтобы не пересканировать весь репозиторий заново при каждом запуске
+    if (TryLoadCache(repo.Id))
     {
-        _rootPath = repo.Path;
-        _currentRepoId = repo.Id;
-        _currentRepoPath = repo.Path;
-        _prototypes.Clear();
+        OnIndexingComplete?.Invoke();
+        return;
+    }
 
-        string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
-        if (!Directory.Exists(prototypesPath))
+    ReindexFromDisk(repo);
+}
+
+/// <summary>
+/// Полное пересканирование репозитория с диска (используется кнопкой "Обновить"
+/// и как fallback, если кэша ещё нет или он повреждён)
+/// </summary>
+public void ReindexFromDisk(Repository repo)
+{
+    _rootPath = repo.Path;
+    _currentRepoId = repo.Id;
+    _currentRepoPath = repo.Path;
+    _prototypes.Clear();
+
+    string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
+    if (!Directory.Exists(prototypesPath))
+    {
+        MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
+        return;
+    }
+
+    var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
+    int count = 0;
+
+    foreach (var file in yamlFiles)
+    {
+        try
         {
-            MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
-            return;
-        }
-
-        var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
-        int count = 0;
-
-        foreach (var file in yamlFiles)
-        {
-            try
+            var content = File.ReadAllText(file);
+            var protos = ParsePrototypes(content, file);
+            foreach (var proto in protos)
             {
-                var content = File.ReadAllText(file);
-                var protos = ParsePrototypes(content, file);
-                foreach (var proto in protos)
+                if (!_prototypes.ContainsKey(proto.Id))
                 {
-                    if (!_prototypes.ContainsKey(proto.Id))
-                    {
-                        _prototypes[proto.Id] = proto;
-                        count++;
-                    }
+                    _prototypes[proto.Id] = proto;
+                    count++;
                 }
             }
-            catch { }
         }
-
-        OnIndexingComplete?.Invoke();
+        catch { }
     }
+
+    SaveCache(repo.Id);
+    OnIndexingComplete?.Invoke();
+}
+
+private string GetCacheDir()
+{
+    var dir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MapperIce", "index_cache");
+    if (!Directory.Exists(dir))
+        Directory.CreateDirectory(dir);
+    return dir;
+}
+
+private string GetCachePath(string repoId) => Path.Combine(GetCacheDir(), $"{repoId}.json");
+
+private void SaveCache(string repoId)
+{
+    try
+    {
+        var json = JsonSerializer.Serialize(_prototypes.Values.ToList());
+        File.WriteAllText(GetCachePath(repoId), json);
+    }
+    catch { }
+}
+
+private bool TryLoadCache(string repoId)
+{
+    try
+    {
+        var cachePath = GetCachePath(repoId);
+        if (!File.Exists(cachePath)) return false;
+
+        var json = File.ReadAllText(cachePath);
+        var list = JsonSerializer.Deserialize<List<Prototype>>(json);
+        if (list == null || list.Count == 0) return false;
+
+        _prototypes.Clear();
+        foreach (var proto in list)
+        {
+            if (!string.IsNullOrEmpty(proto.Id))
+                _prototypes[proto.Id] = proto;
+        }
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}
 
     private List<Prototype> ParsePrototypes(string content, string filePath)
     {

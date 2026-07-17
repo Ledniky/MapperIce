@@ -6,6 +6,8 @@ namespace MapperIce.Services;
 public class RepositoryManager
 {
     private List<Repository> _repositories = new();
+    private string? _selectedRepositoryId;
+
     private string _configPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "MapperIce",
@@ -13,6 +15,7 @@ public class RepositoryManager
     );
 
     public IReadOnlyList<Repository> Repositories => _repositories;
+    public string? SelectedRepositoryId => _selectedRepositoryId;
     public event Action? OnRepositoriesChanged;
 
     public RepositoryManager()
@@ -59,6 +62,8 @@ public class RepositoryManager
         if (repo != null)
         {
             _repositories.Remove(repo);
+            if (_selectedRepositoryId == id)
+                _selectedRepositoryId = null;
             Save();
             OnRepositoriesChanged?.Invoke();
         }
@@ -81,6 +86,12 @@ public class RepositoryManager
         return _repositories.FirstOrDefault(r => r.Id == id);
     }
 
+    public void SetSelectedRepository(string? id)
+    {
+        _selectedRepositoryId = id;
+        Save();
+    }
+
     private void Save()
     {
         try
@@ -89,7 +100,13 @@ public class RepositoryManager
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir!);
 
-            var json = JsonSerializer.Serialize(_repositories, new JsonSerializerOptions { WriteIndented = true });
+            var config = new RepoConfig
+            {
+                Repositories = _repositories,
+                SelectedRepositoryId = _selectedRepositoryId
+            };
+
+            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_configPath, json);
         }
         catch { }
@@ -101,11 +118,31 @@ public class RepositoryManager
         {
             if (!File.Exists(_configPath)) return;
             var json = File.ReadAllText(_configPath);
+
+            try
+            {
+                var config = JsonSerializer.Deserialize<RepoConfig>(json);
+                if (config != null && config.Repositories != null)
+                {
+                    _repositories = config.Repositories;
+                    _selectedRepositoryId = config.SelectedRepositoryId;
+                    return;
+                }
+            }
+            catch { }
+
+            // Совместимость со старым форматом файла (просто список репозиториев)
             _repositories = JsonSerializer.Deserialize<List<Repository>>(json) ?? new List<Repository>();
         }
         catch
         {
             _repositories = new List<Repository>();
         }
+    }
+
+    private class RepoConfig
+    {
+        public List<Repository> Repositories { get; set; } = new();
+        public string? SelectedRepositoryId { get; set; }
     }
 }
