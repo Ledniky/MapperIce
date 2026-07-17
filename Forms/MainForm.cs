@@ -526,6 +526,11 @@ public class MainForm : Form
                         break;
                 }
 
+filteredIds = filteredIds
+    .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
+    .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
+    .ToList();
+    
                 var result = filteredIds.Take(100000).ToList();
 
                 if (token.IsCancellationRequested) return;
