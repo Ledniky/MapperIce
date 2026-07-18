@@ -93,9 +93,14 @@ private void SaveCache(string repoId)
     try
     {
         var json = JsonSerializer.Serialize(_prototypes.Values.ToList());
-        File.WriteAllText(GetCachePath(repoId), json);
+        var path = GetCachePath(repoId);
+        File.WriteAllText(path, json);
+        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш: {path} ({_prototypes.Count} прототипов)");
     }
-    catch { }
+    catch (Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА сохранения кэша для repoId={repoId}: {ex}");
+    }
 }
 
 private bool TryLoadCache(string repoId)
@@ -103,6 +108,8 @@ private bool TryLoadCache(string repoId)
     try
     {
         var cachePath = GetCachePath(repoId);
+        System.Diagnostics.Debug.WriteLine($"[Cache] Ищу кэш: {cachePath}, exists={File.Exists(cachePath)}");
+
         if (!File.Exists(cachePath)) return false;
 
         var json = File.ReadAllText(cachePath);
@@ -115,14 +122,16 @@ private bool TryLoadCache(string repoId)
             if (!string.IsNullOrEmpty(proto.Id))
                 _prototypes[proto.Id] = proto;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш: {_prototypes.Count} прототипов");
         return true;
     }
-    catch
+    catch (Exception ex)
     {
+        System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА загрузки кэша для repoId={repoId}: {ex}");
         return false;
     }
 }
-
     private List<Prototype> ParsePrototypes(string content, string filePath)
     {
         var result = new List<Prototype>();

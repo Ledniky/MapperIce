@@ -289,7 +289,7 @@ public class MainForm : Form
         _btnPlaceProto = new Button
         {
             Text = "🔒",
-            Location = new Point(5, 35),
+            Location = new Point(3, 35),
             Width = 60,
             Height = 25,
             Enabled = false,
@@ -320,7 +320,7 @@ public class MainForm : Form
         _btnSnapEntityCenter = new Button
         {
             Text = "🔲",
-            Location = new Point(70, 35),
+            Location = new Point(68, 35),
             Width = 60,
             Height = 25,
             BackColor = _snapEntityToCenter ? Color.LightGreen : Color.White,
@@ -337,7 +337,7 @@ public class MainForm : Form
         _btnCenterSettings = new Button
         {
             Text = "⚙ 0.5/0.5",
-            Location = new Point(135, 35),
+            Location = new Point(133, 35),
             Width = 60,
             Height = 25,
             FlatStyle = FlatStyle.Flat,
@@ -358,7 +358,7 @@ public class MainForm : Form
         _btnEntityRotationSnap = new Button
         {
             Text = "📐",
-            Location = new Point(195, 35),
+            Location = new Point(198, 35),
             Width = 30,
             Height = 25,
             BackColor = _snapEntityRotation ? Color.LightGreen : Color.White,
@@ -368,6 +368,13 @@ public class MainForm : Form
         {
             _snapEntityRotation = !_snapEntityRotation;
             _btnEntityRotationSnap.BackColor = _snapEntityRotation ? Color.LightGreen : Color.White;
+
+            if (_snapEntityRotation)
+            {
+                float step = (float)(Math.PI / 2);
+                _currentEntityRotation = (float)(Math.Round(_currentEntityRotation / step) * step);
+                Render();
+            }
         };
         btnPanel.Controls.Add(_btnEntityRotationSnap);
 
@@ -1723,35 +1730,39 @@ public class MainForm : Form
         }
     }
 
-    private void OnMouseWheel(object? sender, MouseEventArgs e)
+private void OnMouseWheel(object? sender, MouseEventArgs e)
+{
+    if (ModifierKeys.HasFlag(Keys.Control) && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
     {
-        if (ModifierKeys.HasFlag(Keys.Control) && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+        if (_snapEntityRotation)
         {
-            if (_snapEntityRotation)
-            {
-                float step = (float)(Math.PI / 2);
-                _currentEntityRotation += e.Delta > 0 ? step : -step;
-            }
-            else
-            {
-                float step = (float)(Math.PI / 36); // 5° за "щелчок" колеса
-                _currentEntityRotation += e.Delta > 0 ? step : -step;
-            }
+            float step = (float)(Math.PI / 2);
+            _currentEntityRotation += e.Delta > 0 ? step : -step;
 
-            float fullCircle = (float)(Math.PI * 2);
-            _currentEntityRotation %= fullCircle;
-            if (_currentEntityRotation < 0)
-                _currentEntityRotation += fullCircle;
-
-            Render();
-            return;
+            // Округляем к ближайшему абсолютному кратному 90°,
+            // а не крутим относительно текущего произвольного угла
+            _currentEntityRotation = (float)(Math.Round(_currentEntityRotation / step) * step);
+        }
+        else
+        {
+            float step = (float)(Math.PI / 36); // 5° за "щелчок" колеса
+            _currentEntityRotation += e.Delta > 0 ? step : -step;
         }
 
-        // Только зум, вращение теперь на ПКМ
-        float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
-        _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
+        float fullCircle = (float)(Math.PI * 2);
+        _currentEntityRotation %= fullCircle;
+        if (_currentEntityRotation < 0)
+            _currentEntityRotation += fullCircle;
+
         Render();
+        return;
     }
+
+    // Только зум, вращение теперь на ПКМ
+    float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
+    _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
+    Render();
+}
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {

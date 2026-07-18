@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\My programs\\MapperIce\\MapperIce.csproj": {}
+    "d:\\My programs\\MapperIce\\MapperIce.csproj": {}
   },
   "projects": {
-    "D:\\My programs\\MapperIce\\MapperIce.csproj": {
+    "d:\\My programs\\MapperIce\\MapperIce.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\My programs\\MapperIce\\MapperIce.csproj",
+        "projectUniqueName": "d:\\My programs\\MapperIce\\MapperIce.csproj",
         "projectName": "MapperIce",
-        "projectPath": "D:\\My programs\\MapperIce\\MapperIce.csproj",
+        "projectPath": "d:\\My programs\\MapperIce\\MapperIce.csproj",
         "packagesPath": "C:\\Users\\Администратор\\.nuget\\packages\\",
-        "outputPath": "D:\\My programs\\MapperIce\\obj\\",
+        "outputPath": "d:\\My programs\\MapperIce\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Администратор\\AppData\\Roaming\\NuGet\\NuGet.Config"
