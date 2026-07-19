@@ -9,6 +9,7 @@ namespace MapperIce.Models;
 public abstract class RoomType
 {
     public abstract string Name { get; }
+    public virtual string Pack => "Vanilla";
     public virtual string Category => "Common";
     public virtual string WallProto => "WallSolid";
     public virtual string FloorProto => "Plating";
@@ -18,7 +19,7 @@ public abstract class RoomType
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
     public virtual bool IsHidden => false;
-    public virtual int Priority => 0;  // ← ДОБАВЛЕНО
+    public virtual int Priority => 0;
 }
 
 // ============================================================
@@ -123,6 +124,7 @@ public class CustomRoomType : RoomType
     }
 
     public override string Name => Data.Name;
+    public override string Pack => Data.Pack;
     public override string Category => Data.Category;
     public override string WallProto => Data.WallProto;
     public override string FloorProto => Data.FloorProto;
@@ -152,6 +154,7 @@ public class CustomRoomType : RoomType
 public class CustomRoomTypeData
 {
     public string Name { get; set; } = "";
+    public string Pack { get; set; } = "Custom";
     public string Category { get; set; } = "Custom";
     public string WallProto { get; set; } = "WallSolid";
     public string FloorProto { get; set; } = "Plating";
@@ -164,10 +167,11 @@ public class CustomRoomTypeData
 
 public class ExportData
 {
-    public string Type { get; set; } = "Single";
+    public string Type { get; set; } = "Single"; // "Single" | "Category" | "Pack"
     public string Name { get; set; } = "";
+    public string Pack { get; set; } = "Custom";
     public string Category { get; set; } = "Custom";
-    public string CategoryColor { get; set; } = "255,136,136,136";  // ← ДОБАВИТЬ
+    public string CategoryColor { get; set; } = "255,136,136,136";
     public string WallProto { get; set; } = "WallSolid";
     public string FloorProto { get; set; } = "Plating";
     public string DoorProto { get; set; } = "Airlock";

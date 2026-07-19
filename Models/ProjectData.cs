@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace MapperIce.Models;
@@ -6,6 +7,7 @@ namespace MapperIce.Models;
 public class ProjectData
 {
     public List<RoomData> Rooms { get; set; } = new();
+    public List<GenericEntityData> Entities { get; set; } = new();
     public string? ActiveGridName { get; set; }
     public DateTime LastSaved { get; set; }
     public string? Version { get; set; } = "1.0";
@@ -32,4 +34,10 @@ public class DoorData
     public int X { get; set; }
     public int Y { get; set; }
     public string Proto { get; set; } = "Airlock";
+}
+
+public class GenericEntityData
+{
+    public string Type { get; set; } = "";   // имя класса, например "PipeEntity", "FireAlarmEntity"
+    public JsonElement Data { get; set; }    // все поля конкретного типа как есть
 }

@@ -1,5 +1,6 @@
 using MapperIce.Models;
 using MapperIce.Services;
+using System.Text.Json;
 
 namespace MapperIce.Forms;
 
@@ -2003,51 +2004,64 @@ private void OnMouseWheel(object? sender, MouseEventArgs e)
 
         if (dialog.ShowDialog() != DialogResult.OK) return;
 
-        try
+try
+{
+    var data = new ProjectData
+    {
+        LastSaved = DateTime.Now,
+        ActiveGridName = _map.ActiveGrid.Name
+    };
+
+    // Комнаты и двери
+    foreach (var room in _map.ActiveGrid.Rooms)
+    {
+        var roomData = new RoomData
         {
-            var data = new ProjectData
+            X = room.X,
+            Y = room.Y,
+            Width = room.Width,
+            Height = room.Height,
+            RoomType = room.RoomType,
+            WallProto = room.WallProto,
+            FloorProto = room.FloorProto,
+            DoorProto = room.DoorProto,
+            GlassDoorProto = room.GlassDoorProto,
+            FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
+            LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
+        };
+
+        foreach (var door in room.Doors)
+        {
+            roomData.Doors.Add(new DoorData
             {
-                LastSaved = DateTime.Now,
-                ActiveGridName = _map.ActiveGrid.Name
-            };
-
-            foreach (var room in _map.ActiveGrid.Rooms)
-            {
-                var roomData = new RoomData
-                {
-                    X = room.X,
-                    Y = room.Y,
-                    Width = room.Width,
-                    Height = room.Height,
-                    RoomType = room.RoomType,
-                    WallProto = room.WallProto,
-                    FloorProto = room.FloorProto,
-                    DoorProto = room.DoorProto,
-                    GlassDoorProto = room.GlassDoorProto,
-                    FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
-                    LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
-                };
-
-                foreach (var door in room.Doors)
-                {
-                    roomData.Doors.Add(new DoorData
-                    {
-                        X = door.X,
-                        Y = door.Y,
-                        Proto = door.Proto
-                    });
-                }
-
-                data.Rooms.Add(roomData);
-            }
-
-            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
-            {
-                WriteIndented = true
+                X = door.X,
+                Y = door.Y,
+                Proto = door.Proto
             });
-            File.WriteAllText(dialog.FileName, json);
-            MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}");
         }
+
+        data.Rooms.Add(roomData);
+    }
+
+    // Все сущности грида (трубы, сигнализации, размещённые прототипы и любые будущие типы).
+    // Пожарные шлюзы (Firelock) не сохраняем — они пересоздаются автоматически
+    // из дверей через DoorUpdater.UpdateAllDoors при загрузке.
+    foreach (var entity in _map.ActiveGrid.Entities.Where(e => e is not FirelockEntity))
+    {
+        data.Entities.Add(new GenericEntityData
+        {
+            Type = entity.GetType().Name,
+            Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
+        });
+    }
+
+    var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+    {
+        WriteIndented = true
+    });
+    File.WriteAllText(dialog.FileName, json);
+    MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}\nСущностей: {data.Entities.Count}");
+}
         catch (Exception ex)
         {
             MessageBox.Show($"Ошибка сохранения: {ex.Message}");
@@ -2074,48 +2088,73 @@ private void OnMouseWheel(object? sender, MouseEventArgs e)
                 return;
             }
 
-            if (_map.ActiveGrid != null)
+if (_map.ActiveGrid != null)
+{
+    _map.ActiveGrid.Rooms.Clear();
+    _map.ActiveGrid.Entities.Clear(); // теперь загружаем ВСЕ сущности заново, полностью
+
+    foreach (var roomData in data.Rooms)
+    {
+        var room = new Room
+        {
+            X = roomData.X,
+            Y = roomData.Y,
+            Width = roomData.Width,
+            Height = roomData.Height,
+            RoomType = roomData.RoomType,
+            WallProto = roomData.WallProto,
+            FloorProto = roomData.FloorProto,
+            DoorProto = roomData.DoorProto,
+            GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
+            FillColor = ParseColor(roomData.FillColor),
+            LineColor = ParseColor(roomData.LineColor)
+        };
+
+        foreach (var doorData in roomData.Doors)
+        {
+            room.Doors.Add(new Door
             {
-                _map.ActiveGrid.Rooms.Clear();
+                X = doorData.X,
+                Y = doorData.Y,
+                Proto = doorData.Proto
+            });
+        }
 
-                foreach (var roomData in data.Rooms)
-                {
-                    var room = new Room
-                    {
-                        X = roomData.X,
-                        Y = roomData.Y,
-                        Width = roomData.Width,
-                        Height = roomData.Height,
-                        RoomType = roomData.RoomType,
-                        WallProto = roomData.WallProto,
-                        FloorProto = roomData.FloorProto,
-                        DoorProto = roomData.DoorProto,
-                        GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
-                        FillColor = ParseColor(roomData.FillColor),
-                        LineColor = ParseColor(roomData.LineColor)
-                    };
+        _map.ActiveGrid.Rooms.Add(room);
+    }
 
-                    foreach (var doorData in roomData.Doors)
-                    {
-                        room.Doors.Add(new Door
-                        {
-                            X = doorData.X,
-                            Y = doorData.Y,
-                            Proto = doorData.Proto
-                        });
-                    }
+    int restoredCount = 0;
+    foreach (var entityData in data.Entities)
+    {
+        if (!EntityTypeRegistry.TryGetType(entityData.Type, out var type))
+            continue; // неизвестный/удалённый тип — пропускаем, не роняем загрузку
 
-                    _map.ActiveGrid.Rooms.Add(room);
-                }
+         try
+    {
+        // Исправление здесь:
+        var restored = JsonSerializer.Deserialize(entityData.Data.GetRawText(), type);
+        if (restored is MapEntity mapEntity)
+        {
+            _map.ActiveGrid.Entities.Add(mapEntity);
+            restoredCount++;
+        }
+    }
+    catch
+    {
+        // повреждённая запись — пропускаем
+    }
+    }
 
-                _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
-                UpdateTileGrid();
-                SaveState();
-                Render();
+    _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
+    UpdateTileGrid();
+    SaveState();
+    Render();
 
-                int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
-                MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}");
-            }
+    int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
+    MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}\nСущностей: {restoredCount}");
+}
+else{ MessageBox.Show("Уже что-то в рабочей области");}
+        
         }
         catch (Exception ex)
         {

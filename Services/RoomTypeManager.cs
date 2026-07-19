@@ -10,7 +10,6 @@ public class RoomTypeManager
     public event Action? OnTypeChanged;
 
     private Dictionary<string, RoomType> _types = new();
-    private Dictionary<string, List<RoomType>> _categories = new();
     public Dictionary<string, Color> _categoryColors { get; set; } = new();
 
     private string _customTypesPath = Path.Combine(
@@ -40,7 +39,6 @@ public class RoomTypeManager
         {
             System.Diagnostics.Debug.WriteLine($"Ошибка в конструкторе RoomTypeManager: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
-
         }
     }
 
@@ -71,9 +69,6 @@ public class RoomTypeManager
                     if (instance.IsHidden) continue;
 
                     _types[instance.Name] = instance;
-                    if (!_categories.ContainsKey(instance.Category))
-                        _categories[instance.Category] = new List<RoomType>();
-                    _categories[instance.Category].Add(instance);
                 }
                 catch (Exception ex)
                 {
@@ -87,7 +82,6 @@ public class RoomTypeManager
             throw;
         }
     }
-
 
     private void LoadCustomTypes()
     {
@@ -105,9 +99,6 @@ public class RoomTypeManager
             {
                 var type = new CustomRoomType(item);
                 _types[type.Name] = type;
-                if (!_categories.ContainsKey(type.Category))
-                    _categories[type.Category] = new List<RoomType>();
-                _categories[type.Category].Add(type);
             }
         }
         catch (Exception ex)
@@ -143,14 +134,13 @@ public class RoomTypeManager
 
     public int GetPriorityForType(string typeName)
     {
-        // Проверяем встроенные типы через свойство Priority
         if (_types.TryGetValue(typeName, out var type))
             return type.Priority;
 
         return 0;
     }
 
-    public void CreateCustomType(string name, string category, string wallProto, string floorProto,
+    public void CreateCustomType(string pack, string name, string category, string wallProto, string floorProto,
         string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
         if (_types.ContainsKey(name))
@@ -162,6 +152,7 @@ public class RoomTypeManager
         var data = new CustomRoomTypeData
         {
             Name = name,
+            Pack = string.IsNullOrWhiteSpace(pack) ? "Custom" : pack,
             Category = category,
             WallProto = wallProto,
             FloorProto = floorProto,
@@ -174,15 +165,12 @@ public class RoomTypeManager
 
         var type = new CustomRoomType(data);
         _types[type.Name] = type;
-        if (!_categories.ContainsKey(type.Category))
-            _categories[type.Category] = new List<RoomType>();
-        _categories[type.Category].Add(type);
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
     }
 
-    public void EditCustomType(string oldName, string newName, string category, string wallProto,
+    public void EditCustomType(string oldName, string newName, string pack, string category, string wallProto,
         string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
@@ -195,16 +183,11 @@ public class RoomTypeManager
         }
 
         _types.Remove(oldName);
-        if (_categories.TryGetValue(oldType.Category, out var list))
-        {
-            list.Remove(oldType);
-            if (list.Count == 0)
-                _categories.Remove(oldType.Category);
-        }
 
         var data = new CustomRoomTypeData
         {
             Name = newName,
+            Pack = string.IsNullOrWhiteSpace(pack) ? "Custom" : pack,
             Category = category,
             WallProto = wallProto,
             FloorProto = floorProto,
@@ -217,9 +200,6 @@ public class RoomTypeManager
 
         var type = new CustomRoomType(data);
         _types[type.Name] = type;
-        if (!_categories.ContainsKey(type.Category))
-            _categories[type.Category] = new List<RoomType>();
-        _categories[type.Category].Add(type);
 
         if (SelectedType == oldName)
             SelectedType = newName;
@@ -234,12 +214,6 @@ public class RoomTypeManager
         if (type == null) return;
 
         _types.Remove(name);
-        if (_categories.TryGetValue(type.Category, out var list))
-        {
-            list.Remove(type);
-            if (list.Count == 0)
-                _categories.Remove(type.Category);
-        }
 
         if (SelectedType == name)
             SelectedType = _types.Keys.FirstOrDefault() ?? "General";
@@ -248,9 +222,47 @@ public class RoomTypeManager
         OnTypeChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Плоский список категорий (как раньше) — категория -> типы, без учёта набора.
+    /// Оставлен для мест, где важна только категория (например, диалог выбора категории при импорте одиночного типа).
+    /// </summary>
     public Dictionary<string, List<RoomType>> GetCategories()
     {
-        return _categories;
+        return _types.Values
+            .GroupBy(t => t.Category)
+            .ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    /// <summary>
+    /// Трёхуровневая иерархия: Набор -> Категория -> Типы.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, List<RoomType>>> GetPackCategories()
+    {
+        var result = new Dictionary<string, Dictionary<string, List<RoomType>>>();
+
+        foreach (var type in _types.Values)
+        {
+            if (!result.TryGetValue(type.Pack, out var categories))
+            {
+                categories = new Dictionary<string, List<RoomType>>();
+                result[type.Pack] = categories;
+            }
+
+            if (!categories.TryGetValue(type.Category, out var list))
+            {
+                list = new List<RoomType>();
+                categories[type.Category] = list;
+            }
+
+            list.Add(type);
+        }
+
+        return result;
+    }
+
+    public List<string> GetPackNames()
+    {
+        return _types.Values.Select(t => t.Pack).Distinct().OrderBy(p => p).ToList();
     }
 
     public void SelectType(string typeName)
@@ -281,45 +293,52 @@ public class RoomTypeManager
         room.Priority = type.Priority;
     }
 
-public void ExportType(string typeName, string filePath)
-{
-    var type = GetRoomType(typeName);
-    if (type == null) return;
+    // ==================== ЭКСПОРТ ====================
 
-    // Получаем цвет категории из словаря (если есть)
-    string categoryColor = "255,136,136,136"; // по умолчанию серый
-    if (_categoryColors != null && _categoryColors.TryGetValue(type.Category, out var color))
+    public void ExportType(string typeName, string filePath)
     {
-        categoryColor = $"{color.A},{color.R},{color.G},{color.B}";
+        var type = GetRoomType(typeName);
+        if (type == null) return;
+
+        string categoryColor = "255,136,136,136";
+        if (_categoryColors != null && _categoryColors.TryGetValue(type.Category, out var color))
+        {
+            categoryColor = $"{color.A},{color.R},{color.G},{color.B}";
+        }
+
+        var data = new ExportData
+        {
+            Type = "Single",
+            Name = type.Name,
+            Pack = type.Pack,
+            Category = type.Category,
+            CategoryColor = categoryColor,
+            WallProto = type.WallProto,
+            FloorProto = type.FloorProto,
+            DoorProto = type.DoorProto,
+            GlassDoorProto = type.GlassDoorProto,
+            FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+            LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+            Priority = type.Priority
+        };
+
+        var json = JsonSerializer.Serialize(data, _jsonOptions);
+        File.WriteAllText(filePath, json);
     }
 
-    var data = new ExportData
+    /// <summary>
+    /// Экспорт всех типов заданной категории внутри конкретного набора
+    /// (пара pack+category нужна, чтобы не перепутать одноимённые категории из разных наборов).
+    /// </summary>
+    public void ExportCategory(string pack, string categoryName, string filePath)
     {
-        Type = "Single",
-        Name = type.Name,
-        Category = type.Category,
-        CategoryColor = categoryColor,  // ← ДОБАВИТЬ
-        WallProto = type.WallProto,
-        FloorProto = type.FloorProto,
-        DoorProto = type.DoorProto,
-        GlassDoorProto = type.GlassDoorProto,
-        FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
-        LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
-        Priority = type.Priority
-    };
-
-    var json = JsonSerializer.Serialize(data, _jsonOptions);
-    File.WriteAllText(filePath, json);
-}
-    public void ExportCategory(string categoryName, string filePath)
-    {
-        if (!_categories.TryGetValue(categoryName, out var types) || types.Count == 0)
+        var types = _types.Values.Where(t => t.Pack == pack && t.Category == categoryName).ToList();
+        if (types.Count == 0)
         {
-            MessageBox.Show($"Категория '{categoryName}' пуста или не найдена");
+            MessageBox.Show($"Категория '{categoryName}' в наборе '{pack}' пуста или не найдена");
             return;
         }
 
-        // Получаем цвет категории
         string categoryColor = "255,136,136,136";
         if (_categoryColors != null && _categoryColors.TryGetValue(categoryName, out var color))
         {
@@ -330,8 +349,9 @@ public void ExportType(string typeName, string filePath)
         {
             Type = "Category",
             Name = type.Name,
+            Pack = type.Pack,
             Category = type.Category,
-            CategoryColor = categoryColor,  // ← ДОБАВИТЬ
+            CategoryColor = categoryColor,
             WallProto = type.WallProto,
             FloorProto = type.FloorProto,
             DoorProto = type.DoorProto,
@@ -343,6 +363,86 @@ public void ExportType(string typeName, string filePath)
 
         var json = JsonSerializer.Serialize(dataList, _jsonOptions);
         File.WriteAllText(filePath, json);
+    }
+
+    /// <summary>
+    /// Экспорт всего набора целиком — все категории и все типы внутри него.
+    /// </summary>
+    public void ExportPack(string pack, string filePath)
+    {
+        var types = _types.Values.Where(t => t.Pack == pack).ToList();
+        if (types.Count == 0)
+        {
+            MessageBox.Show($"Набор '{pack}' пуст или не найден");
+            return;
+        }
+
+        var dataList = types.Select(type =>
+        {
+            string categoryColor = "255,136,136,136";
+            if (_categoryColors != null && _categoryColors.TryGetValue(type.Category, out var color))
+            {
+                categoryColor = $"{color.A},{color.R},{color.G},{color.B}";
+            }
+
+            return new ExportData
+            {
+                Type = "Pack",
+                Name = type.Name,
+                Pack = type.Pack,
+                Category = type.Category,
+                CategoryColor = categoryColor,
+                WallProto = type.WallProto,
+                FloorProto = type.FloorProto,
+                DoorProto = type.DoorProto,
+                GlassDoorProto = type.GlassDoorProto,
+                FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
+                LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
+                Priority = type.Priority
+            };
+        }).ToList();
+
+        var json = JsonSerializer.Serialize(dataList, _jsonOptions);
+        File.WriteAllText(filePath, json);
+    }
+
+    // ==================== ИМПОРТ ====================
+
+    private (int imported, int skipped) ImportEntries(List<ExportData> dataList)
+    {
+        int imported = 0;
+        int skipped = 0;
+
+        foreach (var data in dataList)
+        {
+            if (_types.ContainsKey(data.Name))
+            {
+                skipped++;
+                continue;
+            }
+
+            var customData = new CustomRoomTypeData
+            {
+                Name = data.Name,
+                Pack = string.IsNullOrWhiteSpace(data.Pack) ? "Custom" : data.Pack,
+                Category = data.Category,
+                WallProto = data.WallProto,
+                FloorProto = data.FloorProto,
+                DoorProto = data.DoorProto,
+                GlassDoorProto = data.GlassDoorProto,
+                FillColor = data.FillColor,
+                LineColor = data.LineColor,
+                Priority = data.Priority
+            };
+
+            var type = new CustomRoomType(customData);
+            _types[type.Name] = type;
+            imported++;
+        }
+
+        SaveCustomTypes();
+        OnTypeChanged?.Invoke();
+        return (imported, skipped);
     }
 
     public void ImportType(string filePath)
@@ -360,6 +460,7 @@ public void ExportType(string typeName, string filePath)
         var customData = new CustomRoomTypeData
         {
             Name = data.Name,
+            Pack = string.IsNullOrWhiteSpace(data.Pack) ? "Custom" : data.Pack,
             Category = data.Category,
             WallProto = data.WallProto,
             FloorProto = data.FloorProto,
@@ -372,13 +473,10 @@ public void ExportType(string typeName, string filePath)
 
         var type = new CustomRoomType(customData);
         _types[type.Name] = type;
-        if (!_categories.ContainsKey(type.Category))
-            _categories[type.Category] = new List<RoomType>();
-        _categories[type.Category].Add(type);
 
         SaveCustomTypes();
         OnTypeChanged?.Invoke();
-        MessageBox.Show($"Тип '{type.Name}' импортирован!");
+        MessageBox.Show($"Тип '{type.Name}' импортирован в набор '{type.Pack}', категорию '{type.Category}'!");
     }
 
     public void ImportCategory(string filePath)
@@ -387,45 +485,30 @@ public void ExportType(string typeName, string filePath)
         var dataList = JsonSerializer.Deserialize<List<ExportData>>(json);
         if (dataList == null || dataList.Count == 0) return;
 
-        int imported = 0;
-        int skipped = 0;
-
-        foreach (var data in dataList)
-        {
-            if (_types.ContainsKey(data.Name))
-            {
-                skipped++;
-                continue;
-            }
-
-            var customData = new CustomRoomTypeData
-            {
-                Name = data.Name,
-                Category = data.Category,
-                WallProto = data.WallProto,
-                FloorProto = data.FloorProto,
-                DoorProto = data.DoorProto,
-                GlassDoorProto = data.GlassDoorProto,
-                FillColor = data.FillColor,
-                LineColor = data.LineColor,
-                Priority = data.Priority
-            };
-
-            var type = new CustomRoomType(customData);
-            _types[type.Name] = type;
-            if (!_categories.ContainsKey(type.Category))
-                _categories[type.Category] = new List<RoomType>();
-            _categories[type.Category].Add(type);
-            imported++;
-        }
-
-        SaveCustomTypes();
-        OnTypeChanged?.Invoke();
+        var (imported, skipped) = ImportEntries(dataList);
 
         if (skipped > 0)
             MessageBox.Show($"Импортировано: {imported}, пропущено (уже есть): {skipped}");
         else
             MessageBox.Show($"Импортировано: {imported}");
+    }
+
+    /// <summary>
+    /// Импорт целого набора (файл, созданный ExportPack). Формат идентичен категории —
+    /// каждая запись сама несёт свои Pack и Category, поэтому переиспользуем ту же логику.
+    /// </summary>
+    public void ImportPack(string filePath)
+    {
+        var json = File.ReadAllText(filePath);
+        var dataList = JsonSerializer.Deserialize<List<ExportData>>(json);
+        if (dataList == null || dataList.Count == 0) return;
+
+        var (imported, skipped) = ImportEntries(dataList);
+
+        if (skipped > 0)
+            MessageBox.Show($"Набор импортирован!\nИмпортировано: {imported}, пропущено (уже есть): {skipped}");
+        else
+            MessageBox.Show($"Набор импортирован!\nИмпортировано: {imported}");
     }
 
     public List<string> GetAllTypeNames()

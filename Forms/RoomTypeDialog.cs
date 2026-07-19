@@ -10,6 +10,7 @@ public partial class RoomTypeDialog : Form
     private readonly TreeView _treeView;
     private readonly Panel _editorPanel;
     private RoomType? _selectedType;
+    private CategoryNode? _selectedNode;
     private RoomType? _previousSelectedType;
     private bool _isEditing = false;
     private Button? _btnCreateType;
@@ -281,29 +282,42 @@ public partial class RoomTypeDialog : Form
     private void UpdateTreeView()
     {
         _treeView.Nodes.Clear();
-        var categories = _manager.GetCategories();
+        var packs = _manager.GetPackCategories(); // Набор -> Категория -> Типы
 
-        foreach (var category in categories.OrderBy(c => c.Key))
+        foreach (var pack in packs.OrderBy(p => p.Key))
         {
-            var node = new TreeNode($"📁 {category.Key}");
-            node.Tag = new CategoryNode { Name = category.Key, IsCategory = true };
+            var packNode = new TreeNode($"📦 {pack.Key}");
+            packNode.Tag = new CategoryNode { Name = pack.Key, Level = NodeLevel.Pack };
 
-            // Только цвет текста, без фона
-            if (_categoryColors.TryGetValue(category.Key, out var color))
+            foreach (var category in pack.Value.OrderBy(c => c.Key))
             {
-                node.ForeColor = color;
-            }
+                var categoryNode = new TreeNode($"📁 {category.Key}");
+                categoryNode.Tag = new CategoryNode { Name = category.Key, Level = NodeLevel.Category, Pack = pack.Key };
 
-            foreach (var type in category.Value.OrderBy(t => t.Name))
-            {
-                var typeNode = new TreeNode(type.Name)
+                if (_categoryColors.TryGetValue(category.Key, out var color))
                 {
-                    Tag = new CategoryNode { Name = type.Name, IsCategory = false, RoomType = type },
-                    ForeColor = type.IsCustom ? Color.Blue : Color.Black
-                };
-                node.Nodes.Add(typeNode);
+                    categoryNode.ForeColor = color;
+                }
+
+                foreach (var type in category.Value.OrderBy(t => t.Name))
+                {
+                    var typeNode = new TreeNode(type.Name)
+                    {
+                        Tag = new CategoryNode { Name = type.Name, Level = NodeLevel.Type, Pack = pack.Key, RoomType = type },
+                        ForeColor = type.IsCustom ? Color.Blue : Color.Black
+                    };
+                    categoryNode.Nodes.Add(typeNode);
+                }
+
+                packNode.Nodes.Add(categoryNode);
             }
-            _treeView.Nodes.Add(node);
+
+            _treeView.Nodes.Add(packNode);
+        }
+
+        foreach (TreeNode packNode in _treeView.Nodes)
+        {
+            packNode.Expand();
         }
     }
 
@@ -311,46 +325,52 @@ public partial class RoomTypeDialog : Form
 
     private void SelectTypeInTree(string typeName)
     {
-        foreach (TreeNode categoryNode in _treeView.Nodes)
+        foreach (TreeNode packNode in _treeView.Nodes)
         {
-            foreach (TreeNode typeNode in categoryNode.Nodes)
+            foreach (TreeNode categoryNode in packNode.Nodes)
             {
-                if (typeNode.Tag is CategoryNode node && node.RoomType != null && node.RoomType.Name == typeName)
+                foreach (TreeNode typeNode in categoryNode.Nodes)
                 {
-                    _treeView.SelectedNode = typeNode;
-                    typeNode.EnsureVisible();
-                    return;
+                    if (typeNode.Tag is CategoryNode node && node.RoomType != null && node.RoomType.Name == typeName)
+                    {
+                        _treeView.SelectedNode = typeNode;
+                        typeNode.EnsureVisible();
+                        return;
+                    }
                 }
             }
         }
     }
 
-    private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
+
+private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
+{
+    if (e.Node?.Tag is CategoryNode node)
     {
-        if (e.Node?.Tag is CategoryNode node)
+        _selectedNode = node;
+
+        if (node.Level == NodeLevel.Type && node.RoomType != null)
         {
-            if (!node.IsCategory && node.RoomType != null)
-            {
-                _selectedType = node.RoomType;
-                _previousSelectedType = node.RoomType; // Сохраняем последний выбранный тип
-                _manager.SelectType(_selectedType.Name);
-                UpdateTreeViewSelection();
-                ShowEditor(node.RoomType);
-                OnTypeSelected?.Invoke(_selectedType.Name);
+            _selectedType = node.RoomType;
+            _previousSelectedType = node.RoomType; // Сохраняем последний выбранный тип
+            _manager.SelectType(_selectedType.Name);
+            UpdateTreeViewSelection();
+            ShowEditor(node.RoomType);
+            OnTypeSelected?.Invoke(_selectedType.Name);
 
-                UpdateDeleteButtonState();
-            }
-            else
-            {
-                _selectedType = null;
-                ShowCategoryInfo(node.Name);
+            UpdateDeleteButtonState();
+        }
+        else
+        {
+            _selectedType = null;
+            string label = node.Level == NodeLevel.Pack ? $"Набор: {node.Name}" : node.Name;
+            ShowCategoryInfo(label);
 
-                if (_btnDeleteType != null)
-                    _btnDeleteType.Enabled = false;
-            }
+            if (_btnDeleteType != null)
+                _btnDeleteType.Enabled = false;
         }
     }
-
+}
     private void UpdateDeleteButtonState()
     {
         if (_btnDeleteType == null) return;
@@ -363,14 +383,17 @@ public partial class RoomTypeDialog : Form
     {
         string selectedTypeName = _manager.SelectedType;
 
-        foreach (TreeNode categoryNode in _treeView.Nodes)
+        foreach (TreeNode packNode in _treeView.Nodes)
         {
-            foreach (TreeNode typeNode in categoryNode.Nodes)
+            foreach (TreeNode categoryNode in packNode.Nodes)
             {
-                if (typeNode.Tag is CategoryNode node && node.RoomType != null)
+                foreach (TreeNode typeNode in categoryNode.Nodes)
                 {
-                    typeNode.BackColor = node.RoomType.Name == selectedTypeName ?
-                        Color.LightBlue : Color.White;
+                    if (typeNode.Tag is CategoryNode node && node.RoomType != null)
+                    {
+                        typeNode.BackColor = node.RoomType.Name == selectedTypeName ?
+                            Color.LightBlue : Color.White;
+                    }
                 }
             }
         }
@@ -378,7 +401,7 @@ public partial class RoomTypeDialog : Form
 
     private void OnTreeViewDoubleClick(object? sender, MouseEventArgs e)
     {
-        if (_treeView.SelectedNode?.Tag is CategoryNode node && !node.IsCategory)
+        if (_treeView.SelectedNode?.Tag is CategoryNode node && node.Level == NodeLevel.Type)
         {
             ApplyType();
         }
@@ -388,7 +411,7 @@ public partial class RoomTypeDialog : Form
     {
         if (_treeView.SelectedNode?.Tag is CategoryNode node)
         {
-            if (e.KeyCode == Keys.Enter && !node.IsCategory && node.RoomType != null)
+            if (e.KeyCode == Keys.Enter && node.Level == NodeLevel.Type && node.RoomType != null)
             {
                 ApplyType();
                 e.Handled = true;
@@ -400,6 +423,10 @@ public partial class RoomTypeDialog : Form
             }
         }
     }
+
+
+
+
 
     private void ShowEditor(RoomType type)
     {
@@ -547,6 +574,7 @@ public partial class RoomTypeDialog : Form
                     _manager.EditCustomType(
                         type.Name,
                         txtName.Text,
+                        type.Pack,           // сохраняем набор, к которому уже относится тип
                         txtCategory.Text,
                         txtWall.Text,
                         txtFloor.Text,
@@ -557,9 +585,11 @@ public partial class RoomTypeDialog : Form
                         priority
                     );
                 }
+
                 else
                 {
                     _manager.CreateCustomType(
+                        "Custom",            // новая кастомная копия попадает в набор "Custom"
                         txtName.Text,
                         txtCategory.Text,
                         txtWall.Text,
@@ -635,6 +665,7 @@ public partial class RoomTypeDialog : Form
         if (!string.IsNullOrEmpty(input))
         {
             _manager.CreateCustomType(
+                "Custom",
                 $"{input}_Placeholder",
                 input,
                 "WallSolid",
@@ -648,6 +679,8 @@ public partial class RoomTypeDialog : Form
             UpdateTreeView();
         }
     }
+
+
 
     private void CreateNewType()
     {
@@ -837,6 +870,7 @@ public partial class RoomTypeDialog : Form
 
                 // Создаём тип
                 _manager.CreateCustomType(
+                    "Custom",
                     txtName.Text,
                     txtCategory.Text,
                     txtWall.Text,
@@ -984,96 +1018,216 @@ public partial class RoomTypeDialog : Form
         }
     }
 
-    private void ImportType()
+private void ImportType()
+{
+    using var openFileDialog = new OpenFileDialog
     {
-        using var openFileDialog = new OpenFileDialog
-        {
-            Title = "Импорт типа комнаты",
-            Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
-            FilterIndex = 1,
-            RestoreDirectory = true
-        };
+        Title = "Импорт типов, категорий или наборов (можно выбрать несколько файлов)",
+        Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
+        FilterIndex = 1,
+        RestoreDirectory = true,
+        Multiselect = true
+    };
 
-        if (openFileDialog.ShowDialog() == DialogResult.OK)
+    if (openFileDialog.ShowDialog() != DialogResult.OK) return;
+
+    int totalImported = 0;
+    int totalSkipped = 0;
+    var errors = new List<string>();
+    string? lastSingleImportedName = null;
+
+    foreach (var filePath in openFileDialog.FileNames)
+    {
+        try
         {
-            try
+            var json = File.ReadAllText(filePath);
+            var trimmed = json.TrimStart();
+
+            if (trimmed.StartsWith("["))
             {
-                _manager.ImportType(openFileDialog.FileName);
-
-                var categories = _manager.GetCategories().Keys.ToList();
-                if (categories.Count > 0)
+                // Массив записей — экспорт категории или набора целиком
+                var before = _manager.GetAllTypeNames().Count;
+                _manager.ImportCategory(filePath); // логика идентична для категории и для набора
+                var after = _manager.GetAllTypeNames().Count;
+                totalImported += (after - before);
+            }
+            else
+            {
+                // Одиночный тип
+                var data = System.Text.Json.JsonSerializer.Deserialize<ExportData>(json);
+                if (data == null)
                 {
-                    var categoryDialog = new CategorySelectionDialog(categories);
-                    if (categoryDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        var selectedCategory = categoryDialog.SelectedCategory;
-                        if (!string.IsNullOrEmpty(selectedCategory))
-                        {
-                            var importedType = _manager.GetAllTypeNames().LastOrDefault();
-                            if (importedType != null)
-                            {
-                                var type = _manager.GetRoomType(importedType);
-                                if (type != null && type.IsCustom)
-                                {
-                                    _manager.EditCustomType(
-                                        importedType,
-                                        type.Name,
-                                        selectedCategory,
-                                        type.WallProto,
-                                        type.FloorProto,
-                                        type.DoorProto,
-                                        type.GlassDoorProto,
-                                        type.FillColor,
-                                        type.LineColor,
-                                        _manager.GetPriorityForType(type.Name)
-                                    );
-                                }
-                            }
-                        }
-                    }
+                    errors.Add($"{Path.GetFileName(filePath)}: не удалось прочитать");
+                    continue;
                 }
 
-                UpdateTreeView();
-                MessageBox.Show("Тип успешно импортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (_manager.TypeExists(data.Name))
+                {
+                    totalSkipped++;
+                    continue;
+                }
+
+                _manager.ImportType(filePath);
+                totalImported++;
+                lastSingleImportedName = data.Name;
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка импорта: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"{Path.GetFileName(filePath)}: {ex.Message}");
         }
     }
 
-    private void ExportType()
+    // Если это был единственный одиночный тип — предлагаем выбрать для него категорию,
+    // как и раньше (для пакетного импорта категорию не переспрашиваем — она уже задана в файле)
+    if (openFileDialog.FileNames.Length == 1 && lastSingleImportedName != null)
     {
-        if (_selectedType == null)
+        var categories = _manager.GetCategories().Keys.ToList();
+        if (categories.Count > 0)
         {
-            MessageBox.Show("Сначала выберите тип для экспорта!", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-
-        using var saveFileDialog = new SaveFileDialog
-        {
-            Title = $"Экспорт типа: {_selectedType.Name}",
-            Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
-            FilterIndex = 1,
-            RestoreDirectory = true,
-            FileName = $"{_selectedType.Name}.json"
-        };
-
-        if (saveFileDialog.ShowDialog() == DialogResult.OK)
-        {
-            try
+            var categoryDialog = new CategorySelectionDialog(categories);
+            if (categoryDialog.ShowDialog() == DialogResult.OK)
             {
-                _manager.ExportType(_selectedType.Name, saveFileDialog.FileName);
-                MessageBox.Show($"Тип '{_selectedType.Name}' успешно экспортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка экспорта: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                var selectedCategory = categoryDialog.SelectedCategory;
+                if (!string.IsNullOrEmpty(selectedCategory))
+                {
+                    var type = _manager.GetRoomType(lastSingleImportedName);
+                    if (type != null && type.IsCustom)
+                    {
+                        _manager.EditCustomType(
+                            lastSingleImportedName,
+                            type.Name,
+                            type.Pack,
+                            selectedCategory,
+                            type.WallProto,
+                            type.FloorProto,
+                            type.DoorProto,
+                            type.GlassDoorProto,
+                            type.FillColor,
+                            type.LineColor,
+                            _manager.GetPriorityForType(type.Name)
+                        );
+                    }
+                }
             }
         }
     }
 
+    UpdateTreeView();
+
+    var summary = $"Импортировано типов: {totalImported}";
+    if (totalSkipped > 0) summary += $"\nПропущено (уже есть): {totalSkipped}";
+    if (errors.Count > 0) summary += $"\n\nОшибки:\n{string.Join("\n", errors)}";
+
+    MessageBox.Show(summary, "Импорт завершён", MessageBoxButtons.OK,
+        errors.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+}
+
+private void ExportType()
+{
+    if (_selectedNode == null)
+    {
+        MessageBox.Show("Сначала выберите тип, категорию или набор для экспорта!", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return;
+    }
+
+    switch (_selectedNode.Level)
+    {
+        case NodeLevel.Type:
+            ExportSingleType();
+            break;
+        case NodeLevel.Category:
+            ExportSelectedCategory();
+            break;
+        case NodeLevel.Pack:
+            ExportSelectedPack();
+            break;
+    }
+}
+
+private void ExportSingleType()
+{
+    if (_selectedType == null) return;
+
+    using var saveFileDialog = new SaveFileDialog
+    {
+        Title = $"Экспорт типа: {_selectedType.Name}",
+        Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
+        FilterIndex = 1,
+        RestoreDirectory = true,
+        FileName = $"{_selectedType.Name}.json"
+    };
+
+    if (saveFileDialog.ShowDialog() == DialogResult.OK)
+    {
+        try
+        {
+            _manager.ExportType(_selectedType.Name, saveFileDialog.FileName);
+            MessageBox.Show($"Тип '{_selectedType.Name}' успешно экспортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка экспорта: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+}
+
+private void ExportSelectedCategory()
+{
+    if (_selectedNode?.Pack == null) return;
+    string pack = _selectedNode.Pack;
+    string category = _selectedNode.Name;
+
+    using var saveFileDialog = new SaveFileDialog
+    {
+        Title = $"Экспорт категории: {category} (набор {pack})",
+        Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
+        FilterIndex = 1,
+        RestoreDirectory = true,
+        FileName = $"{pack}_{category}.json"
+    };
+
+    if (saveFileDialog.ShowDialog() == DialogResult.OK)
+    {
+        try
+        {
+            _manager.ExportCategory(pack, category, saveFileDialog.FileName);
+            MessageBox.Show($"Категория '{category}' успешно экспортирована!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка экспорта: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+}
+
+private void ExportSelectedPack()
+{
+    if (_selectedNode == null) return;
+    string pack = _selectedNode.Name;
+
+    using var saveFileDialog = new SaveFileDialog
+    {
+        Title = $"Экспорт набора: {pack}",
+        Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
+        FilterIndex = 1,
+        RestoreDirectory = true,
+        FileName = $"{pack}.json"
+    };
+
+    if (saveFileDialog.ShowDialog() == DialogResult.OK)
+    {
+        try
+        {
+            _manager.ExportPack(pack, saveFileDialog.FileName);
+            MessageBox.Show($"Набор '{pack}' успешно экспортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка экспорта: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+}
     private void DeleteType(string name)
     {
         if (MessageBox.Show($"Удалить тип '{name}'?", "Подтверждение", MessageBoxButtons.YesNo) == DialogResult.Yes)
@@ -1091,10 +1245,14 @@ public partial class RoomTypeDialog : Form
         }
     }
 
+    private enum NodeLevel { Pack, Category, Type }
+
     private class CategoryNode
     {
         public string Name { get; set; } = "";
-        public bool IsCategory { get; set; } = false;
+        public NodeLevel Level { get; set; } = NodeLevel.Type;
+        public string? Pack { get; set; }       // для категории/типа — к какому набору относится
+        public bool IsCategory => Level == NodeLevel.Category; // совместимость со старым кодом ниже
         public RoomType? RoomType { get; set; }
     }
 }
