@@ -1733,15 +1733,15 @@ public class MainForm : Form
 
 private void OnMouseWheel(object? sender, MouseEventArgs e)
 {
-    if (ModifierKeys.HasFlag(Keys.Control) && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+    bool isPlacingPrototype = _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype;
+    bool ctrlHeld = ModifierKeys.HasFlag(Keys.Control);
+
+    if (isPlacingPrototype && !ctrlHeld)
     {
         if (_snapEntityRotation)
         {
             float step = (float)(Math.PI / 2);
             _currentEntityRotation += e.Delta > 0 ? step : -step;
-
-            // Округляем к ближайшему абсолютному кратному 90°,
-            // а не крутим относительно текущего произвольного угла
             _currentEntityRotation = (float)(Math.Round(_currentEntityRotation / step) * step);
         }
         else
@@ -1755,11 +1755,17 @@ private void OnMouseWheel(object? sender, MouseEventArgs e)
         if (_currentEntityRotation < 0)
             _currentEntityRotation += fullCircle;
 
+        if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+        {
+            float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
+            _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (колесо — вращение, CTRL+колесо — зум)";
+        }
+
         Render();
         return;
     }
 
-    // Только зум, вращение теперь на ПКМ
+    // Зум: либо инструмент неактивен (CTRL не важен), либо инструмент активен и CTRL зажат
     float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
     _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
     Render();
@@ -1778,19 +1784,44 @@ private void OnMouseWheel(object? sender, MouseEventArgs e)
 
         if (_map.ActiveGrid == null) return;
 
-        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
-            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-        {
-            var tilePos = GetTilePosition(e.Location);
-            string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
-            _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
-            Render();
-            return;
-        }
-        else
-        {
-            _renderer.ClearAlarmPreview();
-        }
+if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
+    _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+{
+    var tilePos = GetTilePosition(e.Location);
+    string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
+    _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
+    Render();
+    return;
+}
+else
+{
+    _renderer.ClearAlarmPreview();
+}
+
+if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))
+{
+    float previewX, previewY;
+    if (_snapEntityToCenter)
+    {
+        var centerTile = GetTilePosition(e.Location);
+        previewX = centerTile.x + 0.5f;
+        previewY = centerTile.y + 0.5f;
+    }
+    else
+    {
+        var precise = GetPrecisePosition(e.Location);
+        previewX = precise.x;
+        previewY = precise.y;
+    }
+
+    _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
+    Render();
+    return;
+}
+else
+{
+    _renderer.ClearEntityPreview();
+}
 
         if (_isDeletingArea)
         {
@@ -2755,14 +2786,15 @@ else{ MessageBox.Show("Уже что-то в рабочей области");}
         _typeLabel.Text = $"Удаление области: {mode}";
     }
 
-    private void OnMouseLeave(object? sender, EventArgs e)
+private void OnMouseLeave(object? sender, EventArgs e)
+{
+    if (_renderer != null)
     {
-        if (_renderer != null)
-        {
-            _renderer.ClearAlarmPreview();
-            Render();
-        }
+        _renderer.ClearAlarmPreview();
+        _renderer.ClearEntityPreview();
+        Render();
     }
+}
 
     private void ArmPrototypePlacement()
     {
@@ -2846,8 +2878,8 @@ else{ MessageBox.Show("Уже что-то в рабочей области");}
             Value = (decimal)_centerOffset.Y,
             Minimum = -2m,
             Maximum = 2m,
-            Increment = 0.1m,
-            DecimalPlaces = 1,
+            Increment = 0.01m,
+            DecimalPlaces = 2,
             Width = 80
         };
         panel.Controls.Add(nudY, 1, row);

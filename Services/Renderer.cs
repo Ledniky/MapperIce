@@ -1,6 +1,7 @@
 // Services/Renderer.cs
 using MapperIce.Models;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 
 namespace MapperIce.Services;
 
@@ -34,6 +35,11 @@ public class Renderer
     private int _previewY;
     private float _previewRotation;
     private string _previewType = "";
+    private bool _showEntityPreview = false;
+    private float _previewEntityX;
+    private float _previewEntityY;
+    private float _previewEntityRotation;
+    private string _previewEntityProto = "";
 
     public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
@@ -173,12 +179,15 @@ public class Renderer
                 DrawAlarmDirectionArrows(g, grid, scale, viewOffset);
             }
 
-            DrawInfo(g, scale, toolName, map);
+DrawInfo(g, scale, toolName, map);
 
-            // Рисуем предпросмотр сигнализации под курсором
-            DrawAlarmPreview(g, scale, viewOffset);
+// Рисуем предпросмотр сигнализации под курсором
+DrawAlarmPreview(g, scale, viewOffset);
 
-            return _buffer;
+// Рисуем предпросмотр размещаемого прототипа под курсором
+DrawEntityPreview(g, scale, viewOffset);
+
+return _buffer;
         }
     }
 
@@ -812,6 +821,48 @@ public class Renderer
         }
     }
 
+
+private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
+{
+    if (!_showEntityPreview || string.IsNullOrEmpty(_previewEntityProto)) return;
+    if (_currentMap?.ActiveGrid == null) return;
+
+    int tileSize = (int)(Constants.TILE_SIZE * scale);
+    float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
+    float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+
+    float cx = _previewEntityX * tileSize + gridOffsetX - viewOffset.X;
+    float cy = _previewEntityY * tileSize + gridOffsetY - viewOffset.Y;
+    var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+
+    var oldTransform = g.Transform;
+
+    if (_previewEntityRotation != 0)
+    {
+        var matrix = new Matrix();
+        float angleDegrees = _previewEntityRotation * 180 / (float)Math.PI;
+        matrix.RotateAt(angleDegrees, new PointF(cx, cy));
+        g.Transform = matrix;
+    }
+
+    Image? texture = GetOrLoadTexture(_previewEntityProto);
+
+    if (texture != null)
+    {
+        var srcRect = GetSourceRect(_previewEntityProto, texture);
+        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+    }
+    else
+    {
+        using var brush = new SolidBrush(Color.FromArgb(120, 255, 0, 255));
+        g.FillRectangle(brush, rect);
+        using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
+        g.DrawRectangle(pen, rect);
+    }
+
+    g.Transform = oldTransform;
+}
+
     private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
     {
         if (!ShowAlarmConnections) return;
@@ -904,7 +955,19 @@ public class Renderer
     }
 
 
+public void SetEntityPreview(float x, float y, float rotation, string proto)
+{
+    _previewEntityX = x;
+    _previewEntityY = y;
+    _previewEntityRotation = rotation;
+    _previewEntityProto = proto;
+    _showEntityPreview = true;
+}
 
+public void ClearEntityPreview()
+{
+    _showEntityPreview = false;
+}
 
     #endregion
 }
