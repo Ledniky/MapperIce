@@ -88,14 +88,31 @@ private string GetCacheDir()
 
 private string GetCachePath(string repoId) => Path.Combine(GetCacheDir(), $"{repoId}.json");
 
+// Версия формата кэша. Увеличивай на 1 каждый раз, когда меняешь состав полей
+// класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
+// кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
+private const int CacheFormatVersion = 2; // было 1 (без поля Type)
+
+private class CacheEnvelope
+{
+    public int Version { get; set; }
+    public List<Prototype> Prototypes { get; set; } = new();
+}
+
 private void SaveCache(string repoId)
 {
     try
     {
-        var json = JsonSerializer.Serialize(_prototypes.Values.ToList());
+        var envelope = new CacheEnvelope
+        {
+            Version = CacheFormatVersion,
+            Prototypes = _prototypes.Values.ToList()
+        };
+
+        var json = JsonSerializer.Serialize(envelope);
         var path = GetCachePath(repoId);
         File.WriteAllText(path, json);
-        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш: {path} ({_prototypes.Count} прототипов)");
+        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов)");
     }
     catch (Exception ex)
     {
@@ -113,17 +130,24 @@ private bool TryLoadCache(string repoId)
         if (!File.Exists(cachePath)) return false;
 
         var json = File.ReadAllText(cachePath);
-        var list = JsonSerializer.Deserialize<List<Prototype>>(json);
-        if (list == null || list.Count == 0) return false;
+        var envelope = JsonSerializer.Deserialize<CacheEnvelope>(json);
+
+        if (envelope == null || envelope.Version != CacheFormatVersion)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Cache] Кэш устарел или повреждён (версия {envelope?.Version.ToString() ?? "?"}, ожидалась {CacheFormatVersion}) — пересобираю с диска");
+            return false;
+        }
+
+        if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
         _prototypes.Clear();
-        foreach (var proto in list)
+        foreach (var proto in envelope.Prototypes)
         {
             if (!string.IsNullOrEmpty(proto.Id))
                 _prototypes[proto.Id] = proto;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш: {_prototypes.Count} прототипов");
+        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов");
         return true;
     }
     catch (Exception ex)
@@ -131,7 +155,10 @@ private bool TryLoadCache(string repoId)
         System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА загрузки кэша для repoId={repoId}: {ex}");
         return false;
     }
-}
+} 
+
+
+
     private List<Prototype> ParsePrototypes(string content, string filePath)
     {
         var result = new List<Prototype>();
@@ -215,12 +242,12 @@ private bool TryLoadCache(string repoId)
     }
     
     private Prototype? ParseBlock(string block, string id, string type, string filePath)
-    {
+        {
         if (type != "tile" && type != "entity") return null;
         if (string.IsNullOrEmpty(id)) return null;
         // Убрано условие !char.IsUpper(id[0]) - теперь принимаем любые id
 
-        var proto = new Prototype { Id = id, FilePath = filePath };
+        var proto = new Prototype { Id = id, FilePath = filePath, Type = type };
 
         // Ищем parent
         var parentMatch = Regex.Match(block, @"parent:\s*([^\s]+)");

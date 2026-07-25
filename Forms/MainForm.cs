@@ -1599,6 +1599,11 @@ public class MainForm : Form
                 _currentAlarmRotation += (float)(Math.PI / 2);
                 if (_currentAlarmRotation >= (float)(Math.PI * 2))
                     _currentAlarmRotation -= (float)(Math.PI * 2);
+
+                var alarmTilePos = GetTilePosition(_lastMousePosition);  // Переименовано
+                string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
+                _renderer.SetAlarmPreview(alarmTilePos.x, alarmTilePos.y, _currentAlarmRotation, type);
+
                 Render();
                 return;
             }
@@ -1628,6 +1633,9 @@ public class MainForm : Form
 
                 var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
                 if (anyEntity != null) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); return; }
+
+                var placedTile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
+                if (placedTile != null) { grid.Tiles.Remove(placedTile); SaveState(); UpdateTileGrid(); Render(); return; }
 
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
                 if (room != null) { grid.Rooms.Remove(room); SaveState(); UpdateTileGrid(); Render(); return; }
@@ -1679,41 +1687,49 @@ public class MainForm : Form
                     Render();
                 }
             }
-
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 if (!string.IsNullOrEmpty(_protoToPlace))
                 {
                     var grid = _map.ActiveGrid;
 
-                    float finalX, finalY;
-                    if (_snapEntityToCenter)
+                    var proto = _indexer.FindPrototype(_protoToPlace);
+                    bool isTile = proto != null && proto.Type == "tile";
+
+                    if (isTile)
                     {
-                        var centerTile = GetTilePosition(e.Location);
-                        finalX = centerTile.x + _centerOffset.X;
-                        finalY = centerTile.y + _centerOffset.Y;
+                        var placeTilePos = GetTilePosition(e.Location);  // Переименовано
+
+                        var existing = grid.Tiles.FirstOrDefault(t => t.X == placeTilePos.x && t.Y == placeTilePos.y);
+                        if (existing != null)
+                            grid.Tiles.Remove(existing);
+
+                        grid.Tiles.Add(new PlacedTile { X = placeTilePos.x, Y = placeTilePos.y, Proto = _protoToPlace });
                     }
                     else
                     {
-                        var precise = GetPrecisePosition(e.Location);
-                        finalX = precise.x;
-                        finalY = precise.y;
+                        float finalX, finalY;
+                        if (_snapEntityToCenter)
+                        {
+                            var centerTile = GetTilePosition(e.Location);
+                            finalX = centerTile.x + 0.5f;
+                            finalY = centerTile.y + 0.5f;
+                        }
+                        else
+                        {
+                            var precise = GetPrecisePosition(e.Location);
+                            finalX = precise.x;
+                            finalY = precise.y;
+                        }
+
+                        grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation });
                     }
 
-                    grid.Entities.Add(new MapEntity
-                    {
-                        X = finalX,  // <-- используем finalX
-                        Y = finalY,  // <-- используем finalY
-                        Proto = _protoToPlace,
-                        Rotation = _currentEntityRotation
-                    });
-
                     SaveState();
+                    UpdateTileGrid();
                     Render();
                 }
             }
-
-
             else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
             {
                 AddAirAlarm(_map.ActiveGrid, tileX, tileY);
@@ -1731,48 +1747,76 @@ public class MainForm : Form
         }
     }
 
-private void OnMouseWheel(object? sender, MouseEventArgs e)
-{
-    bool isPlacingPrototype = _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype;
-    bool ctrlHeld = ModifierKeys.HasFlag(Keys.Control);
 
-    if (isPlacingPrototype && !ctrlHeld)
+
+
+
+
+
+
+    private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
-        if (_snapEntityRotation)
+        bool isPlacingPrototype = _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype;
+        bool ctrlHeld = ModifierKeys.HasFlag(Keys.Control);
+
+        if (isPlacingPrototype && !ctrlHeld)
         {
-            float step = (float)(Math.PI / 2);
-            _currentEntityRotation += e.Delta > 0 ? step : -step;
-            _currentEntityRotation = (float)(Math.Round(_currentEntityRotation / step) * step);
-        }
-        else
-        {
-            float step = (float)(Math.PI / 36); // 5° за "щелчок" колеса
-            _currentEntityRotation += e.Delta > 0 ? step : -step;
+            if (_snapEntityRotation)
+            {
+                float step = (float)(Math.PI / 2);
+                _currentEntityRotation += e.Delta > 0 ? step : -step;
+                _currentEntityRotation = (float)(Math.Round(_currentEntityRotation / step) * step);
+            }
+            else
+            {
+                float step = (float)(Math.PI / 36); // 5° за "щелчок" колеса
+                _currentEntityRotation += e.Delta > 0 ? step : -step;
+            }
+
+            float fullCircle = (float)(Math.PI * 2);
+            _currentEntityRotation %= fullCircle;
+            if (_currentEntityRotation < 0)
+                _currentEntityRotation += fullCircle;
+
+            // Обновляем превью немедленно, не дожидаясь движения мыши
+            if (!string.IsNullOrEmpty(_protoToPlace))
+            {
+                float previewX, previewY;
+                if (_snapEntityToCenter)
+                {
+                    var centerTile = GetTilePosition(_lastMousePosition);
+                    previewX = centerTile.x + 0.5f;
+                    previewY = centerTile.y + 0.5f;
+                }
+                else
+                {
+                    var precise = GetPrecisePosition(_lastMousePosition);
+                    previewX = precise.x;
+                    previewY = precise.y;
+                }
+                _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
+            }
+
+            if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
+            {
+                float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
+                _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (колесо — вращение, CTRL+колесо — зум)";
+            }
+
+            Render();
+            return;
         }
 
-        float fullCircle = (float)(Math.PI * 2);
-        _currentEntityRotation %= fullCircle;
-        if (_currentEntityRotation < 0)
-            _currentEntityRotation += fullCircle;
-
-        if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
-        {
-            float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
-            _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (колесо — вращение, CTRL+колесо — зум)";
-        }
-
+        // Зум: либо инструмент неактивен (CTRL не важен), либо инструмент активен и CTRL зажат
+        float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
+        _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
         Render();
-        return;
     }
-
-    // Зум: либо инструмент неактивен (CTRL не важен), либо инструмент активен и CTRL зажат
-    float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
-    _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
-    Render();
-}
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
+        _lastMousePosition = e.Location;
+
         if (_isPanning)
         {
             _viewOffset.X -= e.Location.X - _panStart.X;
@@ -1784,44 +1828,44 @@ private void OnMouseWheel(object? sender, MouseEventArgs e)
 
         if (_map.ActiveGrid == null) return;
 
-if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
-    _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-{
-    var tilePos = GetTilePosition(e.Location);
-    string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
-    _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
-    Render();
-    return;
-}
-else
-{
-    _renderer.ClearAlarmPreview();
-}
+        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
+            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+        {
+            var tilePos = GetTilePosition(e.Location);
+            string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
+            _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
+            Render();
+            return;
+        }
+        else
+        {
+            _renderer.ClearAlarmPreview();
+        }
 
-if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))
-{
-    float previewX, previewY;
-    if (_snapEntityToCenter)
-    {
-        var centerTile = GetTilePosition(e.Location);
-        previewX = centerTile.x + 0.5f;
-        previewY = centerTile.y + 0.5f;
-    }
-    else
-    {
-        var precise = GetPrecisePosition(e.Location);
-        previewX = precise.x;
-        previewY = precise.y;
-    }
+        if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))
+        {
+            float previewX, previewY;
+            if (_snapEntityToCenter)
+            {
+                var centerTile = GetTilePosition(e.Location);
+                previewX = centerTile.x + 0.5f;
+                previewY = centerTile.y + 0.5f;
+            }
+            else
+            {
+                var precise = GetPrecisePosition(e.Location);
+                previewX = precise.x;
+                previewY = precise.y;
+            }
 
-    _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
-    Render();
-    return;
-}
-else
-{
-    _renderer.ClearEntityPreview();
-}
+            _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
+            Render();
+            return;
+        }
+        else
+        {
+            _renderer.ClearEntityPreview();
+        }
 
         if (_isDeletingArea)
         {
@@ -2035,64 +2079,68 @@ else
 
         if (dialog.ShowDialog() != DialogResult.OK) return;
 
-try
-{
-    var data = new ProjectData
-    {
-        LastSaved = DateTime.Now,
-        ActiveGridName = _map.ActiveGrid.Name
-    };
-
-    // Комнаты и двери
-    foreach (var room in _map.ActiveGrid.Rooms)
-    {
-        var roomData = new RoomData
+        try
         {
-            X = room.X,
-            Y = room.Y,
-            Width = room.Width,
-            Height = room.Height,
-            RoomType = room.RoomType,
-            WallProto = room.WallProto,
-            FloorProto = room.FloorProto,
-            DoorProto = room.DoorProto,
-            GlassDoorProto = room.GlassDoorProto,
-            FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
-            LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
-        };
-
-        foreach (var door in room.Doors)
-        {
-            roomData.Doors.Add(new DoorData
+            var data = new ProjectData
             {
-                X = door.X,
-                Y = door.Y,
-                Proto = door.Proto
+                LastSaved = DateTime.Now,
+                ActiveGridName = _map.ActiveGrid.Name
+            };
+
+            // Комнаты и двери
+            foreach (var room in _map.ActiveGrid.Rooms)
+            {
+                var roomData = new RoomData
+                {
+                    X = room.X,
+                    Y = room.Y,
+                    Width = room.Width,
+                    Height = room.Height,
+                    RoomType = room.RoomType,
+                    WallProto = room.WallProto,
+                    FloorProto = room.FloorProto,
+                    DoorProto = room.DoorProto,
+                    GlassDoorProto = room.GlassDoorProto,
+                    FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
+                    LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}"
+                };
+
+                foreach (var door in room.Doors)
+                {
+                    roomData.Doors.Add(new DoorData
+                    {
+                        X = door.X,
+                        Y = door.Y,
+                        Proto = door.Proto
+                    });
+                }
+
+                data.Rooms.Add(roomData);
+            }
+
+            // Все сущности грида (трубы, сигнализации, размещённые прототипы и любые будущие типы).
+            // Пожарные шлюзы (Firelock) не сохраняем — они пересоздаются автоматически
+            // из дверей через DoorUpdater.UpdateAllDoors при загрузке.
+            foreach (var entity in _map.ActiveGrid.Entities.Where(e => e is not FirelockEntity))
+            {
+                data.Entities.Add(new GenericEntityData
+                {
+                    Type = entity.GetType().Name,
+                    Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
+                });
+            }
+
+            data.Tiles = _map.ActiveGrid.Tiles
+                .Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto })
+                .ToList();
+
+            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
             });
+            File.WriteAllText(dialog.FileName, json);
+            MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}\nСущностей: {data.Entities.Count}");
         }
-
-        data.Rooms.Add(roomData);
-    }
-
-    // Все сущности грида (трубы, сигнализации, размещённые прототипы и любые будущие типы).
-    // Пожарные шлюзы (Firelock) не сохраняем — они пересоздаются автоматически
-    // из дверей через DoorUpdater.UpdateAllDoors при загрузке.
-    foreach (var entity in _map.ActiveGrid.Entities.Where(e => e is not FirelockEntity))
-    {
-        data.Entities.Add(new GenericEntityData
-        {
-            Type = entity.GetType().Name,
-            Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
-        });
-    }
-
-    var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
-    {
-        WriteIndented = true
-    });
-    File.WriteAllText(dialog.FileName, json);
-    MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}\nСущностей: {data.Entities.Count}");
-}
         catch (Exception ex)
         {
             MessageBox.Show($"Ошибка сохранения: {ex.Message}");
@@ -2119,73 +2167,79 @@ try
                 return;
             }
 
-if (_map.ActiveGrid != null)
-{
-    _map.ActiveGrid.Rooms.Clear();
-    _map.ActiveGrid.Entities.Clear(); // теперь загружаем ВСЕ сущности заново, полностью
-
-    foreach (var roomData in data.Rooms)
-    {
-        var room = new Room
-        {
-            X = roomData.X,
-            Y = roomData.Y,
-            Width = roomData.Width,
-            Height = roomData.Height,
-            RoomType = roomData.RoomType,
-            WallProto = roomData.WallProto,
-            FloorProto = roomData.FloorProto,
-            DoorProto = roomData.DoorProto,
-            GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
-            FillColor = ParseColor(roomData.FillColor),
-            LineColor = ParseColor(roomData.LineColor)
-        };
-
-        foreach (var doorData in roomData.Doors)
-        {
-            room.Doors.Add(new Door
+            if (_map.ActiveGrid != null)
             {
-                X = doorData.X,
-                Y = doorData.Y,
-                Proto = doorData.Proto
-            });
-        }
+                _map.ActiveGrid.Rooms.Clear();
+                _map.ActiveGrid.Entities.Clear();
+                _map.ActiveGrid.Tiles.Clear();
+                foreach (var roomData in data.Rooms)
+                {
+                    var room = new Room
+                    {
+                        X = roomData.X,
+                        Y = roomData.Y,
+                        Width = roomData.Width,
+                        Height = roomData.Height,
+                        RoomType = roomData.RoomType,
+                        WallProto = roomData.WallProto,
+                        FloorProto = roomData.FloorProto,
+                        DoorProto = roomData.DoorProto,
+                        GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
+                        FillColor = ParseColor(roomData.FillColor),
+                        LineColor = ParseColor(roomData.LineColor)
+                    };
 
-        _map.ActiveGrid.Rooms.Add(room);
-    }
+                    foreach (var doorData in roomData.Doors)
+                    {
+                        room.Doors.Add(new Door
+                        {
+                            X = doorData.X,
+                            Y = doorData.Y,
+                            Proto = doorData.Proto
+                        });
+                    }
 
-    int restoredCount = 0;
-    foreach (var entityData in data.Entities)
-    {
-        if (!EntityTypeRegistry.TryGetType(entityData.Type, out var type))
-            continue; // неизвестный/удалённый тип — пропускаем, не роняем загрузку
+                    _map.ActiveGrid.Rooms.Add(room);
+                }
 
-         try
-    {
-        // Исправление здесь:
-        var restored = JsonSerializer.Deserialize(entityData.Data.GetRawText(), type);
-        if (restored is MapEntity mapEntity)
-        {
-            _map.ActiveGrid.Entities.Add(mapEntity);
-            restoredCount++;
-        }
-    }
-    catch
-    {
-        // повреждённая запись — пропускаем
-    }
-    }
+                int restoredCount = 0;
+                foreach (var entityData in data.Entities)
+                {
+                    if (!EntityTypeRegistry.TryGetType(entityData.Type, out var type))
+                        continue; // неизвестный/удалённый тип — пропускаем, не роняем загрузку
 
-    _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
-    UpdateTileGrid();
-    SaveState();
-    Render();
+                    try
+                    {
+                        // Исправление здесь:
+                        var restored = JsonSerializer.Deserialize(entityData.Data.GetRawText(), type);
+                        if (restored is MapEntity mapEntity)
+                        {
+                            _map.ActiveGrid.Entities.Add(mapEntity);
+                            restoredCount++;
+                        }
+                    }
+                    catch
+                    {
+                        // повреждённая запись — пропускаем
+                    }
+                }
 
-    int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
-    MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}\nСущностей: {restoredCount}");
-}
-else{ MessageBox.Show("Уже что-то в рабочей области");}
-        
+
+                foreach (var tileData in data.Tiles)
+                {
+                    _map.ActiveGrid.Tiles.Add(new PlacedTile { X = tileData.X, Y = tileData.Y, Proto = tileData.Proto });
+                }
+
+                _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
+                UpdateTileGrid();
+                SaveState();
+                Render();
+
+                int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
+                MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}\nСущностей: {restoredCount}");
+            }
+            else { MessageBox.Show("Уже что-то в рабочей области"); }
+
         }
         catch (Exception ex)
         {
@@ -2786,15 +2840,15 @@ else{ MessageBox.Show("Уже что-то в рабочей области");}
         _typeLabel.Text = $"Удаление области: {mode}";
     }
 
-private void OnMouseLeave(object? sender, EventArgs e)
-{
-    if (_renderer != null)
+    private void OnMouseLeave(object? sender, EventArgs e)
     {
-        _renderer.ClearAlarmPreview();
-        _renderer.ClearEntityPreview();
-        Render();
+        if (_renderer != null)
+        {
+            _renderer.ClearAlarmPreview();
+            _renderer.ClearEntityPreview();
+            Render();
+        }
     }
-}
 
     private void ArmPrototypePlacement()
     {

@@ -8,6 +8,7 @@ public class ProjectData
 {
     public List<RoomData> Rooms { get; set; } = new();
     public List<GenericEntityData> Entities { get; set; } = new();
+    public List<PlacedTile> Tiles { get; set; } = new();   // ← добавлено
     public string? ActiveGridName { get; set; }
     public DateTime LastSaved { get; set; }
     public string? Version { get; set; } = "1.0";

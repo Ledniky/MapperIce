@@ -280,18 +280,20 @@ public class RoomTypeManager
         return _types.TryGetValue(key, out var type) ? type : _types["General"];
     }
 
-    public void ApplyTypeToRoom(Room room, string? typeName = null)
-    {
-        var type = GetRoomType(typeName);
-        room.WallProto = type.WallProto;
-        room.FloorProto = type.FloorProto;
-        room.DoorProto = type.DoorProto;
-        room.GlassDoorProto = type.GlassDoorProto;
-        room.FillColor = type.FillColor;
-        room.LineColor = type.LineColor;
-        room.RoomType = type.Name;
-        room.Priority = type.Priority;
-    }
+public void ApplyTypeToRoom(Room room, string? typeName = null)
+{
+    var type = GetRoomType(typeName);
+    room.WallProto = type.WallProto;
+    room.FloorProto = type.FloorProto;
+    room.DoorProto = type.DoorProto;
+    room.GlassDoorProto = type.GlassDoorProto;
+    room.AirAlarmProto = type.AirAlarmProto;
+    room.FireAlarmProto = type.FireAlarmProto;
+    room.FillColor = type.FillColor;
+    room.LineColor = type.LineColor;
+    room.RoomType = type.Name;
+    room.Priority = type.Priority;
+}
 
     // ==================== ЭКСПОРТ ====================
 

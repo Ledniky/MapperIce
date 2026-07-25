@@ -41,10 +41,30 @@ public static class YAMLGenerator
         sb.AppendLine("orphans: []");
         sb.AppendLine("nullspace: []");
 
-        // ==================== TILEMAP ====================
-        sb.AppendLine("tilemap:");
-        sb.AppendLine("  0: Space");
-        sb.AppendLine("  1: Plating");
+  // ==================== TILEMAP (динамический — каждый реально используемый тип пола получает свой ID) ====================
+var floorProtoIds = tileGrid.GetTilesByContent(TileContent.Floor)
+    .Select(t => string.IsNullOrEmpty(t.ProtoId) ? "Plating" : t.ProtoId)
+    .Distinct()
+    .ToList();
+
+if (!floorProtoIds.Contains("Plating"))
+    floorProtoIds.Add("Plating"); // стены и двери всегда лежат на Plating
+
+floorProtoIds.Sort(StringComparer.Ordinal);
+
+var tileIdMap = new Dictionary<string, int>();
+int nextTileId = 1; // 0 зарезервирован под Space
+foreach (var proto in floorProtoIds)
+{
+    tileIdMap[proto] = nextTileId++;
+}
+
+sb.AppendLine("tilemap:");
+sb.AppendLine("  0: Space");
+foreach (var kvp in tileIdMap.OrderBy(k => k.Value))
+{
+    sb.AppendLine($"  {kvp.Value}: {kvp.Key}");
+}
 
         // ==================== ENTITIES ====================
         sb.AppendLine("entities:");
@@ -74,7 +94,7 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: MapGrid");
         sb.AppendLine("      chunks:");
 
-        var chunks = GenerateChunksFromTileGrid(tileGrid);
+        var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
         foreach (var chunk in chunks)
         {
             sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
@@ -420,169 +440,173 @@ public static class YAMLGenerator
         }
     }
 
-    private static void GenerateAlarmsGrouped(
-        StringBuilder sb,
-        Grid grid,
-        ref int uid,
-        Dictionary<string, AlarmSettings> alarmSettings,
-        Dictionary<(int x, int y), int> positionToUid)
+private static void GenerateAlarmsGrouped(
+    StringBuilder sb,
+    Grid grid,
+    ref int uid,
+    Dictionary<string, AlarmSettings> alarmSettings,
+    Dictionary<(int x, int y), int> positionToUid)
+{
+    var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
+    var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
+
+    // Генерируем воздушные сигнализации
+    if (airAlarms.Count > 0)
     {
-        var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
-        var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
+        string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
 
-        // Генерируем воздушные сигнализации
-        if (airAlarms.Count > 0)
+        sb.AppendLine($"- proto: {protoId}");
+        sb.AppendLine("  entities:");
+
+        foreach (var alarm in airAlarms)
         {
-            string protoId = alarmSettings.TryGetValue("AirAlarm", out var settings) ? settings.Id : "AirAlarm";
+            int alarmUid = uid;
 
-            sb.AppendLine($"- proto: {protoId}");
-            sb.AppendLine("  entities:");
+            float posX = alarm.X + 0.5f;
+            float posY = -alarm.Y + 0.5f;
 
-            foreach (var alarm in airAlarms)
+            sb.AppendLine($"  - uid: {alarmUid}");
+            sb.AppendLine($"    components:");
+            sb.AppendLine($"    - type: Transform");
+
+            if (alarm.Rotation != 0)
             {
-                int alarmUid = uid;
-
-                float posX = alarm.X + 0.5f;
-                float posY = -alarm.Y + 0.5f;
-
-                sb.AppendLine($"  - uid: {alarmUid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-
-                if (alarm.Rotation != 0)
-                {
-                    string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
-                    sb.AppendLine($"      rot: {rotStr} rad");
-                }
-
-                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
-
-                // Находим устройства для привязки (по комнате)
-                var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
-
-                if (linkedDevices.Count > 0)
-                {
-                    sb.AppendLine($"    - type: DeviceList");
-                    sb.AppendLine($"      devices:");
-                    foreach (var deviceUid in linkedDevices.Distinct())
-                    {
-                        sb.AppendLine($"      - {deviceUid}");
-                    }
-                }
-
-                sb.AppendLine($"    - type: Fixtures");
-                sb.AppendLine($"      fixtures: {{}}");
-
-                uid++;
+                string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
+                sb.AppendLine($"      rot: {rotStr} rad");
             }
-        }
 
-        // Генерируем пожарные сигнализации
-        if (fireAlarms.Count > 0)
-        {
-            string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
+            sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+            sb.AppendLine($"      parent: 2");
 
-            sb.AppendLine($"- proto: {protoId}");
-            sb.AppendLine("  entities:");
+            // Находим устройства для привязки (по комнате)
+            var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
 
-            foreach (var alarm in fireAlarms)
+            if (linkedDevices.Count > 0)
             {
-                int alarmUid = uid;
-
-                float posX = alarm.X + 0.5f;
-                float posY = -alarm.Y + 0.5f;
-
-                sb.AppendLine($"  - uid: {alarmUid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-
-                if (alarm.Rotation != 0)
+                sb.AppendLine($"    - type: DeviceList");
+                sb.AppendLine($"      devices:");
+                foreach (var deviceUid in linkedDevices.Distinct())
                 {
-                    string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
-                    sb.AppendLine($"      rot: {rotStr} rad");
+                    sb.AppendLine($"      - {deviceUid}");
                 }
-
-                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
-
-                // Находим устройства для привязки
-                var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
-
-                if (linkedDevices.Count > 0)
-                {
-                    sb.AppendLine($"    - type: DeviceList");
-                    sb.AppendLine($"      devices:");
-                    foreach (var deviceUid in linkedDevices.Distinct())
-                    {
-                        sb.AppendLine($"      - {deviceUid}");
-                    }
-                }
-
-                sb.AppendLine($"    - type: Fixtures");
-                sb.AppendLine($"      fixtures: {{}}");
-
-                uid++;
             }
+
+            sb.AppendLine($"    - type: Fixtures");
+            sb.AppendLine($"      fixtures: {{}}");
+
+            uid++;
         }
     }
 
-    private static List<int> FindDevicesForAlarm(
-        Grid grid,
-        int x,
-        int y,
-        float rotation,
-        Dictionary<(int x, int y), int> positionToUid)
+    // Генерируем пожарные сигнализации
+    if (fireAlarms.Count > 0)
     {
-        var result = new List<int>();
+        string protoId = alarmSettings.TryGetValue("FireAlarm", out var settings) ? settings.Id : "FireAlarm";
 
-        // Находим комнату, куда направлена сигнализация
-        int dx = 0, dy = 0;
-        float normalized = rotation % (float)(2 * Math.PI);
-        if (normalized < 0) normalized += (float)(2 * Math.PI);
+        sb.AppendLine($"- proto: {protoId}");
+        sb.AppendLine("  entities:");
 
-        if (Math.Abs(normalized) < 0.1f || Math.Abs(normalized - (float)(2 * Math.PI)) < 0.1f)
-            dy = 1;
-        else if (Math.Abs(normalized - (float)(Math.PI / 2)) < 0.1f)
-            dx = -1;
-        else if (Math.Abs(normalized - (float)Math.PI) < 0.1f)
-            dy = -1;
-        else if (Math.Abs(normalized - (float)(3 * Math.PI / 2)) < 0.1f)
-            dx = 1;
+        foreach (var alarm in fireAlarms)
+        {
+            int alarmUid = uid;
 
-        // Проверяем комнату в направлении сигнализации
-        int targetX = x + dx;
-        int targetY = y + dy;
+            float posX = alarm.X + 0.5f;
+            float posY = -alarm.Y + 0.5f;
 
-        Room? room = grid.Rooms.FirstOrDefault(r =>
+            sb.AppendLine($"  - uid: {alarmUid}");
+            sb.AppendLine($"    components:");
+            sb.AppendLine($"    - type: Transform");
+
+            if (alarm.Rotation != 0)
+            {
+                string rotStr = alarm.Rotation.ToString("0.000000000000000").Replace(',', '.');
+                sb.AppendLine($"      rot: {rotStr} rad");
+            }
+
+            sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+            sb.AppendLine($"      parent: 2");
+
+            // Находим устройства для привязки
+            var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
+
+            if (linkedDevices.Count > 0)
+            {
+                sb.AppendLine($"    - type: DeviceList");
+                sb.AppendLine($"      devices:");
+                foreach (var deviceUid in linkedDevices.Distinct())
+                {
+                    sb.AppendLine($"      - {deviceUid}");
+                }
+            }
+
+            sb.AppendLine($"    - type: Fixtures");
+            sb.AppendLine($"      fixtures: {{}}");
+
+            uid++;
+        }
+    }
+}
+
+private static List<int> FindDevicesForAlarm(
+    Grid grid,
+    int x,
+    int y,
+    float rotation,
+    Dictionary<(int x, int y), int> positionToUid)
+{
+    var result = new List<int>();
+
+    // Находим комнату, куда направлена сигнализация
+    int dx = 0, dy = 0;
+    float normalized = rotation % (float)(2 * Math.PI);
+    if (normalized < 0) normalized += (float)(2 * Math.PI);
+
+    if (Math.Abs(normalized) < 0.1f || Math.Abs(normalized - (float)(2 * Math.PI)) < 0.1f)
+        dy = 1;
+    else if (Math.Abs(normalized - (float)(Math.PI / 2)) < 0.1f)
+        dx = -1;
+    else if (Math.Abs(normalized - (float)Math.PI) < 0.1f)
+        dy = -1;
+    else if (Math.Abs(normalized - (float)(3 * Math.PI / 2)) < 0.1f)
+        dx = 1;
+
+    // Проверяем комнату в направлении сигнализации
+    int targetX = x + dx;
+    int targetY = y + dy;
+
+    Room? room = grid.Rooms.FirstOrDefault(r =>
+        targetX >= r.X && targetX < r.X + r.Width &&
+        targetY >= r.Y && targetY < r.Y + r.Height);
+
+    if (room == null)
+    {
+        targetX = x + dx * 2;
+        targetY = y + dy * 2;
+        room = grid.Rooms.FirstOrDefault(r =>
             targetX >= r.X && targetX < r.X + r.Width &&
             targetY >= r.Y && targetY < r.Y + r.Height);
-
-        if (room == null)
-        {
-            targetX = x + dx * 2;
-            targetY = y + dy * 2;
-            room = grid.Rooms.FirstOrDefault(r =>
-                targetX >= r.X && targetX < r.X + r.Width &&
-                targetY >= r.Y && targetY < r.Y + r.Height);
-        }
-
-        if (room == null) return result;
-
-        // Ищем все устройства в этой комнате
-        foreach (var kvp in positionToUid)
-        {
-            var pos = kvp.Key;
-            if (pos.x >= room.X && pos.x < room.X + room.Width &&
-                pos.y >= room.Y && pos.y < room.Y + room.Height)
-            {
-                result.Add(kvp.Value);
-            }
-        }
-
-        return result;
     }
 
+    if (room == null) return result;
+
+    // Ищем все устройства в этой комнате
+    foreach (var kvp in positionToUid)
+    {
+        var pos = kvp.Key;
+        if (pos.x >= room.X && pos.x < room.X + room.Width &&
+            pos.y >= room.Y && pos.y < room.Y + room.Height)
+        {
+            result.Add(kvp.Value);
+        }
+    }
+
+    return result;
+}
+
+
+    
+    
+    
     #endregion
 
     // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
@@ -622,50 +646,59 @@ public static class YAMLGenerator
         return count;
     }
 
-    private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid)
+private static Dictionary<(int x, int y), string> GenerateChunksFromTileGrid(TileGrid tileGrid, Dictionary<string, int> tileIdMap)
+{
+    var chunks = new Dictionary<(int x, int y), int[]>();
+    int platingId = tileIdMap["Plating"];
+
+    var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
+    var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
+    var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
+
+    void PlaceTile(TileData tile, int tileId)
     {
-        var chunks = new Dictionary<(int x, int y), int[]>();
+        int x = tile.X;
+        int y = -tile.Y;
 
-        var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
-        var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-        var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
-        var allTiles = floorTiles.Concat(wallTiles).Concat(doorTiles);
+        int cx = x / CHUNK_SIZE;
+        int cy = y / CHUNK_SIZE;
+        int lx = x % CHUNK_SIZE;
+        int ly = y % CHUNK_SIZE;
 
-        foreach (var tile in allTiles)
+        if (ly < 0)
         {
-            int x = tile.X;
-            int y = -tile.Y;
-
-            int cx = x / CHUNK_SIZE;
-            int cy = y / CHUNK_SIZE;
-            int lx = x % CHUNK_SIZE;
-            int ly = y % CHUNK_SIZE;
-
-            if (ly < 0)
-            {
-                ly += CHUNK_SIZE;
-                cy--;
-            }
-
-            var key = (cx, cy);
-            if (!chunks.ContainsKey(key))
-            {
-                var tiles = new int[CHUNK_SIZE * CHUNK_SIZE];
-                chunks[key] = tiles;
-            }
-
-            int index = ly * CHUNK_SIZE + lx;
-            chunks[key][index] = 1;
+            ly += CHUNK_SIZE;
+            cy--;
         }
 
-        var result = new Dictionary<(int x, int y), string>();
-        foreach (var kvp in chunks)
+        var key = (cx, cy);
+        if (!chunks.ContainsKey(key))
         {
-            result[kvp.Key] = EncodeTiles(kvp.Value);
+            chunks[key] = new int[CHUNK_SIZE * CHUNK_SIZE];
         }
 
-        return result;
+        int index = ly * CHUNK_SIZE + lx;
+        chunks[key][index] = tileId;
     }
+
+    foreach (var tile in floorTiles)
+    {
+        string proto = string.IsNullOrEmpty(tile.ProtoId) ? "Plating" : tile.ProtoId;
+        int tileId = tileIdMap.TryGetValue(proto, out var id) ? id : platingId;
+        PlaceTile(tile, tileId);
+    }
+
+    foreach (var tile in wallTiles) PlaceTile(tile, platingId);
+    foreach (var tile in doorTiles) PlaceTile(tile, platingId);
+
+    var result = new Dictionary<(int x, int y), string>();
+    foreach (var kvp in chunks)
+    {
+        result[kvp.Key] = EncodeTiles(kvp.Value);
+    }
+
+    return result;
+}
 
     private static string EncodeTiles(int[] tileIds)
     {
@@ -807,7 +840,7 @@ public static class YAMLGenerator
             foreach (var entity in group)
             {
                 float posX = entity.X;
-                float posY = -entity.Y;
+                float posY = -entity.Y + 1.0f;
 
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");

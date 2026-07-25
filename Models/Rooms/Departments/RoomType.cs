@@ -12,9 +12,11 @@ public abstract class RoomType
     public virtual string Pack => "Vanilla";
     public virtual string Category => "Common";
     public virtual string WallProto => "WallSolid";
-    public virtual string FloorProto => "Plating";
+    public virtual string FloorProto => "FloorSteel";
     public virtual string DoorProto => "Airlock";
     public virtual string GlassDoorProto => "AirlockGlass";
+    public virtual string? AirAlarmProto => null;  
+    public virtual string? FireAlarmProto => null;
     public virtual Color FillColor => Color.FromArgb(100, 230, 230, 230);
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
@@ -56,6 +58,7 @@ public class Vox : CommonRoomType
 {
     public override string Name => "Vox";
     public override Color FillColor => Color.FromArgb(100, 254, 1, 64);
+    public override string? AirAlarmProto => "AirAlarmVox";
     public override int Priority => 15;
 }
 
@@ -63,6 +66,7 @@ public class Technical : CommonRoomType
 {
     public override string Name => "Technical";
     public override string DoorProto => "AirlockMaintLocked";
+    public override string FloorProto => "Plating";
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
@@ -130,6 +134,8 @@ public class CustomRoomType : RoomType
     public override string FloorProto => Data.FloorProto;
     public override string DoorProto => Data.DoorProto;
     public override string GlassDoorProto => Data.GlassDoorProto;
+    public override string? AirAlarmProto => string.IsNullOrEmpty(Data.AirAlarmProto) ? null : Data.AirAlarmProto;
+    public override string? FireAlarmProto => string.IsNullOrEmpty(Data.FireAlarmProto) ? null : Data.FireAlarmProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -160,6 +166,8 @@ public class CustomRoomTypeData
     public string FloorProto { get; set; } = "Plating";
     public string DoorProto { get; set; } = "Airlock";
     public string GlassDoorProto { get; set; } = "AirlockGlass";
+    public string? AirAlarmProto { get; set; } = null;
+    public string? FireAlarmProto { get; set; } = null;
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

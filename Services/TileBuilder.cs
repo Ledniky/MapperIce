@@ -151,7 +151,7 @@ public class TileBuilder
         //     tile.ProtoId = bestWall;
         // }
 
-        // 3. ДВЕРИ
+// 3. ДВЕРИ
         foreach (var room in allRooms)
         {
             foreach (var door in room.Doors)
@@ -171,6 +171,12 @@ public class TileBuilder
                     }
                 }
             }
+        }
+
+        // 4. РУЧНЫЕ ТАЙЛЫ (переопределение пола в конкретных клетках, вставленные через PlacePrototype)
+        foreach (var placedTile in grid.Tiles)
+        {
+            tileGrid.SetTile(placedTile.X, placedTile.Y, TileContent.Floor, placedTile.Proto, null, -1);
         }
 
         return tileGrid;

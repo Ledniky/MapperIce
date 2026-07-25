@@ -19,7 +19,8 @@ public class ToolManager
         PipeNormal,
         AirAlarm,
         FireAlarm,
-        PlacePrototype
+        PlacePrototype,
+        Move
     }
 
     private Tool _currentTool = Tool.None;

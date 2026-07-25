@@ -61,6 +61,7 @@ public class GridSnapshot
     public List<AirAlarmEntity> AirAlarms { get; set; } = new();
     public List<FireAlarmEntity> FireAlarms { get; set; } = new();
     public List<MapEntity> GenericEntities { get; set; } = new();
+    public List<PlacedTile> Tiles { get; set; } = new();
 
     public GridSnapshot() { }
 
@@ -88,8 +89,10 @@ public class GridSnapshot
         GenericEntities = grid.Entities
             .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity)
-            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid })
+            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
             .ToList();
+
+        Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
     }
 
     public void RestoreTo(Grid grid)
@@ -98,6 +101,7 @@ public class GridSnapshot
 
         grid.Rooms.Clear();
         grid.Entities.Clear();
+        grid.Tiles.Clear();
 
         foreach (var room in Rooms)
         {
@@ -151,6 +155,11 @@ public class GridSnapshot
                 ParentGridUid = entity.ParentGridUid,
                 Rotation = entity.Rotation
             });
+        }
+
+        foreach (var tile in Tiles)
+        {
+            grid.Tiles.Add(new PlacedTile { X = tile.X, Y = tile.Y, Proto = tile.Proto });
         }
     }
 }
