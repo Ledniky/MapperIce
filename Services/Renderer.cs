@@ -40,6 +40,29 @@ public class Renderer
     private float _previewEntityY;
     private float _previewEntityRotation;
     private string _previewEntityProto = "";
+    private List<object> _selection = new();
+    private bool _showSelectionBox = false;
+    private Point _selectionBoxStart;
+    private Point _selectionBoxEnd;
+
+
+    public void SetSelectionBox(Point start, Point end)
+    {
+        _selectionBoxStart = start;
+        _selectionBoxEnd = end;
+        _showSelectionBox = true;
+    }
+
+    public void ClearSelectionBox()
+    {
+        _showSelectionBox = false;
+    }
+
+
+    public void SetSelection(List<object> selection)
+    {
+        _selection = selection;
+    }
 
     public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
@@ -179,15 +202,17 @@ public class Renderer
                 DrawAlarmDirectionArrows(g, grid, scale, viewOffset);
             }
 
-DrawInfo(g, scale, toolName, map);
+            DrawInfo(g, scale, toolName, map);
 
-// Рисуем предпросмотр сигнализации под курсором
-DrawAlarmPreview(g, scale, viewOffset);
+            // Рисуем предпросмотр сигнализации под курсором
+            DrawAlarmPreview(g, scale, viewOffset);
 
-// Рисуем предпросмотр размещаемого прототипа под курсором
-DrawEntityPreview(g, scale, viewOffset);
+            // Рисуем предпросмотр размещаемого прототипа под курсором
+            DrawEntityPreview(g, scale, viewOffset);
+            DrawSelectionHighlight(g, scale, viewOffset);
+            DrawSelectionBox(g);
 
-return _buffer;
+            return _buffer;
         }
     }
 
@@ -822,46 +847,46 @@ return _buffer;
     }
 
 
-private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
-{
-    if (!_showEntityPreview || string.IsNullOrEmpty(_previewEntityProto)) return;
-    if (_currentMap?.ActiveGrid == null) return;
-
-    int tileSize = (int)(Constants.TILE_SIZE * scale);
-    float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
-    float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
-
-    float cx = _previewEntityX * tileSize + gridOffsetX - viewOffset.X;
-    float cy = _previewEntityY * tileSize + gridOffsetY - viewOffset.Y;
-    var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
-
-    var oldTransform = g.Transform;
-
-    if (_previewEntityRotation != 0)
+    private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     {
-        var matrix = new Matrix();
-        float angleDegrees = _previewEntityRotation * 180 / (float)Math.PI;
-        matrix.RotateAt(angleDegrees, new PointF(cx, cy));
-        g.Transform = matrix;
-    }
+        if (!_showEntityPreview || string.IsNullOrEmpty(_previewEntityProto)) return;
+        if (_currentMap?.ActiveGrid == null) return;
 
-    Image? texture = GetOrLoadTexture(_previewEntityProto);
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
 
-    if (texture != null)
-    {
-        var srcRect = GetSourceRect(_previewEntityProto, texture);
-        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-    }
-    else
-    {
-        using var brush = new SolidBrush(Color.FromArgb(120, 255, 0, 255));
-        g.FillRectangle(brush, rect);
-        using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
-        g.DrawRectangle(pen, rect);
-    }
+        float cx = _previewEntityX * tileSize + gridOffsetX - viewOffset.X;
+        float cy = _previewEntityY * tileSize + gridOffsetY - viewOffset.Y;
+        var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
 
-    g.Transform = oldTransform;
-}
+        var oldTransform = g.Transform;
+
+        if (_previewEntityRotation != 0)
+        {
+            var matrix = new Matrix();
+            float angleDegrees = _previewEntityRotation * 180 / (float)Math.PI;
+            matrix.RotateAt(angleDegrees, new PointF(cx, cy));
+            g.Transform = matrix;
+        }
+
+        Image? texture = GetOrLoadTexture(_previewEntityProto);
+
+        if (texture != null)
+        {
+            var srcRect = GetSourceRect(_previewEntityProto, texture);
+            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+        }
+        else
+        {
+            using var brush = new SolidBrush(Color.FromArgb(120, 255, 0, 255));
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
+            g.DrawRectangle(pen, rect);
+        }
+
+        g.Transform = oldTransform;
+    }
 
     private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
     {
@@ -955,19 +980,93 @@ private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     }
 
 
-public void SetEntityPreview(float x, float y, float rotation, string proto)
-{
-    _previewEntityX = x;
-    _previewEntityY = y;
-    _previewEntityRotation = rotation;
-    _previewEntityProto = proto;
-    _showEntityPreview = true;
-}
+    private void DrawSelectionBox(Graphics g)
+    {
+        if (!_showSelectionBox) return;
 
-public void ClearEntityPreview()
-{
-    _showEntityPreview = false;
-}
+        int x = Math.Min(_selectionBoxStart.X, _selectionBoxEnd.X);
+        int y = Math.Min(_selectionBoxStart.Y, _selectionBoxEnd.Y);
+        int w = Math.Abs(_selectionBoxEnd.X - _selectionBoxStart.X);
+        int h = Math.Abs(_selectionBoxEnd.Y - _selectionBoxStart.Y);
+        var rect = new Rectangle(x, y, w, h);
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(45, 255, 140, 0));
+        g.FillRectangle(fillBrush, rect);
+
+        using var pen = new Pen(Color.FromArgb(255, 255, 140, 0), 1.5f)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        g.DrawRectangle(pen, rect);
+    }
+
+
+
+
+
+    private void DrawSelectionHighlight(Graphics g, float scale, PointF viewOffset)
+    {
+        if (_selection == null || _selection.Count == 0) return;
+        if (_currentMap?.ActiveGrid == null) return;
+
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+
+        // Контрастная "обводка": тёмная подложка + яркий пунктир поверх —
+        // читается и на белом, и на тёмном фоне
+        using var outlinePen = new Pen(Color.FromArgb(220, 0, 0, 0), 4);
+        using var pen = new Pen(Color.FromArgb(255, 255, 60, 0), 2)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash,
+            DashPattern = new float[] { 4, 3 }
+        };
+
+        foreach (var obj in _selection)
+        {
+            Rectangle rect;
+
+            switch (obj)
+            {
+                case Room room:
+                    float rx = (room.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;
+                    float ry = (room.Y + gridOffsetY / tileSize) * tileSize - viewOffset.Y;
+                    rect = new Rectangle((int)rx, (int)ry, (int)(room.Width * tileSize), (int)(room.Height * tileSize));
+                    break;
+
+                case MapEntity entity:
+                    float ex = (entity.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;
+                    float ey = (entity.Y + gridOffsetY / tileSize) * tileSize - viewOffset.Y;
+                    rect = new Rectangle((int)(ex - tileSize / 2f), (int)(ey - tileSize / 2f), tileSize, tileSize);
+                    break;
+
+                case PlacedTile tile:
+                    float tx = (tile.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;
+                    float ty = (tile.Y + gridOffsetY / tileSize) * tileSize - viewOffset.Y;
+                    rect = new Rectangle((int)tx, (int)ty, tileSize, tileSize);
+                    break;
+
+                default:
+                    continue;
+            }
+
+            g.DrawRectangle(outlinePen, rect);
+            g.DrawRectangle(pen, rect);
+        }
+    }
+    public void SetEntityPreview(float x, float y, float rotation, string proto)
+    {
+        _previewEntityX = x;
+        _previewEntityY = y;
+        _previewEntityRotation = rotation;
+        _previewEntityProto = proto;
+        _showEntityPreview = true;
+    }
+
+    public void ClearEntityPreview()
+    {
+        _showEntityPreview = false;
+    }
 
     #endregion
 }

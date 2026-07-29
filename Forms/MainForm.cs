@@ -85,6 +85,48 @@ public class MainForm : Form
     private Button? _btnEntityRotationSnap;
     private float _currentEntityRotation = 0f;
 
+    // ===== Инструмент "Перемещение" =====
+    private Button? _btnMove;
+    private Button? _btnMoveSettings;
+    private MoveSettings _moveSettings = new MoveSettings();
+    private Form? _moveSettingsForm = null;
+    private List<object> _selectedObjects = new();
+    private (int x, int y)? _lastClickTile = null;
+
+    private bool _isMovingSelection = false;
+    private bool _isBoxSelecting = false;
+    private bool _boxSelectAdditive = false;
+    private Point _boxStartScreen;
+    private Point _boxEndScreen;
+    private (float x, float y) _moveDragStartWorld;
+    private bool _moveDidMove = false;
+    private List<MoveSnapshotItem> _moveSnapshot = new();
+
+    private class MoveSnapshotItem
+    {
+        public object Target = null!;
+        public float OrigX;
+        public float OrigY;
+    }
+
+    private static int FloorToInt(float v) => (int)Math.Floor(v);
+
+    private bool IsObjectIncludedForMove(object obj)
+    {
+        return obj switch
+        {
+            Room => _moveSettings.IncludeRooms,
+            PlacedTile => _moveSettings.IncludeTiles,
+            PipeEntity => _moveSettings.IncludePipes,
+            AirAlarmEntity => _moveSettings.IncludeAlarms,
+            FireAlarmEntity => _moveSettings.IncludeAlarms,
+            FirelockEntity => _moveSettings.IncludeFirelocks,
+            MapEntity e when e.GetType() == typeof(MapEntity) => _moveSettings.IncludeEntities,
+            MapEntity => _moveSettings.IncludeOther,
+            _ => true
+        };
+    }
+
     public MainForm()
     {
         Text = "MapperIce";
@@ -950,6 +992,78 @@ public class MainForm : Form
         _toolPanel.Controls.Add(alarmPanel);
         y += 40 + 2;
 
+
+
+
+        // === ПЕРЕМЕЩЕНИЕ ===
+        var moveLabel = new Label
+        {
+            Text = "Перемещение:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(moveLabel);
+        y += 20 + 2;
+
+        var movePanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        _btnMove = new Button
+        {
+            Text = "✥ Переместить",
+            Location = new Point(0, 0),
+            Width = movePanel.Width - 42,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnMove.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Move);
+        };
+        movePanel.Controls.Add(_btnMove);
+
+        _btnMoveSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(movePanel.Width - 40, 0),
+            Width = 40,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 12)
+        };
+        _btnMoveSettings.Click += (s, e) => ShowMoveSettingsDialog();
+        movePanel.Controls.Add(_btnMoveSettings);
+
+        movePanel.Resize += (s, e) =>
+        {
+            _btnMove.Width = movePanel.Width - 42;
+            _btnMoveSettings.Location = new Point(movePanel.Width - 40, 0);
+        };
+
+        _toolPanel.Controls.Add(movePanel);
+        y += 40 + 2;
+
+
+
+
+
+
+
+
+
+
         // === УДАЛЕНИЕ ===
         var deleteLabel = new Label
         {
@@ -1429,10 +1543,22 @@ public class MainForm : Form
         _btnPipeDistra.BackColor = Color.White;
         _btnPipeWaste.BackColor = Color.White;
         _btnPipeNormal.BackColor = Color.White;
+        if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
+
+        if (tool != ToolManager.Tool.Move)
+        {
+            _selectedObjects.Clear();
+            _lastClickTile = null;
+            _isMovingSelection = false;
+            _isBoxSelecting = false;
+            _moveSnapshot.Clear();
+            _renderer.SetSelection(_selectedObjects);
+            _renderer.ClearSelectionBox();
+        }
 
         switch (tool)
         {
@@ -1485,6 +1611,10 @@ public class MainForm : Form
             case ToolManager.Tool.PlacePrototype:
                 float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
                 _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (CTRL+колесо — вращение)";
+                break;
+            case ToolManager.Tool.Move:
+                if (_btnMove != null) _btnMove.BackColor = Color.LightBlue;
+                _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}  (ЛКМ — выбрать, CTRL — добавить, SHIFT — область)";
                 break;
 
             default:
@@ -1656,14 +1786,29 @@ public class MainForm : Form
             }
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "Airlock", out _, _snapToGrid))
+                var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+                string doorProto = targetRoom?.DoorProto ?? "Airlock";
+
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, doorProto, out _, _snapToGrid))
                 { SaveState(); UpdateTileGrid(); Render(); }
             }
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.DoorGlass)
             {
-                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, "AirlockGlass", out _, _snapToGrid))
+                var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+                string glassDoorProto = targetRoom?.GlassDoorProto ?? "AirlockGlass";
+
+                if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, glassDoorProto, out _, _snapToGrid))
                 { SaveState(); UpdateTileGrid(); Render(); }
             }
+
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
@@ -1744,6 +1889,93 @@ public class MainForm : Form
                 UpdateTileGrid();
                 Render();
             }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Move)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                bool shiftHeld = ModifierKeys.HasFlag(Keys.Shift);
+                bool ctrlHeld = ModifierKeys.HasFlag(Keys.Control);
+
+                var hit = HitTestAt(tileX, tileY);
+
+                if (shiftHeld && _lastClickTile.HasValue)
+                {
+                    int minX = Math.Min(_lastClickTile.Value.x, tileX);
+                    int maxX = Math.Max(_lastClickTile.Value.x, tileX);
+                    int minY = Math.Min(_lastClickTile.Value.y, tileY);
+                    int maxY = Math.Max(_lastClickTile.Value.y, tileY);
+
+                    _selectedObjects = GatherObjectsInRect(minX, minY, maxX, maxY);
+                    _lastClickTile = (tileX, tileY);
+                    _renderer.SetSelection(_selectedObjects);
+                    _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+                    Render();
+                    return;
+                }
+
+                if (ctrlHeld)
+                {
+                    if (hit != null)
+                    {
+                        if (!_selectedObjects.Contains(hit))
+                            _selectedObjects.Add(hit);
+
+                        _lastClickTile = (tileX, tileY);
+                        _renderer.SetSelection(_selectedObjects);
+                        _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+                        Render();
+                        return;
+                    }
+
+                    // CTRL + клик по пустому месту — начинаем протягивание рамки в АДДИТИВНОМ режиме
+                    _isBoxSelecting = true;
+                    _boxSelectAdditive = true;
+                    _boxStartScreen = e.Location;
+                    _boxEndScreen = e.Location;
+                    _lastClickTile = (tileX, tileY);
+                    Render();
+                    return;
+                }
+
+                // Без модификаторов
+                if (hit != null)
+                {
+                    if (!_selectedObjects.Contains(hit))
+                    {
+                        _selectedObjects = new List<object> { hit };
+                    }
+
+                    _lastClickTile = (tileX, tileY);
+                    _renderer.SetSelection(_selectedObjects);
+                    _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+
+                    BeginMoveDrag(e.Location);
+                    Render();
+                    return;
+                }
+
+                // Клик по пустому месту — начинаем протягивание рамки (заменяющий режим)
+                _isBoxSelecting = true;
+                _boxSelectAdditive = false;
+                _boxStartScreen = e.Location;
+                _boxEndScreen = e.Location;
+                _lastClickTile = (tileX, tileY);
+                Render();
+            }
+
+
+
+
+
+
+
+
+
+
+
+
         }
     }
 
@@ -1816,6 +2048,50 @@ public class MainForm : Form
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
         _lastMousePosition = e.Location;
+
+        if (_isBoxSelecting)
+        {
+            _boxEndScreen = e.Location;
+            _renderer.SetSelectionBox(_boxStartScreen, _boxEndScreen);
+            Render();
+            return;
+        }
+
+        if (_isMovingSelection)
+        {
+            var current = GetPrecisePosition(e.Location);
+            float rawDx = current.x - _moveDragStartWorld.x;
+            float rawDy = current.y - _moveDragStartWorld.y;
+
+            // Если в выделении есть комната или вручную поставленный тайл — вся группа
+            // двигается целыми шагами (по умолчанию 1 тайл), а не плавно по пикселю
+            bool forceSnap = _selectedObjects.Any(o => o is Room || o is PlacedTile);
+
+            float dx, dy;
+            if (forceSnap)
+            {
+                float step = _moveSettings.Step <= 0 ? 1f : _moveSettings.Step;
+                dx = (float)(Math.Round(rawDx / step) * step);
+                dy = (float)(Math.Round(rawDy / step) * step);
+            }
+            else
+            {
+                dx = rawDx;
+                dy = rawDy;
+            }
+
+            if (Math.Abs(dx) > 0.001f || Math.Abs(dy) > 0.001f)
+                _moveDidMove = true;
+
+            foreach (var item in _moveSnapshot)
+            {
+                MoveTarget(item.Target, item.OrigX + dx, item.OrigY + dy);
+            }
+
+            UpdateTileGrid();
+            Render();
+            return;
+        }
 
         if (_isPanning)
         {
@@ -1909,6 +2185,72 @@ public class MainForm : Form
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
     {
+        if (_isBoxSelecting)
+        {
+            _isBoxSelecting = false;
+            _renderer.ClearSelectionBox();
+
+            int dxPix = Math.Abs(_boxEndScreen.X - _boxStartScreen.X);
+            int dyPix = Math.Abs(_boxEndScreen.Y - _boxStartScreen.Y);
+
+            if (dxPix < 3 && dyPix < 3)
+            {
+                // Слишком маленькое перемещение — это был обычный клик по пустому месту, а не протягивание
+                if (!_boxSelectAdditive)
+                {
+                    _selectedObjects.Clear();
+                    _renderer.SetSelection(_selectedObjects);
+                    _typeLabel.Text = "Перемещение: выделено 0";
+                }
+                Render();
+                return;
+            }
+
+            var startTile = GetTilePosition(_boxStartScreen);
+            var endTile = GetTilePosition(_boxEndScreen);
+
+            int minX = Math.Min(startTile.x, endTile.x);
+            int maxX = Math.Max(startTile.x, endTile.x);
+            int minY = Math.Min(startTile.y, endTile.y);
+            int maxY = Math.Max(startTile.y, endTile.y);
+
+            var found = GatherObjectsInRect(minX, minY, maxX, maxY);
+
+            if (_boxSelectAdditive)
+            {
+                foreach (var obj in found)
+                {
+                    if (!_selectedObjects.Contains(obj))
+                        _selectedObjects.Add(obj);
+                }
+            }
+            else
+            {
+                _selectedObjects = found;
+            }
+
+            _renderer.SetSelection(_selectedObjects);
+            _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+            Render();
+            return;
+        }
+
+        if (_isMovingSelection)
+        {
+            _isMovingSelection = false;
+
+            if (_moveDidMove)
+            {
+                UpdateTileGrid();
+                SaveState(); // ← логирование в undo/redo
+            }
+
+            _moveSnapshot.Clear();
+            _moveDidMove = false;
+            Render();
+            return;
+        }
+
         if (e.Button == MouseButtons.Right && _isPanning)
         {
             _isPanning = false;
@@ -2846,6 +3188,13 @@ public class MainForm : Form
         {
             _renderer.ClearAlarmPreview();
             _renderer.ClearEntityPreview();
+
+            if (_isBoxSelecting)
+            {
+                _isBoxSelecting = false;
+                _renderer.ClearSelectionBox();
+            }
+
             Render();
         }
     }
@@ -2983,5 +3332,274 @@ public class MainForm : Form
 
         _centerSettingsForm.FormClosed += (s, e) => { _centerSettingsForm = null; };
         _centerSettingsForm.Show(this);
+    }
+
+
+    // ===== Вспомогательная логика инструмента "Перемещение" =====
+
+    private object? HitTestAt(int tileX, int tileY)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return null;
+
+        // 1. Сущности (сигнализации, трубы, ферлоки, generic-прототипы) — как в Delete,
+        // но с Math.Floor вместо усечения (int), иначе дробные/отрицательные координаты промахиваются
+        var entity = grid.Entities.FirstOrDefault(e =>
+            FloorToInt(e.X) == tileX && FloorToInt(e.Y) == tileY && IsObjectIncludedForMove(e));
+        if (entity != null) return entity;
+
+        // 2. Вручную размещённые тайлы
+        var tile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
+        if (tile != null && IsObjectIncludedForMove(tile)) return tile;
+
+        // 3. Комната
+        var room = grid.Rooms.FirstOrDefault(r =>
+            tileX >= r.X && tileX < r.X + r.Width &&
+            tileY >= r.Y && tileY < r.Y + r.Height);
+        if (room != null && IsObjectIncludedForMove(room)) return room;
+
+        return null;
+    }
+
+    private List<object> GatherObjectsInRect(int minX, int minY, int maxX, int maxY)
+    {
+        var grid = _map.ActiveGrid;
+        var result = new List<object>();
+        if (grid == null) return result;
+
+        foreach (var entity in grid.Entities)
+        {
+            if (!IsObjectIncludedForMove(entity)) continue;
+            if (entity.X >= minX && entity.X <= maxX && entity.Y >= minY && entity.Y <= maxY)
+                result.Add(entity);
+        }
+
+        foreach (var tile in grid.Tiles)
+        {
+            if (!IsObjectIncludedForMove(tile)) continue;
+            if (tile.X >= minX && tile.X <= maxX && tile.Y >= minY && tile.Y <= maxY)
+                result.Add(tile);
+        }
+
+        foreach (var room in grid.Rooms)
+        {
+            if (!IsObjectIncludedForMove(room)) continue;
+            bool overlaps = !(room.X + room.Width <= minX || room.X > maxX ||
+                               room.Y + room.Height <= minY || room.Y > maxY);
+            if (overlaps)
+                result.Add(room);
+        }
+
+        return result;
+    }
+
+
+
+    private static (float x, float y) GetTargetPosition(object target)
+    {
+        return target switch
+        {
+            Room room => (room.X, room.Y),
+            Door door => (door.X, door.Y),
+            PlacedTile tile => (tile.X, tile.Y),
+            MapEntity entity => (entity.X, entity.Y),
+            _ => (0f, 0f)
+        };
+    }
+
+    private static void MoveTarget(object target, float newX, float newY)
+    {
+        switch (target)
+        {
+            case Room room:
+                room.X = (int)Math.Round(newX);
+                room.Y = (int)Math.Round(newY);
+                break;
+            case Door door:
+                door.X = (int)Math.Round(newX);
+                door.Y = (int)Math.Round(newY);
+                break;
+            case PlacedTile tile:
+                tile.X = (int)Math.Round(newX);
+                tile.Y = (int)Math.Round(newY);
+                break;
+            case MapEntity entity:
+                entity.X = newX;
+                entity.Y = newY;
+                break;
+        }
+    }
+
+    private void BeginMoveDrag(Point mouseLocation)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return;
+
+        _moveSnapshot.Clear();
+        var alreadyAdded = new HashSet<object>();
+
+        void AddSnapshot(object target)
+        {
+            if (!alreadyAdded.Add(target)) return;
+            var pos = GetTargetPosition(target);
+            _moveSnapshot.Add(new MoveSnapshotItem { Target = target, OrigX = pos.x, OrigY = pos.y });
+        }
+
+        foreach (var obj in _selectedObjects)
+        {
+            AddSnapshot(obj);
+
+            // При перемещении комнаты вместе с ней должны сдвигаться её двери
+            // и связанные с ними пожарные шлюзы (иначе они рассинхронизируются с новыми стенами)
+            if (obj is Room room)
+            {
+                foreach (var door in room.Doors)
+                {
+                    AddSnapshot(door);
+
+                    var firelock = grid.Entities.OfType<FirelockEntity>()
+                        .FirstOrDefault(f => (int)f.X == door.X && (int)f.Y == door.Y);
+                    if (firelock != null)
+                        AddSnapshot(firelock);
+                }
+            }
+        }
+
+        _moveDragStartWorld = GetPrecisePosition(mouseLocation);
+        _moveDidMove = false;
+        _isMovingSelection = true;
+    }
+
+
+
+    private void ShowMoveSettingsDialog()
+    {
+        if (_moveSettingsForm != null && !_moveSettingsForm.IsDisposed)
+        {
+            _moveSettingsForm.Close();
+            _moveSettingsForm = null;
+            return;
+        }
+
+        _moveSettingsForm = new Form
+        {
+            Text = "Настройки перемещения",
+            Size = new Size(360, 400),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _moveSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(15),
+            RowCount = 9,
+            ColumnCount = 2,
+            AutoSize = true
+        };
+
+        int row = 0;
+
+        panel.Controls.Add(new Label { Text = "Шаг перемещения:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+        var nudStep = new NumericUpDown
+        {
+            Value = (decimal)_moveSettings.Step,
+            Minimum = 0.1m,
+            Maximum = 10m,
+            Increment = 0.1m,
+            DecimalPlaces = 1,
+            Width = 80
+        };
+        panel.Controls.Add(nudStep, 1, row);
+        row++;
+
+        panel.Controls.Add(new Label
+        {
+            Text = "Фильтр выделяемых объектов:",
+            Font = new Font("Arial", 10, FontStyle.Bold),
+            AutoSize = true
+        }, 0, row);
+        panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
+        row++;
+
+        var chkRooms = new CheckBox { Text = "Комнаты", Checked = _moveSettings.IncludeRooms, AutoSize = true };
+        chkRooms.CheckedChanged += (s, e) => _moveSettings.IncludeRooms = chkRooms.Checked;
+        panel.Controls.Add(chkRooms, 0, row);
+        panel.SetColumnSpan(chkRooms, 2);
+        row++;
+
+        var chkTiles = new CheckBox { Text = "Отдельные тайлы", Checked = _moveSettings.IncludeTiles, AutoSize = true };
+        chkTiles.CheckedChanged += (s, e) => _moveSettings.IncludeTiles = chkTiles.Checked;
+        panel.Controls.Add(chkTiles, 0, row);
+        panel.SetColumnSpan(chkTiles, 2);
+        row++;
+
+        var chkPipes = new CheckBox { Text = "Трубы", Checked = _moveSettings.IncludePipes, AutoSize = true };
+        chkPipes.CheckedChanged += (s, e) => _moveSettings.IncludePipes = chkPipes.Checked;
+        panel.Controls.Add(chkPipes, 0, row);
+        panel.SetColumnSpan(chkPipes, 2);
+        row++;
+
+        var chkAlarms = new CheckBox { Text = "Сигнализации", Checked = _moveSettings.IncludeAlarms, AutoSize = true };
+        chkAlarms.CheckedChanged += (s, e) => _moveSettings.IncludeAlarms = chkAlarms.Checked;
+        panel.Controls.Add(chkAlarms, 0, row);
+        panel.SetColumnSpan(chkAlarms, 2);
+        row++;
+
+        var chkFirelocks = new CheckBox { Text = "Пожарные шлюзы", Checked = _moveSettings.IncludeFirelocks, AutoSize = true };
+        chkFirelocks.CheckedChanged += (s, e) => _moveSettings.IncludeFirelocks = chkFirelocks.Checked;
+        panel.Controls.Add(chkFirelocks, 0, row);
+        panel.SetColumnSpan(chkFirelocks, 2);
+        row++;
+
+        var chkEntities = new CheckBox { Text = "Сущности", Checked = _moveSettings.IncludeEntities, AutoSize = true };
+        chkEntities.CheckedChanged += (s, e) => _moveSettings.IncludeEntities = chkEntities.Checked;
+        panel.Controls.Add(chkEntities, 0, row);
+        panel.SetColumnSpan(chkEntities, 2);
+        row++;
+
+        var chkOther = new CheckBox { Text = "Другое", Checked = _moveSettings.IncludeOther, AutoSize = true };
+        chkOther.CheckedChanged += (s, e) => _moveSettings.IncludeOther = chkOther.Checked;
+        panel.Controls.Add(chkOther, 0, row);
+        panel.SetColumnSpan(chkOther, 2);
+        row++;
+
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) =>
+        {
+            _moveSettings.Step = (float)nudStep.Value;
+            _moveSettingsForm?.Close();
+        };
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) => _moveSettingsForm?.Close();
+        btnPanel.Controls.Add(btnCancel);
+
+        _moveSettingsForm.Controls.Add(panel);
+        _moveSettingsForm.Controls.Add(btnPanel);
+
+        _moveSettingsForm.FormClosed += (s, e) => { _moveSettingsForm = null; };
+        _moveSettingsForm.Show(this);
     }
 }

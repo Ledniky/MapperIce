@@ -22,26 +22,6 @@ public class ConferenceRoom : CommandPlusRoomType
     public override int Priority => 150;
 }
 
-public class NTRep : CommandPlusRoomType
-{
-    public override string Name => "NTRep";
-    public override string DoorProto => "AirlockCommandLocked";
-    public override string GlassDoorProto => "AirlockCommandGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 30, 80, 30);
-    public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
-    public override int Priority => 360;
-}
-
-public class BlueShield : CommandPlusRoomType
-{
-    public override string Name => "BlueShield";
-    public override string DoorProto => "AirlockCommandLocked";
-    public override string GlassDoorProto => "AirlockCommandGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 30, 60, 150);
-    public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
-    public override int Priority => 350;
-}
-
 public class CentralCommand : CommandPlusRoomType
 {
     public override string Name => "CentralCommand";
@@ -64,7 +44,7 @@ public class AI : CommandPlusRoomType
     public override int Priority => 170;
 }
 
-public class Satellite : CommandPlusRoomType
+public class SatelliteAI : CommandPlusRoomType
 {
     public override string Name => "Satellite";
     public override string WallProto => "WallReinforced";
