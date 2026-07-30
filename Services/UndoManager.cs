@@ -9,7 +9,6 @@ public class UndoManager
     private int _currentIndex = -1;
     public List<MapEntity> GenericEntities { get; set; } = new();
 
-    // Убираем конструктор с параметрами - используем простой конструктор
     public UndoManager()
     {
     }
@@ -56,6 +55,7 @@ public class GridSnapshot
 {
     public List<Room> Rooms { get; set; } = new();
     public List<Door> Doors { get; set; } = new();
+    public List<Door> LooseDoors { get; set; } = new();
     public List<PipeEntity> Pipes { get; set; } = new();
     public List<FirelockEntity> Firelocks { get; set; } = new();
     public List<AirAlarmEntity> AirAlarms { get; set; } = new();
@@ -69,6 +69,9 @@ public class GridSnapshot
     {
         Rooms = grid.Rooms.Select(r => r.Clone()).ToList();
         Doors = grid.Rooms.SelectMany(r => r.Doors)
+            .Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto })
+            .ToList();
+        LooseDoors = grid.LooseDoors
             .Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto })
             .ToList();
         Pipes = grid.Entities.OfType<PipeEntity>()
@@ -102,6 +105,7 @@ public class GridSnapshot
         grid.Rooms.Clear();
         grid.Entities.Clear();
         grid.Tiles.Clear();
+        grid.LooseDoors.Clear();
 
         foreach (var room in Rooms)
         {
@@ -112,6 +116,11 @@ public class GridSnapshot
                 .Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto })
                 .ToList();
             grid.Rooms.Add(newRoom);
+        }
+
+        foreach (var door in LooseDoors)
+        {
+            grid.LooseDoors.Add(new Door { X = door.X, Y = door.Y, Proto = door.Proto });
         }
 
         foreach (var pipe in Pipes)
@@ -163,6 +172,3 @@ public class GridSnapshot
         }
     }
 }
-
-
-

@@ -183,6 +183,16 @@ public class MainForm : Form
     {
         if (_map.ActiveGrid == null) return;
         snapshot.RestoreTo(_map.ActiveGrid);
+
+        // Объекты, выделенные инструментом "Перемещение", ссылаются на старые экземпляры,
+        // которые после отката пересозданы или удалены — сбрасываем выделение, чтобы
+        // не остаться с "призрачной" рамкой на несуществующих объектах
+        _selectedObjects.Clear();
+        _lastClickTile = null;
+        _isMovingSelection = false;
+        _moveSnapshot.Clear();
+        _renderer.SetSelection(_selectedObjects);
+
         UpdateTileGrid();
         Render();
     }
@@ -1768,7 +1778,15 @@ public class MainForm : Form
                 if (placedTile != null) { grid.Tiles.Remove(placedTile); SaveState(); UpdateTileGrid(); Render(); return; }
 
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
-                if (room != null) { grid.Rooms.Remove(room); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (room != null)
+                {
+                    grid.Rooms.Remove(room);
+                    _doorUpdater.RecalculateAllDoors(grid);
+                    SaveState(); UpdateTileGrid(); Render(); return;
+                }
+
+
+
             }
             else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
             {
@@ -2241,6 +2259,9 @@ public class MainForm : Form
 
             if (_moveDidMove)
             {
+                if (_map.ActiveGrid != null)
+                    _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+
                 UpdateTileGrid();
                 SaveState(); // ← логирование в undo/redo
             }
@@ -2281,6 +2302,13 @@ public class MainForm : Form
 
                 var rooms = grid.Rooms.Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY)).ToList();
                 foreach (var room in rooms) grid.Rooms.Remove(room);
+
+                if (rooms.Count > 0)
+                    _doorUpdater.RecalculateAllDoors(grid);
+
+
+
+
             }
             else
             {
@@ -2293,6 +2321,9 @@ public class MainForm : Form
                         .Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY))
                         .ToList();
                     foreach (var room in roomsToRemove) grid.Rooms.Remove(room);
+
+                    if (roomsToRemove.Count > 0)
+                        _doorUpdater.RecalculateAllDoors(grid);
                 }
 
                 if (_deleteSettings.DeleteAlarms)
@@ -2341,7 +2372,7 @@ public class MainForm : Form
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
-                _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
+                _doorUpdater.RecalculateDoorsInRoom(_map.ActiveGrid, _currentRoom); // снять и переставить двери на её территории
                 UpdateTileGrid();
                 SaveState();
             }

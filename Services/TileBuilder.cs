@@ -72,7 +72,6 @@ public class TileBuilder
                 if (!doorPositions.Contains((x, y)))
                 {
                     var neighbor = GetRoomAt(allRooms, x, y - 1);
-                    // ИСПРАВЛЕНО: используем wall только если есть сосед
                     if (neighbor != null)
                     {
                         string wall = BestWall(room.WallProto, neighbor.WallProto);
@@ -143,15 +142,7 @@ public class TileBuilder
             }
         }
 
-        // УБИРАЕМ применение приоритетов ко всем стенам - теперь оно применяется только при создании
-        // var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-        // foreach (var tile in wallTiles)
-        // {
-        //     string bestWall = GetBestWallForExistingTile(tileGrid, tile.X, tile.Y);
-        //     tile.ProtoId = bestWall;
-        // }
-
-// 3. ДВЕРИ
+        // 3. ДВЕРИ (привязанные к комнатам)
         foreach (var room in allRooms)
         {
             foreach (var door in room.Doors)
@@ -173,10 +164,29 @@ public class TileBuilder
             }
         }
 
-        // 4. РУЧНЫЕ ТАЙЛЫ (переопределение пола в конкретных клетках, вставленные через PlacePrototype)
-        foreach (var placedTile in grid.Tiles)
+        // 3б. "СВОБОДНЫЕ" ДВЕРИ (поставлены вне комнат, при снятом магните)
+        foreach (var looseDoor in grid.LooseDoors)
         {
-            tileGrid.SetTile(placedTile.X, placedTile.Y, TileContent.Floor, placedTile.Proto, null, -1);
+            var existingTile = tileGrid.GetTile(looseDoor.X, looseDoor.Y);
+            bool hasFloor = existingTile != null && existingTile.Content == TileContent.Floor;
+
+            tileGrid.SetTile(looseDoor.X, looseDoor.Y, TileContent.Door, looseDoor.Proto, null, -1);
+
+            var doorTile = tileGrid.GetTile(looseDoor.X, looseDoor.Y);
+            if (doorTile != null)
+            {
+                doorTile.HasFloorUnder = hasFloor;
+                if (hasFloor && existingTile != null)
+                {
+                    doorTile.FloorProtoUnder = existingTile.ProtoId;
+                }
+            }
+        }
+
+        // 4. РУЧНЫЕ ТАЙЛЫ (переопределение пола в конкретных клетках, вставленные через PlacePrototype)
+        foreach (var manualTile in grid.Tiles)
+        {
+            tileGrid.SetTile(manualTile.X, manualTile.Y, TileContent.Floor, manualTile.Proto, null, -1);
         }
 
         return tileGrid;
