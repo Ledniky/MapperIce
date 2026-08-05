@@ -10,39 +10,40 @@ public class PrototypeIndexer
     private string _currentRepoPath = "";
     private string _currentRepoId = "";
     private string _rootPath = "";
-
+    private Dictionary<string, Palette> _palettes = new();
     public event Action? OnIndexingComplete;
     public string CurrentRepoId => _currentRepoId;
 
     public string GetRootPath() => _rootPath;
 
-public void IndexRepository(Repository repo)
-{
-    _rootPath = repo.Path;
-    _currentRepoId = repo.Id;
-    _currentRepoPath = repo.Path;
-
-    // Сначала пробуем быстро восстановить индекс из кэша на диске,
-    // чтобы не пересканировать весь репозиторий заново при каждом запуске
-    if (TryLoadCache(repo.Id))
+    public void IndexRepository(Repository repo)
     {
-        OnIndexingComplete?.Invoke();
-        return;
+        _rootPath = repo.Path;
+        _currentRepoId = repo.Id;
+        _currentRepoPath = repo.Path;
+
+        // Сначала пробуем быстро восстановить индекс из кэша на диске,
+        // чтобы не пересканировать весь репозиторий заново при каждом запуске
+        if (TryLoadCache(repo.Id))
+        {
+            OnIndexingComplete?.Invoke();
+            return;
+        }
+
+        ReindexFromDisk(repo);
     }
 
-    ReindexFromDisk(repo);
-}
-
-/// <summary>
-/// Полное пересканирование репозитория с диска (используется кнопкой "Обновить"
-/// и как fallback, если кэша ещё нет или он повреждён)
-/// </summary>
+    /// <summary>
+    /// Полное пересканирование репозитория с диска (используется кнопкой "Обновить"
+    /// и как fallback, если кэша ещё нет или он повреждён)
+    /// </summary>
 public void ReindexFromDisk(Repository repo)
 {
     _rootPath = repo.Path;
     _currentRepoId = repo.Id;
     _currentRepoPath = repo.Path;
     _prototypes.Clear();
+    _palettes.Clear();
 
     string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
     if (!Directory.Exists(prototypesPath))
@@ -68,6 +69,13 @@ public void ReindexFromDisk(Repository repo)
                     count++;
                 }
             }
+
+            var palettes = ParsePalettes(content);
+            foreach (var palette in palettes)
+            {
+                if (!string.IsNullOrEmpty(palette.Id))
+                    _palettes[palette.Id] = palette;
+            }
         }
         catch { }
     }
@@ -76,27 +84,30 @@ public void ReindexFromDisk(Repository repo)
     OnIndexingComplete?.Invoke();
 }
 
-private string GetCacheDir()
-{
-    var dir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MapperIce", "index_cache");
-    if (!Directory.Exists(dir))
-        Directory.CreateDirectory(dir);
-    return dir;
-}
 
-private string GetCachePath(string repoId) => Path.Combine(GetCacheDir(), $"{repoId}.json");
+    private string GetCacheDir()
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MapperIce", "index_cache");
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        return dir;
+    }
 
-// Версия формата кэша. Увеличивай на 1 каждый раз, когда меняешь состав полей
-// класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
-// кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
-private const int CacheFormatVersion = 2; // было 1 (без поля Type)
+    private string GetCachePath(string repoId) => Path.Combine(GetCacheDir(), $"{repoId}.json");
+
+    // Версия формата кэша. Увеличивай на 1 каждый раз, когда меняешь состав полей
+    // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
+    // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
+    
+    private const int CacheFormatVersion = 5; 
 
 private class CacheEnvelope
 {
     public int Version { get; set; }
     public List<Prototype> Prototypes { get; set; } = new();
+    public List<Palette> Palettes { get; set; } = new();
 }
 
 private void SaveCache(string repoId)
@@ -106,13 +117,14 @@ private void SaveCache(string repoId)
         var envelope = new CacheEnvelope
         {
             Version = CacheFormatVersion,
-            Prototypes = _prototypes.Values.ToList()
+            Prototypes = _prototypes.Values.ToList(),
+            Palettes = _palettes.Values.ToList()
         };
 
         var json = JsonSerializer.Serialize(envelope);
         var path = GetCachePath(repoId);
         File.WriteAllText(path, json);
-        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов)");
+        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов, {_palettes.Count} палитр)");
     }
     catch (Exception ex)
     {
@@ -120,25 +132,27 @@ private void SaveCache(string repoId)
     }
 }
 
-private bool TryLoadCache(string repoId)
-{
-    try
+
+
+    private bool TryLoadCache(string repoId)
     {
-        var cachePath = GetCachePath(repoId);
-        System.Diagnostics.Debug.WriteLine($"[Cache] Ищу кэш: {cachePath}, exists={File.Exists(cachePath)}");
-
-        if (!File.Exists(cachePath)) return false;
-
-        var json = File.ReadAllText(cachePath);
-        var envelope = JsonSerializer.Deserialize<CacheEnvelope>(json);
-
-        if (envelope == null || envelope.Version != CacheFormatVersion)
+        try
         {
-            System.Diagnostics.Debug.WriteLine($"[Cache] Кэш устарел или повреждён (версия {envelope?.Version.ToString() ?? "?"}, ожидалась {CacheFormatVersion}) — пересобираю с диска");
-            return false;
-        }
+            var cachePath = GetCachePath(repoId);
+            System.Diagnostics.Debug.WriteLine($"[Cache] Ищу кэш: {cachePath}, exists={File.Exists(cachePath)}");
 
-        if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
+            if (!File.Exists(cachePath)) return false;
+
+            var json = File.ReadAllText(cachePath);
+            var envelope = JsonSerializer.Deserialize<CacheEnvelope>(json);
+
+            if (envelope == null || envelope.Version != CacheFormatVersion)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Cache] Кэш устарел или повреждён (версия {envelope?.Version.ToString() ?? "?"}, ожидалась {CacheFormatVersion}) — пересобираю с диска");
+                return false;
+            }
+
+if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
         _prototypes.Clear();
         foreach (var proto in envelope.Prototypes)
@@ -147,15 +161,25 @@ private bool TryLoadCache(string repoId)
                 _prototypes[proto.Id] = proto;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов");
+        _palettes.Clear();
+        if (envelope.Palettes != null)
+        {
+            foreach (var palette in envelope.Palettes)
+            {
+                if (!string.IsNullOrEmpty(palette.Id))
+                    _palettes[palette.Id] = palette;
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов, {_palettes.Count} палитр");
         return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА загрузки кэша для repoId={repoId}: {ex}");
+            return false;
+        }
     }
-    catch (Exception ex)
-    {
-        System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА загрузки кэша для repoId={repoId}: {ex}");
-        return false;
-    }
-} 
 
 
 
@@ -240,10 +264,10 @@ private bool TryLoadCache(string repoId)
 
         return result;
     }
-    
+
     private Prototype? ParseBlock(string block, string id, string type, string filePath)
-        {
-        if (type != "tile" && type != "entity") return null;
+    {
+        if (type != "tile" && type != "entity" && type != "decal") return null;
         if (string.IsNullOrEmpty(id)) return null;
         // Убрано условие !char.IsUpper(id[0]) - теперь принимаем любые id
 
@@ -257,7 +281,11 @@ private bool TryLoadCache(string repoId)
         }
 
         // Ищем sprite
-        var s = Regex.Match(block, @"sprite:\s*([^\s]+)");
+        var nestedSprite = Regex.Match(block, @"sprite:\s*\r?\n\s*sprite:\s*([^\s]+)");
+        var s = nestedSprite.Success
+            ? nestedSprite
+            : Regex.Match(block, @"sprite:\s*([^\s]+)");
+
         if (s.Success)
         {
             var path = s.Groups[1].Value.Replace("/", "\\").TrimStart('\\');
@@ -306,6 +334,11 @@ private bool TryLoadCache(string repoId)
         return _prototypes.Keys.OrderBy(k => k).ToList();
     }
 
+    public List<Palette> GetPalettes()
+    {
+        return _palettes.Values.OrderBy(p => p.Name).ToList();
+    }
+
     public List<string> SearchPrototypes(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -320,7 +353,7 @@ private bool TryLoadCache(string repoId)
     public string? GetFullTexturePath(string id)
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;
-        
+
         var proto = FindPrototype(id);
         if (proto == null) return null;
 
@@ -330,7 +363,7 @@ private bool TryLoadCache(string repoId)
 
         // 2. Ищем state - СНАЧАЛА у самого прототипа, потом у родителей
         string? state = FindStateRecursive(id, 0);
-        
+
         // 3. Если state не найден - используем "closed" как дефолтный для дверей
         if (string.IsNullOrEmpty(state))
         {
@@ -344,7 +377,7 @@ private bool TryLoadCache(string repoId)
             path = path.Substring(9);
 
         string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
-        
+
         if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
         {
             if (Directory.Exists(fullPath))
@@ -356,7 +389,7 @@ private bool TryLoadCache(string repoId)
                     System.Diagnostics.Debug.WriteLine($"Найден файл: {stateFile}");
                     return stateFile;
                 }
-                
+
                 // Если не найден - пробуем стандартные состояния
                 string[] fallbackStates = { "closed", "open", "welded", "bolted", "full", "icon" };
                 foreach (var fallback in fallbackStates)
@@ -368,7 +401,7 @@ private bool TryLoadCache(string repoId)
                         return testPath;
                     }
                 }
-                
+
                 // Берем любой PNG
                 var pngFiles = Directory.GetFiles(fullPath, "*.png", SearchOption.TopDirectoryOnly);
                 if (pngFiles.Length > 0)
@@ -390,10 +423,10 @@ private bool TryLoadCache(string repoId)
     private string? FindPathRecursive(string id, int depth)
     {
         if (depth > 10) return null;
-        
+
         var proto = FindPrototype(id);
         if (proto == null) return null;
-        
+
         // Проверяем SpritePath и RsiPath
         string path = proto.SpritePath ?? proto.RsiPath ?? "";
         if (!string.IsNullOrEmpty(path))
@@ -401,13 +434,13 @@ private bool TryLoadCache(string repoId)
             System.Diagnostics.Debug.WriteLine($"Найден путь для {id}: {path} (глубина {depth})");
             return path;
         }
-        
+
         // Если нет - идем к родителю
         if (!string.IsNullOrEmpty(proto.Parent))
         {
             return FindPathRecursive(proto.Parent, depth + 1);
         }
-        
+
         return null;
     }
 
@@ -415,24 +448,24 @@ private bool TryLoadCache(string repoId)
     private string? FindStateRecursive(string id, int depth)
     {
         if (depth > 10) return null;
-        
+
         var proto = FindPrototype(id);
         if (proto == null) return null;
-        
+
         // СНАЧАЛА проверяем State у текущего прототипа
         if (!string.IsNullOrEmpty(proto.State))
         {
             System.Diagnostics.Debug.WriteLine($"Найден state у самого прототипа {id}: {proto.State} (глубина {depth})");
             return proto.State;
         }
-        
+
         // Если у текущего нет - идем к родителю
         if (!string.IsNullOrEmpty(proto.Parent))
         {
             System.Diagnostics.Debug.WriteLine($"State не найден у {id}, ищем у родителя {proto.Parent}");
             return FindStateRecursive(proto.Parent, depth + 1);
         }
-        
+
         return null;
     }
 
@@ -458,4 +491,100 @@ private bool TryLoadCache(string repoId)
 
         return (null, null);
     }
+
+
+    // Парсит "- type: palette" блоки отдельным проходом — сами цвета лежат во
+    // вложенной мапе "colors:", а не в плоских полях как у tile/entity/decal,
+    // поэтому не переиспользует ParseBlock. Строки, начинающиеся с "#" внутри
+    // блока (закомментированные цвета вроде "#light: ..."), пропускаются.
+    private List<Palette> ParsePalettes(string content)
+    {
+        var result = new List<Palette>();
+        var lines = content.Split('\n');
+
+        bool inPalette = false;
+        bool inColors = false;
+        int colorsIndent = 0;
+
+        string id = "";
+        string name = "";
+        Dictionary<string, string> colors = new();
+
+        void FinishCurrent()
+        {
+            if (!string.IsNullOrEmpty(id))
+            {
+                result.Add(new Palette
+                {
+                    Id = id,
+                    Name = string.IsNullOrEmpty(name) ? id : name,
+                    Colors = colors
+                });
+            }
+        }
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.TrimEnd('\r');
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+
+            if (trimmed.StartsWith("- type:") && indent == 0)
+            {
+                if (inPalette) FinishCurrent();
+
+                var tMatch = Regex.Match(line, @"- type:\s*(\S+)");
+                string type = tMatch.Success ? tMatch.Groups[1].Value : "";
+
+                inPalette = type == "palette";
+                inColors = false;
+                id = "";
+                name = "";
+                colors = new Dictionary<string, string>();
+                continue;
+            }
+
+            if (!inPalette) continue;
+            if (trimmed.StartsWith("#")) continue; // закомментированная строка
+
+            if (!inColors)
+            {
+                var idMatch = Regex.Match(trimmed, @"^id:\s*(\S+)");
+                if (idMatch.Success && string.IsNullOrEmpty(id)) { id = idMatch.Groups[1].Value; continue; }
+
+                var nameMatch = Regex.Match(trimmed, @"^name:\s*(.+)$");
+                if (nameMatch.Success && string.IsNullOrEmpty(name))
+                {
+                    name = nameMatch.Groups[1].Value.Trim().Trim('"');
+                    continue;
+                }
+
+                if (trimmed.StartsWith("colors:"))
+                {
+                    inColors = true;
+                    colorsIndent = indent;
+                    continue;
+                }
+            }
+            else
+            {
+                if (indent <= colorsIndent)
+                {
+                    inColors = false;
+                }
+                else
+                {
+                    var colorMatch = Regex.Match(trimmed, "^(\\w+):\\s*\"?(#[0-9A-Fa-f]{6,8})\"?");
+                    if (colorMatch.Success)
+                        colors[colorMatch.Groups[1].Value] = colorMatch.Groups[2].Value;
+                }
+            }
+        }
+
+        if (inPalette) FinishCurrent();
+
+        return result;
+    }
+
+
 }

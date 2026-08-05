@@ -101,6 +101,7 @@ public class MainForm : Form
     private (float x, float y) _moveDragStartWorld;
     private bool _moveDidMove = false;
     private List<MoveSnapshotItem> _moveSnapshot = new();
+    private string _decalColor = "#FFFFFFFF";
 
     private class MoveSnapshotItem
     {
@@ -117,6 +118,7 @@ public class MainForm : Form
         {
             Room => _moveSettings.IncludeRooms,
             PlacedTile => _moveSettings.IncludeTiles,
+            PlacedDecal => _moveSettings.IncludeDecals,
             PipeEntity => _moveSettings.IncludePipes,
             AirAlarmEntity => _moveSettings.IncludeAlarms,
             FireAlarmEntity => _moveSettings.IncludeAlarms,
@@ -291,13 +293,15 @@ public class MainForm : Form
         _filterCombo = new ComboBox
         {
             Location = new Point(163, 2),
-            Width = 65,
+            Width = 75,
             Height = 22,
             DropDownStyle = ComboBoxStyle.DropDownList,
             Font = new Font("Segoe UI", 8),
             Enabled = false
         };
-        _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер" });
+
+
+        _filterCombo.Items.AddRange(new object[] { "Все", "Тайлы", "Структура", "Спавнер", "Декали" });
         _filterCombo.SelectedIndex = 0;
         _filterCombo.SelectedIndexChanged += (s, e) =>
         {
@@ -590,7 +594,13 @@ public class MainForm : Form
 
                 switch (_currentFilter)
                 {
-                    case "all": break;
+                    case "all":
+                        // Декали по умолчанию скрыты из общего списка — слишком много "мусора"
+                        // (сотни BrickTile*, RoadLine* и т.п.), видны только через отдельный фильтр
+                        filteredIds = allIds.Where(id =>
+                            _indexer.FindPrototype(id)?.Type != "decal"
+                        ).ToList();
+                        break;
                     case "тайл":
                     case "tiles":
                         filteredIds = allIds.Where(id =>
@@ -614,7 +624,18 @@ public class MainForm : Form
                             id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
                         ).ToList();
                         break;
+                    case "декали":
+                    case "decals":
+                        // Декали ищем по реальному Type из YAML (type: decal), а не по подстроке в id —
+                        // имена декалей (BrickTileDarkBox и т.п.) никак не намекают на то, что это декаль
+                        filteredIds = allIds.Where(id =>
+                            _indexer.FindPrototype(id)?.Type == "decal"
+                        ).ToList();
+                        break;
                 }
+
+
+
 
                 filteredIds = filteredIds
                     .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
@@ -1760,25 +1781,45 @@ public class MainForm : Form
             {
                 var grid = _map.ActiveGrid;
 
+                // Те же флаги _deleteSettings, что и в DeleteArea: при DeleteAll фильтр
+                // не мешает, иначе конкретный чекбокс должен быть включён
+                bool canDeletePipes = _deleteSettings.DeleteAll || _deleteSettings.DeletePipes;
+                bool canDeleteAlarms = _deleteSettings.DeleteAll || _deleteSettings.DeleteAlarms;
+                bool canDeleteRooms = _deleteSettings.DeleteAll || _deleteSettings.DeleteRooms;
+                bool canDeleteEntities = _deleteSettings.DeleteAll || _deleteSettings.DeleteEntities;
+                bool canDeleteOther = _deleteSettings.DeleteAll || _deleteSettings.DeleteOther;
+                bool canDeleteDecals = _deleteSettings.DeleteAll || _deleteSettings.DeleteDecals;
+
                 var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
-                if (alarm != null) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (alarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
-                if (fireAlarm != null) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (fireAlarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 var pipe = grid.Entities.OfType<PipeEntity>().FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY);
-                if (pipe != null) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (pipe != null) { if (canDeletePipes) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); } return; }
 
+                // Двери и вручную поставленные тайлы всегда удаляемы точечно — как и в области,
+                // для них нет отдельных чекбоксов в DeleteSettings
                 if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { SaveState(); UpdateTileGrid(); Render(); return; }
 
                 var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
-                if (anyEntity != null) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (anyEntity != null)
+                {
+                    bool isGenericEntity = anyEntity.GetType() == typeof(MapEntity);
+                    bool allowed = isGenericEntity ? canDeleteEntities : canDeleteOther;
+                    if (allowed) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); }
+                    return;
+                }
+
+                var decal = grid.Decals.FirstOrDefault(d => FloorToInt(d.X) == tileX && FloorToInt(d.Y) == tileY);
+                if (decal != null) { if (canDeleteDecals) { grid.Decals.Remove(decal); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 var placedTile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
                 if (placedTile != null) { grid.Tiles.Remove(placedTile); SaveState(); UpdateTileGrid(); Render(); return; }
 
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
-                if (room != null)
+                if (room != null && canDeleteRooms)
                 {
                     grid.Rooms.Remove(room);
                     _doorUpdater.RecalculateAllDoors(grid);
@@ -1788,6 +1829,9 @@ public class MainForm : Form
 
 
             }
+
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
             {
                 _isDeletingArea = true;
@@ -1850,6 +1894,8 @@ public class MainForm : Form
                     Render();
                 }
             }
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 if (!string.IsNullOrEmpty(_protoToPlace))
@@ -1858,6 +1904,7 @@ public class MainForm : Form
 
                     var proto = _indexer.FindPrototype(_protoToPlace);
                     bool isTile = proto != null && proto.Type == "tile";
+                    bool isDecal = proto != null && proto.Type == "decal";
 
                     if (isTile)
                     {
@@ -1869,6 +1916,44 @@ public class MainForm : Form
 
                         grid.Tiles.Add(new PlacedTile { X = placeTilePos.x, Y = placeTilePos.y, Proto = _protoToPlace });
                     }
+
+
+
+                    else if (isDecal)
+                    {
+                        // Декали кладём только там, где есть пол — так же, как трубы
+                        // (PipeBuilder.HasFloorAt) и сигнализации (AddAirAlarm/AddFireAlarm)
+                        // не ставятся в пустоте. Проверяем по тайлу под курсором, а не по
+                        // точной дробной координате, иначе декаль у самого края комнаты
+                        // могла бы формально попасть "мимо" пола из-за округления
+                        var floorCheckTile = GetTilePosition(e.Location);
+                        if (!HasFloorAt(grid, floorCheckTile.x, floorCheckTile.y))
+                        {
+                            return;
+                        }
+
+                        // Декали — не ECS-сущности в игре, поэтому кладём их в отдельный
+                        // список, а не в grid.Entities. Иначе при экспорте они попадут в
+                        // entities: как обычный прототип и вызовут "Missing prototype",
+                        // так как decal-id не зарегистрирован как id сущности
+                        float decalX, decalY;
+                        if (_snapEntityToCenter)
+                        {
+                            var centerTile = GetTilePosition(e.Location);
+                            decalX = centerTile.x + 0.5f;
+                            decalY = centerTile.y + 0.5f;
+                        }
+                        else
+                        {
+                            var precise = GetPrecisePosition(e.Location);
+                            decalX = precise.x;
+                            decalY = precise.y;
+                        }
+
+                        grid.Decals.Add(new PlacedDecal { X = decalX, Y = decalY, Proto = _protoToPlace, Rotation = _currentEntityRotation, Color = _decalColor });
+                    }
+
+
                     else
                     {
                         float finalX, finalY;
@@ -1893,6 +1978,10 @@ public class MainForm : Form
                     Render();
                 }
             }
+
+
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm)
             {
                 AddAirAlarm(_map.ActiveGrid, tileX, tileY);
@@ -2291,10 +2380,12 @@ public class MainForm : Form
 
             var grid = _map.ActiveGrid;
             var toRemove = new List<MapEntity>();
+            var decalsToRemove = new List<PlacedDecal>();
 
             if (_deleteSettings.DeleteAll)
             {
                 toRemove.AddRange(grid.Entities.Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY));
+                decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
 
                 for (int x = minX; x <= maxX; x++)
                     for (int y = minY; y <= maxY; y++)
@@ -2354,10 +2445,15 @@ public class MainForm : Form
                         .ToList();
                     toRemove.AddRange(otherEntities);
                 }
+
+                if (_deleteSettings.DeleteDecals)
+                {
+                    decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
+                }
             }
 
             foreach (var entity in toRemove) grid.Entities.Remove(entity);
-
+            foreach (var decal in decalsToRemove) grid.Decals.Remove(decal);
             SaveState();
             UpdateTileGrid();
             Render();
@@ -2507,12 +2603,18 @@ public class MainForm : Form
                 .Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto })
                 .ToList();
 
+            data.Decals = _map.ActiveGrid.Decals
+                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation })
+                .ToList();
+
             var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
             {
                 WriteIndented = true
             });
             File.WriteAllText(dialog.FileName, json);
-            MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}\nСущностей: {data.Entities.Count}");
+            MessageBox.Show($"Проект сохранён!\nКомнат: {data.Rooms.Count}\nДверей: {data.Rooms.Sum(r => r.Doors.Count)}\nСущностей: {data.Entities.Count}\nДекалей: {data.Decals.Count}");
+
+
         }
         catch (Exception ex)
         {
@@ -2545,6 +2647,7 @@ public class MainForm : Form
                 _map.ActiveGrid.Rooms.Clear();
                 _map.ActiveGrid.Entities.Clear();
                 _map.ActiveGrid.Tiles.Clear();
+                _map.ActiveGrid.Decals.Clear();
                 foreach (var roomData in data.Rooms)
                 {
                     var room = new Room
@@ -2603,13 +2706,20 @@ public class MainForm : Form
                     _map.ActiveGrid.Tiles.Add(new PlacedTile { X = tileData.X, Y = tileData.Y, Proto = tileData.Proto });
                 }
 
+                foreach (var decalData in data.Decals)
+                {
+                    _map.ActiveGrid.Decals.Add(new PlacedDecal { X = decalData.X, Y = decalData.Y, Proto = decalData.Proto, Color = decalData.Color, Rotation = decalData.Rotation });
+                }
+
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
                 UpdateTileGrid();
                 SaveState();
                 Render();
 
                 int totalDoors = data.Rooms.Sum(r => r.Doors.Count);
-                MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}\nСущностей: {restoredCount}");
+                MessageBox.Show($"Проект загружен!\nКомнат: {data.Rooms.Count}\nДверей: {totalDoors}\nСущностей: {restoredCount}\nДекалей: {data.Decals.Count}");
+
+
             }
             else { MessageBox.Show("Уже что-то в рабочей области"); }
 
@@ -3160,7 +3270,7 @@ public class MainForm : Form
 
         var chkDecals = new CheckBox
         {
-            Text = "Декали (скоро)",
+            Text = "Декали",
             Checked = _deleteSettings.DeleteDecals,
             AutoSize = true,
             Tag = "decals",
@@ -3252,6 +3362,64 @@ public class MainForm : Form
         }
     }
 
+
+
+
+
+    // Парсит цвет вида "#RRGGBBAA" (формат SS14/DecalGrid) в System.Drawing.Color.
+    // При ошибке парсинга возвращает непрозрачный белый — безопасный дефолт для декали
+    private static Color ParseHexColor(string hex)
+    {
+        try
+        {
+            var h = hex.TrimStart('#');
+            if (h.Length == 8)
+            {
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                int a = Convert.ToInt32(h.Substring(6, 2), 16);
+                return Color.FromArgb(a, r, g, b);
+            }
+            if (h.Length == 6)
+            {
+                // Цвета палитр ("- type: palette") хранятся без альфы — считаем непрозрачным
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                return Color.FromArgb(255, r, g, b);
+            }
+        }
+        catch { }
+        return Color.White;
+    }
+
+    // Обратное преобразование — в формат "#RRGGBBAA", как ожидает DecalGrid при экспорте
+    private static string ToHexColor(Color color)
+    {
+        return $"#{color.R:X2}{color.G:X2}{color.B:X2}{color.A:X2}";
+    }
+
+
+    // Палитра хранит "#RRGGBB" (без альфы), а декали экспортируются как "#RRGGBBAA"
+    private static string ToDecalColorFormat(string paletteHex)
+    {
+        var h = paletteHex.TrimStart('#');
+        if (h.Length == 6) return $"#{h.ToUpperInvariant()}FF";
+        if (h.Length == 8) return $"#{h.ToUpperInvariant()}";
+        return "#FFFFFFFF";
+    }
+
+    private static Color GetContrastTextColor(Color background)
+    {
+        int brightness = (background.R * 299 + background.G * 587 + background.B * 114) / 1000;
+        return brightness < 128 ? Color.White : Color.Black;
+    }
+
+
+
+
+
     private void ShowCenterSettingsDialog()
     {
         if (_centerSettingsForm != null && !_centerSettingsForm.IsDisposed)
@@ -3262,8 +3430,8 @@ public class MainForm : Form
 
         _centerSettingsForm = new Form
         {
-            Text = "Настройки смещения центрирования",
-            Size = new Size(320, 220),
+            Text = "Настройки прототипа",
+            Size = new Size(340, 450),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -3276,9 +3444,10 @@ public class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(15),
-            RowCount = 4,
+            RowCount = 8,
             ColumnCount = 2,
-            AutoSize = true
+            AutoSize = true,
+            AutoScroll = true // страховка: если контент всё же не поместится, появится скролл, а не обрезка
         };
 
         int row = 0;
@@ -3329,6 +3498,123 @@ public class MainForm : Form
         panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
         row++;
 
+        panel.Controls.Add(new Label
+        {
+            Text = "Цвет декали:",
+            AutoSize = true,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            ForeColor = Color.DarkBlue
+        }, 0, row);
+        panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
+        row++;
+
+        // ===== Выбор палитры (из "- type: palette" репозитория) =====
+        panel.Controls.Add(new Label { Text = "Палитра:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+        var palettes = _indexer.GetPalettes(); 
+        var paletteCombo = new ComboBox
+        {
+            Width = 180,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Segoe UI", 8),
+            Enabled = palettes.Count > 0
+        };
+        if (palettes.Count > 0)
+        {
+            foreach (var p in palettes) paletteCombo.Items.Add(p);
+            paletteCombo.DisplayMember = "Name";
+            paletteCombo.SelectedIndex = 0;
+        }
+        else
+        {
+            paletteCombo.Items.Add("(нет палитр — обновите репозиторий)");
+            paletteCombo.SelectedIndex = 0;
+        }
+        panel.Controls.Add(paletteCombo, 1, row);
+        row++;
+
+        // Плашки цветов выбранной палитры — перестраиваются при смене палитры в комбобоксе
+        int swatchColumns = 8;
+        int swatchSize = 26;
+        int swatchSpacing = 4;
+        int swatchPanelWidth = swatchColumns * (swatchSize + swatchSpacing) + SystemInformation.VerticalScrollBarWidth;
+
+        var swatchPanel = new FlowLayoutPanel
+        {
+            Width = swatchPanelWidth,
+            Height = 180,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true
+        };
+        panel.Controls.Add(swatchPanel, 0, row);
+        panel.SetColumnSpan(swatchPanel, 2);
+        row++;
+
+        var currentDecalColor = ParseHexColor(_decalColor);
+        var btnDecalColor = new Button
+        {
+            Text = _decalColor,
+            BackColor = currentDecalColor,
+            ForeColor = GetContrastTextColor(currentDecalColor),
+            Width = 260,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 180) },
+            Font = new Font("Segoe UI", 9),
+            Cursor = Cursors.Hand
+        };
+        btnDecalColor.Click += (s, e) =>
+        {
+            using var dialog = new ColorDialog { Color = btnDecalColor.BackColor, FullOpen = true };
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                btnDecalColor.BackColor = dialog.Color;
+                btnDecalColor.ForeColor = GetContrastTextColor(dialog.Color);
+                btnDecalColor.Text = ToHexColor(dialog.Color);
+            }
+        };
+        panel.Controls.Add(btnDecalColor, 0, row);
+        panel.SetColumnSpan(btnDecalColor, 2);
+        row++;
+
+        void RebuildSwatches()
+        {
+            swatchPanel.Controls.Clear();
+            if (paletteCombo.SelectedItem is not Palette selectedPalette) return;
+
+            foreach (var kvp in selectedPalette.Colors)
+            {
+                var swatchColor = ParseHexColor(kvp.Value);
+                var swatch = new Button
+                {
+                    Width = 26,
+                    Height = 26,
+                    BackColor = swatchColor,
+                    FlatStyle = FlatStyle.Flat,
+                    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(120, 120, 120) },
+                    Margin = new Padding(2),
+                    Cursor = Cursors.Hand,
+                    Tag = kvp.Value
+                };
+                var tooltip = new ToolTip();
+                tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
+
+                swatch.Click += (s, e) =>
+                {
+                    string decalHex = ToDecalColorFormat((string)swatch.Tag);
+                    var color = ParseHexColor(decalHex);
+                    btnDecalColor.BackColor = color;
+                    btnDecalColor.ForeColor = GetContrastTextColor(color);
+                    btnDecalColor.Text = decalHex;
+                };
+
+                swatchPanel.Controls.Add(swatch);
+            }
+        }
+
+        paletteCombo.SelectedIndexChanged += (s, e) => RebuildSwatches();
+        if (palettes.Count > 0) RebuildSwatches();
+
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
 
         var btnOk = new Button
@@ -3342,6 +3628,7 @@ public class MainForm : Form
         btnOk.Click += (s, e) =>
         {
             _centerOffset = new PointF((float)nudX.Value, (float)nudY.Value);
+            _decalColor = btnDecalColor.Text;
             UpdateCenterSettingsButton();
             _centerSettingsForm?.Close();
         };
@@ -3366,7 +3653,10 @@ public class MainForm : Form
     }
 
 
+
+
     // ===== Вспомогательная логика инструмента "Перемещение" =====
+
 
     private object? HitTestAt(int tileX, int tileY)
     {
@@ -3379,11 +3669,16 @@ public class MainForm : Form
             FloorToInt(e.X) == tileX && FloorToInt(e.Y) == tileY && IsObjectIncludedForMove(e));
         if (entity != null) return entity;
 
-        // 2. Вручную размещённые тайлы
+        // 2. Декали — тоже точечные объекты с дробными координатами, как и сущности
+        var decal = grid.Decals.FirstOrDefault(d =>
+            FloorToInt(d.X) == tileX && FloorToInt(d.Y) == tileY && IsObjectIncludedForMove(d));
+        if (decal != null) return decal;
+
+        // 3. Вручную размещённые тайлы
         var tile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (tile != null && IsObjectIncludedForMove(tile)) return tile;
 
-        // 3. Комната
+        // 4. Комната
         var room = grid.Rooms.FirstOrDefault(r =>
             tileX >= r.X && tileX < r.X + r.Width &&
             tileY >= r.Y && tileY < r.Y + r.Height);
@@ -3403,6 +3698,13 @@ public class MainForm : Form
             if (!IsObjectIncludedForMove(entity)) continue;
             if (entity.X >= minX && entity.X <= maxX && entity.Y >= minY && entity.Y <= maxY)
                 result.Add(entity);
+        }
+
+        foreach (var decal in grid.Decals)
+        {
+            if (!IsObjectIncludedForMove(decal)) continue;
+            if (decal.X >= minX && decal.X <= maxX && decal.Y >= minY && decal.Y <= maxY)
+                result.Add(decal);
         }
 
         foreach (var tile in grid.Tiles)
@@ -3426,6 +3728,7 @@ public class MainForm : Form
 
 
 
+
     private static (float x, float y) GetTargetPosition(object target)
     {
         return target switch
@@ -3433,6 +3736,7 @@ public class MainForm : Form
             Room room => (room.X, room.Y),
             Door door => (door.X, door.Y),
             PlacedTile tile => (tile.X, tile.Y),
+            PlacedDecal decal => (decal.X, decal.Y),
             MapEntity entity => (entity.X, entity.Y),
             _ => (0f, 0f)
         };
@@ -3454,13 +3758,18 @@ public class MainForm : Form
                 tile.X = (int)Math.Round(newX);
                 tile.Y = (int)Math.Round(newY);
                 break;
+            case PlacedDecal decal:
+                // Декали — точечные объекты с дробными координатами, как MapEntity,
+                // а не привязанные к целому тайлу (в отличие от PlacedTile)
+                decal.X = newX;
+                decal.Y = newY;
+                break;
             case MapEntity entity:
                 entity.X = newX;
                 entity.Y = newY;
                 break;
         }
     }
-
     private void BeginMoveDrag(Point mouseLocation)
     {
         var grid = _map.ActiveGrid;
@@ -3528,7 +3837,7 @@ public class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(15),
-            RowCount = 9,
+            RowCount = 10,
             ColumnCount = 2,
             AutoSize = true
         };
@@ -3599,8 +3908,13 @@ public class MainForm : Form
         panel.SetColumnSpan(chkOther, 2);
         row++;
 
-        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+        var chkDecals = new CheckBox { Text = "Декали", Checked = _moveSettings.IncludeDecals, AutoSize = true };
+        chkDecals.CheckedChanged += (s, e) => _moveSettings.IncludeDecals = chkDecals.Checked;
+        panel.Controls.Add(chkDecals, 0, row);
+        panel.SetColumnSpan(chkDecals, 2);
+        row++;
 
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
         var btnOk = new Button
         {
             Text = "OK",

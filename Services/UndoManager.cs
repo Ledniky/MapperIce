@@ -62,6 +62,8 @@ public class GridSnapshot
     public List<FireAlarmEntity> FireAlarms { get; set; } = new();
     public List<MapEntity> GenericEntities { get; set; } = new();
     public List<PlacedTile> Tiles { get; set; } = new();
+    public List<PlacedDecal> Decals { get; set; } = new();
+
 
     public GridSnapshot() { }
 
@@ -96,7 +98,8 @@ public class GridSnapshot
             .ToList();
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
-    }
+        Decals = grid.Decals.Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation }).ToList();
+            }
 
     public void RestoreTo(Grid grid)
     {
@@ -106,6 +109,7 @@ public class GridSnapshot
         grid.Entities.Clear();
         grid.Tiles.Clear();
         grid.LooseDoors.Clear();
+        grid.Decals.Clear();
 
         foreach (var room in Rooms)
         {
@@ -169,6 +173,11 @@ public class GridSnapshot
         foreach (var tile in Tiles)
         {
             grid.Tiles.Add(new PlacedTile { X = tile.X, Y = tile.Y, Proto = tile.Proto });
+        }
+
+        foreach (var decal in Decals)
+        {
+            grid.Decals.Add(new PlacedDecal { X = decal.X, Y = decal.Y, Proto = decal.Proto, Color = decal.Color, Rotation = decal.Rotation });
         }
     }
 }

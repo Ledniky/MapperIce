@@ -137,6 +137,8 @@ public class Renderer
                     })
                     .ToList();
                 DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, grid.Position, opacity);
+                
+                DrawDecalsBatch(g, grid.Decals, tileSize, viewOffset, grid.Position, opacity);
 
                 DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, grid.Position, opacity);
 
@@ -248,6 +250,55 @@ public class Renderer
             }
         }
     }
+
+
+
+
+private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        if (decals == null || decals.Count == 0) return;
+
+        foreach (var group in decals.GroupBy(d => d.Proto))
+        {
+            string protoId = group.Key;
+            Image? texture = GetOrLoadTexture(protoId);
+
+            foreach (var decal in group)
+            {
+                // decal.X/Y — это точная мировая координата (как у MapEntity), а не индекс
+                // тайла, поэтому центрируем прямоугольник текстуры так же, как для
+                // обычных сущностей (DrawGenericEntitiesBatch), а не рисуем от угла как тайл
+                float cx = (decal.X + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (decal.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+                var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+
+                var oldTransform = g.Transform;
+
+                if (decal.Rotation != 0)
+                {
+                    var matrix = new Matrix();
+                    float angleDegrees = decal.Rotation * 180 / (float)Math.PI;
+                    matrix.RotateAt(angleDegrees, new PointF(cx, cy));
+                    g.Transform = matrix;
+                }
+
+                if (texture != null)
+                {
+                    var srcRect = GetSourceRect(protoId, texture);
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                }
+                else
+                {
+                    using var brush = new SolidBrush(Color.FromArgb((int)(160 * opacity), 255, 220, 120));
+                    g.FillRectangle(brush, rect);
+                }
+
+                g.Transform = oldTransform;
+            }
+        }
+    }
+
+
 
     private void DrawWallTilesBatch(Graphics g, List<TileData> tiles, TileGrid tileGrid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
@@ -1026,12 +1077,18 @@ public class Renderer
         {
             Rectangle rect;
 
-            switch (obj)
+switch (obj)
             {
                 case Room room:
                     float rx = (room.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;
                     float ry = (room.Y + gridOffsetY / tileSize) * tileSize - viewOffset.Y;
                     rect = new Rectangle((int)rx, (int)ry, (int)(room.Width * tileSize), (int)(room.Height * tileSize));
+                    break;
+
+                case PlacedDecal decal:
+                    float dx = (decal.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;
+                    float dy = (decal.Y + gridOffsetY / tileSize) * tileSize - viewOffset.Y;
+                    rect = new Rectangle((int)(dx - tileSize / 2f), (int)(dy - tileSize / 2f), tileSize, tileSize);
                     break;
 
                 case MapEntity entity:
@@ -1049,6 +1106,9 @@ public class Renderer
                 default:
                     continue;
             }
+
+
+
 
             g.DrawRectangle(outlinePen, rect);
             g.DrawRectangle(pen, rect);

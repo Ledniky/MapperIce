@@ -6,6 +6,7 @@ namespace MapperIce.Models;
 
 public class ProjectData
 {
+    public List<PlacedDecal> Decals { get; set; } = new();
     public List<RoomData> Rooms { get; set; } = new();
     public List<GenericEntityData> Entities { get; set; } = new();
     public List<PlacedTile> Tiles { get; set; } = new();   // ← добавлено

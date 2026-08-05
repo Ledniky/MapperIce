@@ -1,0 +1,16 @@
+// Models/PlacedDecal.cs
+namespace MapperIce.Models;
+
+/// <summary>
+/// Декаль (визуальный оверлей на полу), размещённая через PlacePrototype,
+/// когда прототип имеет тип "decal". В отличие от MapEntity, декали не являются
+/// ECS-сущностями в игре — хранятся и экспортируются отдельно, через DecalGrid.
+/// </summary>
+public class PlacedDecal
+{
+    public float X { get; set; }
+    public float Y { get; set; }
+    public string Proto { get; set; } = "";
+    public string Color { get; set; } = "#FFFFFFFF";
+    public float Rotation { get; set; } = 0;
+}

@@ -12,6 +12,7 @@ public class MoveSettings
     public bool IncludeFirelocks { get; set; } = false; // двигаются вместе с комнатой автоматически
     public bool IncludeEntities { get; set; } = true;   // "Сущности" из репозитория (точный тип MapEntity)
     public bool IncludeOther { get; set; } = true;      // catch-all на будущее
+    public bool IncludeDecals { get; set; } = true;
 
     public static MoveSettings Default = new MoveSettings();
 }
