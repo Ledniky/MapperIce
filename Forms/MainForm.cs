@@ -3431,7 +3431,7 @@ public class MainForm : Form
         _centerSettingsForm = new Form
         {
             Text = "Настройки прототипа",
-            Size = new Size(340, 450),
+            Size = new Size(340, 490),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
