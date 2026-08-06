@@ -40,6 +40,7 @@ public class Renderer
     private float _previewEntityY;
     private float _previewEntityRotation;
     private string _previewEntityProto = "";
+    private string? _previewDecalColor = null; // не null только когда превью — это декаль
     private List<object> _selection = new();
     private bool _showSelectionBox = false;
     private Point _selectionBoxStart;
@@ -285,11 +286,18 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
                 if (texture != null)
                 {
                     var srcRect = GetSourceRect(protoId, texture);
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                    var tintAttrs = GetDecalTintAttributes(decal.Color);
+                    g.DrawImage(texture, rect, srcRect.X, srcRect.Y, srcRect.Width, srcRect.Height,
+                        GraphicsUnit.Pixel, tintAttrs);
                 }
                 else
                 {
-                    using var brush = new SolidBrush(Color.FromArgb((int)(160 * opacity), 255, 220, 120));
+                    // Фолбэк-заглушку (нет текстуры) тоже красим в цвет декали, чтобы
+                    // цвет был виден даже без спрайта
+                    var fallbackColor = ParseDecalColor(decal.Color);
+                    using var brush = new SolidBrush(Color.FromArgb(
+                        (int)(160 * opacity),
+                        fallbackColor.R, fallbackColor.G, fallbackColor.B));
                     g.FillRectangle(brush, rect);
                 }
 
@@ -623,6 +631,72 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
         return rect;
     }
 
+    // Кэш ImageAttributes по цвету декали — пересоздавать ColorMatrix на каждый DrawImage
+    // накладно, а цветов у декалей на карте обычно немного (одни и те же несколько цветов
+    // из палитры повторяются на десятках декалей)
+    private readonly Dictionary<string, ImageAttributes> _decalTintCache = new();
+
+    /// <summary>
+    /// Парсит цвет декали в формате "#RRGGBBAA" (как хранится в PlacedDecal.Color
+    /// и экспортируется в DecalGrid). При ошибке — непрозрачный белый (нет тонирования).
+    /// </summary>
+    private static Color ParseDecalColor(string hex)
+    {
+        try
+        {
+            var h = hex.TrimStart('#');
+            if (h.Length == 8)
+            {
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                int a = Convert.ToInt32(h.Substring(6, 2), 16);
+                return Color.FromArgb(a, r, g, b);
+            }
+            if (h.Length == 6)
+            {
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                return Color.FromArgb(255, r, g, b);
+            }
+        }
+        catch { }
+        return Color.White;
+    }
+
+    /// <summary>
+    /// ImageAttributes с ColorMatrix, умножающей RGB и альфу текстуры на компоненты
+    /// заданного цвета — так игра тонирует декали (текстура декали обычно белая/маска,
+    /// а итоговый цвет задаётся полем color в DecalGrid).
+    /// </summary>
+    private ImageAttributes GetDecalTintAttributes(string decalColorHex)
+    {
+        if (_decalTintCache.TryGetValue(decalColorHex, out var cached))
+            return cached;
+
+        var color = ParseDecalColor(decalColorHex);
+        float rf = color.R / 255f;
+        float gf = color.G / 255f;
+        float bf = color.B / 255f;
+        float af = color.A / 255f;
+
+        var matrix = new ColorMatrix(new float[][]
+        {
+            new float[] { rf, 0,  0,  0,  0 },
+            new float[] { 0,  gf, 0,  0,  0 },
+            new float[] { 0,  0,  bf, 0,  0 },
+            new float[] { 0,  0,  0,  af, 0 },
+            new float[] { 0,  0,  0,  0,  1 }
+        });
+
+        var attrs = new ImageAttributes();
+        attrs.SetColorMatrix(matrix);
+
+        _decalTintCache[decalColorHex] = attrs;
+        return attrs;
+    }
+
     public void ClearCache()
     {
         foreach (var kvp in _textureCache)
@@ -632,6 +706,10 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
         }
         _textureCache.Clear();
         _sourceRectCache.Clear();
+
+        foreach (var kvp in _decalTintCache)
+            kvp.Value.Dispose();
+        _decalTintCache.Clear();
     }
 
     #endregion
@@ -926,11 +1004,24 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
         if (texture != null)
         {
             var srcRect = GetSourceRect(_previewEntityProto, texture);
-            g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+
+            if (!string.IsNullOrEmpty(_previewDecalColor))
+            {
+                var tintAttrs = GetDecalTintAttributes(_previewDecalColor);
+                g.DrawImage(texture, rect, srcRect.X, srcRect.Y, srcRect.Width, srcRect.Height,
+                    GraphicsUnit.Pixel, tintAttrs);
+            }
+            else
+            {
+                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            }
         }
         else
         {
-            using var brush = new SolidBrush(Color.FromArgb(120, 255, 0, 255));
+            Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
+                ? ParseDecalColor(_previewDecalColor)
+                : Color.FromArgb(255, 0, 255);
+            using var brush = new SolidBrush(Color.FromArgb(120, fallback.R, fallback.G, fallback.B));
             g.FillRectangle(brush, rect);
             using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
             g.DrawRectangle(pen, rect);
@@ -1114,12 +1205,13 @@ switch (obj)
             g.DrawRectangle(pen, rect);
         }
     }
-    public void SetEntityPreview(float x, float y, float rotation, string proto)
+    public void SetEntityPreview(float x, float y, float rotation, string proto, string? decalColor = null)
     {
         _previewEntityX = x;
         _previewEntityY = y;
         _previewEntityRotation = rotation;
         _previewEntityProto = proto;
+        _previewDecalColor = decalColor;
         _showEntityPreview = true;
     }
 

@@ -833,11 +833,15 @@ public static class YAMLGenerator
         }
 
         // Группируем по (прототип, цвет, поворот) — именно так объединяются декали в один node
-        var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation), List<PlacedDecal>>();
+// Группируем по (прототип, цвет, поворот, стираемость) — именно так объединяются
+        // декали в один node. Cleanable добавлен в ключ, т.к. это отдельное поле у node
+        // в DecalGrid (как color/id/angle) — стираемые и обычные декали одного прототипа
+        // и цвета нельзя объединять в один узел, иначе флаг "потеряется" для части из них
+        var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
 
         foreach (var decal in grid.Decals)
         {
-            var key = (decal.Proto, decal.Color, decal.Rotation);
+            var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
             if (!byProtoColorRotation.ContainsKey(key))
                 byProtoColorRotation[key] = new List<PlacedDecal>();
             byProtoColorRotation[key].Add(decal);
@@ -862,6 +866,12 @@ public static class YAMLGenerator
                 sb.AppendLine($"            angle: {angleStr} rad");
             }
 
+            // Поле пишется ТОЛЬКО когда декаль стираемая — как в игровом формате
+            // (нестираемые декали вообще не имеют этого ключа в node, а не имеют его "False")
+            if (group.Key.cleanable)
+            {
+                sb.AppendLine("            cleanable: True");
+            }
 
             sb.AppendLine($"            color: '{group.Key.color}'");
             sb.AppendLine($"            id: {group.Key.proto}");

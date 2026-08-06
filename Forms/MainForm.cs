@@ -102,6 +102,7 @@ public class MainForm : Form
     private bool _moveDidMove = false;
     private List<MoveSnapshotItem> _moveSnapshot = new();
     private string _decalColor = "#FFFFFFFF";
+    private bool _decalCleanable = false;
 
     private class MoveSnapshotItem
     {
@@ -1950,7 +1951,7 @@ public class MainForm : Form
                             decalY = precise.y;
                         }
 
-                        grid.Decals.Add(new PlacedDecal { X = decalX, Y = decalY, Proto = _protoToPlace, Rotation = _currentEntityRotation, Color = _decalColor });
+                        grid.Decals.Add(new PlacedDecal { X = decalX, Y = decalY, Proto = _protoToPlace, Rotation = _currentEntityRotation, Color = _decalColor, Cleanable = _decalCleanable });
                     }
 
 
@@ -2133,8 +2134,13 @@ public class MainForm : Form
                     previewX = precise.x;
                     previewY = precise.y;
                 }
-                _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
+
+                var wheelProto = _indexer.FindPrototype(_protoToPlace);
+                bool wheelIsDecal = wheelProto != null && wheelProto.Type == "decal";
+                _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace,
+                    wheelIsDecal ? _decalColor : null);
             }
+
 
             if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
@@ -2241,10 +2247,16 @@ public class MainForm : Form
                 previewY = precise.y;
             }
 
-            _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace);
+            var moveProto = _indexer.FindPrototype(_protoToPlace);
+            bool moveIsDecal = moveProto != null && moveProto.Type == "decal";
+            _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace,
+                moveIsDecal ? _decalColor : null);
             Render();
             return;
         }
+
+
+
         else
         {
             _renderer.ClearEntityPreview();
@@ -2604,7 +2616,7 @@ public class MainForm : Form
                 .ToList();
 
             data.Decals = _map.ActiveGrid.Decals
-                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation })
+                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable })
                 .ToList();
 
             var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
@@ -2708,7 +2720,7 @@ public class MainForm : Form
 
                 foreach (var decalData in data.Decals)
                 {
-                    _map.ActiveGrid.Decals.Add(new PlacedDecal { X = decalData.X, Y = decalData.Y, Proto = decalData.Proto, Color = decalData.Color, Rotation = decalData.Rotation });
+                    _map.ActiveGrid.Decals.Add(new PlacedDecal { X = decalData.X, Y = decalData.Y, Proto = decalData.Proto, Color = decalData.Color, Rotation = decalData.Rotation, Cleanable = decalData.Cleanable });
                 }
 
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
@@ -3431,7 +3443,7 @@ public class MainForm : Form
         _centerSettingsForm = new Form
         {
             Text = "Настройки прототипа",
-            Size = new Size(340, 490),
+            Size = new Size(340, 450),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -3446,8 +3458,7 @@ public class MainForm : Form
             Padding = new Padding(15),
             RowCount = 8,
             ColumnCount = 2,
-            AutoSize = true,
-            AutoScroll = true // страховка: если контент всё же не поместится, появится скролл, а не обрезка
+            AutoSize = false,
         };
 
         int row = 0;
@@ -3510,7 +3521,7 @@ public class MainForm : Form
 
         // ===== Выбор палитры (из "- type: palette" репозитория) =====
         panel.Controls.Add(new Label { Text = "Палитра:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
-        var palettes = _indexer.GetPalettes(); 
+        var palettes = _indexer.GetPalettes();
         var paletteCombo = new ComboBox
         {
             Width = 180,
@@ -3538,14 +3549,23 @@ public class MainForm : Form
         int swatchSpacing = 4;
         int swatchPanelWidth = swatchColumns * (swatchSize + swatchSpacing) + SystemInformation.VerticalScrollBarWidth;
 
+        // Anchor вместо Dock: Top|Left|Bottom тянет ВЫСОТУ под доступное место в строке
+        // (строка ниже получит RowStyle.Percent и будет сжиматься/расти вместе с окном),
+        // но ШИРИНА остаётся фиксированной (Right не заанкорен) — поэтому 8 плашек в ряд
+        // и отсутствие горизонтального скролла сохраняются при любом размере окна.
+        // Height=180 здесь лишь стартовое значение, реальная высота задаётся анкором.
         var swatchPanel = new FlowLayoutPanel
         {
             Width = swatchPanelWidth,
             Height = 180,
+            MinimumSize = new Size(swatchPanelWidth, 40),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom,
             AutoScroll = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true
         };
+
+        int swatchRowIndex = row;
         panel.Controls.Add(swatchPanel, 0, row);
         panel.SetColumnSpan(swatchPanel, 2);
         row++;
@@ -3576,6 +3596,33 @@ public class MainForm : Form
         panel.Controls.Add(btnDecalColor, 0, row);
         panel.SetColumnSpan(btnDecalColor, 2);
         row++;
+
+        // Стираемость декали — как в игре: тряпкой/шваброй можно стереть только декали
+        // с флагом cleanable, остальные постоянные
+        var chkCleanable = new CheckBox
+        {
+            Text = "Стираемая (cleanable)",
+            Checked = _decalCleanable,
+            AutoSize = true,
+            Font = new Font("Segoe UI", 9)
+        };
+        panel.Controls.Add(chkCleanable, 0, row);
+        panel.SetColumnSpan(chkCleanable, 2);
+        row++;
+
+
+        // Все строки, кроме блока с плашками, оставляем в естественном размере (AutoSize),
+        // а строке swatchPanel отдаём 100% оставшегося места (RowStyle.Percent). Так при
+        // уменьшении окна сжимается только этот блок — остальные элементы (включая кнопку
+        // выбора своего цвета ниже) сохраняют свою высоту и остаются видимыми
+        panel.RowCount = row;
+        panel.RowStyles.Clear();
+        for (int i = 0; i < row; i++)
+        {
+            panel.RowStyles.Add(i == swatchRowIndex
+                ? new RowStyle(SizeType.Percent, 100f)
+                : new RowStyle(SizeType.AutoSize));
+        }
 
         void RebuildSwatches()
         {
@@ -3629,6 +3676,7 @@ public class MainForm : Form
         {
             _centerOffset = new PointF((float)nudX.Value, (float)nudY.Value);
             _decalColor = btnDecalColor.Text;
+            _decalCleanable = chkCleanable.Checked;
             UpdateCenterSettingsButton();
             _centerSettingsForm?.Close();
         };

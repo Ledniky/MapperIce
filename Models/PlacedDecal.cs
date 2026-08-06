@@ -13,4 +13,5 @@ public class PlacedDecal
     public string Proto { get; set; } = "";
     public string Color { get; set; } = "#FFFFFFFF";
     public float Rotation { get; set; } = 0;
+    public bool Cleanable { get; set; } = false;
 }
