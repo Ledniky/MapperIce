@@ -1941,8 +1941,8 @@ public class MainForm : Form
                         if (_snapEntityToCenter)
                         {
                             var centerTile = GetTilePosition(e.Location);
-                            decalX = centerTile.x + 0.5f;
-                            decalY = centerTile.y + 0.5f;
+                            decalX = centerTile.x + _centerOffset.X;
+                            decalY = centerTile.y + _centerOffset.Y;
                         }
                         else
                         {
@@ -1961,8 +1961,8 @@ public class MainForm : Form
                         if (_snapEntityToCenter)
                         {
                             var centerTile = GetTilePosition(e.Location);
-                            finalX = centerTile.x + 0.5f;
-                            finalY = centerTile.y + 0.5f;
+    finalX = centerTile.x + _centerOffset.X;
+    finalY = centerTile.y + _centerOffset.Y;
                         }
                         else
                         {
@@ -2125,8 +2125,8 @@ public class MainForm : Form
                 if (_snapEntityToCenter)
                 {
                     var centerTile = GetTilePosition(_lastMousePosition);
-                    previewX = centerTile.x + 0.5f;
-                    previewY = centerTile.y + 0.5f;
+                    previewX = centerTile.x + _centerOffset.X;
+                    previewY = centerTile.y + _centerOffset.Y;
                 }
                 else
                 {
@@ -2237,8 +2237,8 @@ public class MainForm : Form
             if (_snapEntityToCenter)
             {
                 var centerTile = GetTilePosition(e.Location);
-                previewX = centerTile.x + 0.5f;
-                previewY = centerTile.y + 0.5f;
+                previewX = centerTile.x + _centerOffset.X;
+                previewY = centerTile.y + _centerOffset.Y;
             }
             else
             {
@@ -3473,7 +3473,7 @@ public class MainForm : Form
         panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
         row++;
 
-        panel.Controls.Add(new Label { Text = "Смещение X:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+panel.Controls.Add(new Label { Text = "Смещение X:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
         var nudX = new NumericUpDown
         {
             Value = (decimal)_centerOffset.X,
@@ -3482,6 +3482,11 @@ public class MainForm : Form
             Increment = 0.01m,
             DecimalPlaces = 2,
             Width = 80
+        };
+        nudX.ValueChanged += (s, e) =>
+        {
+            _centerOffset = new PointF((float)nudX.Value, _centerOffset.Y);
+            UpdateCenterSettingsButton();
         };
         panel.Controls.Add(nudX, 1, row);
         row++;
@@ -3495,6 +3500,11 @@ public class MainForm : Form
             Increment = 0.01m,
             DecimalPlaces = 2,
             Width = 80
+        };
+        nudY.ValueChanged += (s, e) =>
+        {
+            _centerOffset = new PointF(_centerOffset.X, (float)nudY.Value);
+            UpdateCenterSettingsButton();
         };
         panel.Controls.Add(nudY, 1, row);
         row++;
@@ -3591,6 +3601,7 @@ public class MainForm : Form
                 btnDecalColor.BackColor = dialog.Color;
                 btnDecalColor.ForeColor = GetContrastTextColor(dialog.Color);
                 btnDecalColor.Text = ToHexColor(dialog.Color);
+                _decalColor = btnDecalColor.Text;
             }
         };
         panel.Controls.Add(btnDecalColor, 0, row);
@@ -3606,6 +3617,7 @@ public class MainForm : Form
             AutoSize = true,
             Font = new Font("Segoe UI", 9)
         };
+        chkCleanable.CheckedChanged += (s, e) => { _decalCleanable = chkCleanable.Checked; };
         panel.Controls.Add(chkCleanable, 0, row);
         panel.SetColumnSpan(chkCleanable, 2);
         row++;
@@ -3653,6 +3665,7 @@ public class MainForm : Form
                     btnDecalColor.BackColor = color;
                     btnDecalColor.ForeColor = GetContrastTextColor(color);
                     btnDecalColor.Text = decalHex;
+                    _decalColor = decalHex;
                 };
 
                 swatchPanel.Controls.Add(swatch);
@@ -3674,17 +3687,15 @@ public class MainForm : Form
         };
         btnOk.Click += (s, e) =>
         {
-            _centerOffset = new PointF((float)nudX.Value, (float)nudY.Value);
-            _decalColor = btnDecalColor.Text;
-            _decalCleanable = chkCleanable.Checked;
-            UpdateCenterSettingsButton();
             _centerSettingsForm?.Close();
         };
         btnPanel.Controls.Add(btnOk);
 
+        // Раз все поля применяются мгновенно, кнопка "Отмена" отдельного смысла
+        // отката уже не несёт — оставлена только как второй способ закрыть окно
         var btnCancel = new Button
         {
-            Text = "Отмена",
+            Text = "Закрыть",
             Location = new Point(btnPanel.Width - 190, 10),
             Width = 80,
             Height = 30,
