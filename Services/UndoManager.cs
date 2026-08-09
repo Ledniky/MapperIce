@@ -98,7 +98,7 @@ public class GridSnapshot
             .ToList();
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
-        Decals = grid.Decals.Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation }).ToList();
+        Decals = grid.Decals.Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable }).ToList();
             }
 
     public void RestoreTo(Grid grid)
@@ -177,7 +177,7 @@ public class GridSnapshot
 
         foreach (var decal in Decals)
         {
-            grid.Decals.Add(new PlacedDecal { X = decal.X, Y = decal.Y, Proto = decal.Proto, Color = decal.Color, Rotation = decal.Rotation });
+            grid.Decals.Add(new PlacedDecal { X = decal.X, Y = decal.Y, Proto = decal.Proto, Color = decal.Color, Rotation = decal.Rotation, Cleanable = decal.Cleanable });
         }
     }
 }

@@ -111,17 +111,7 @@ public class PipeBuilder
     private bool HasFloorAt(Grid grid, int x, int y)
     {
         if (grid == null) return false;
-
-        foreach (var room in grid.Rooms)
-        {
-            if (x >= room.X && x < room.X + room.Width &&
-                y >= room.Y && y < room.Y + room.Height)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return grid.Rooms.Any(room => room.Contains(x, y));
     }
 
     private bool CanPlaceEndpoint(Grid grid, int x, int y, string pipeType)

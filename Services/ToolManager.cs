@@ -9,6 +9,7 @@ public class ToolManager
     {
         None,
         CreateRoom,
+        SubtractRoom,
         Delete,
         DeleteArea,
         DeleteSettings,

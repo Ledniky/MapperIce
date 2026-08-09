@@ -35,6 +35,7 @@ public class MainForm : Form
     private Button _btnRoomSettings = null!;
     private Button _btnAirlock = null!;
     private Button _btnAirlockGlass = null!;
+    private Button _btnSubtractRoom = null!;
     private Button _btnPipeDistra = null!;
     private Button _btnPipeWaste = null!;
     private Button _btnPipeNormal = null!;
@@ -828,6 +829,26 @@ public class MainForm : Form
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
+
+        // ВЫЧИТАНИЕ КОМНАТ
+        _btnSubtractRoom = new Button
+        {
+            Text = "✂️ Вычесть комнату",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnSubtractRoom.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.SubtractRoom);
+        };
+        _toolPanel.Controls.Add(_btnSubtractRoom);
+        y += 40 + 2;
+
         // ТРУБЫ
         var pipeLabel = new Label
         {
@@ -1567,6 +1588,7 @@ public class MainForm : Form
     private void OnToolChanged(ToolManager.Tool tool)
     {
         _btnCreateRoom.BackColor = Color.White;
+        _btnSubtractRoom.BackColor = Color.White;
         _btnDelete.BackColor = Color.White;
         _btnDeleteArea.BackColor = Color.White;
         _btnDeleteSettings.BackColor = Color.White;
@@ -1597,6 +1619,10 @@ public class MainForm : Form
             case ToolManager.Tool.CreateRoom:
                 _btnCreateRoom.BackColor = Color.LightBlue;
                 _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+                break;
+            case ToolManager.Tool.SubtractRoom:
+                _btnSubtractRoom.BackColor = Color.LightBlue;
+                _typeLabel.Text = "Вычитание: выделите область, которую вырезать из существующих комнат";
                 break;
             case ToolManager.Tool.Delete:
                 _btnDelete.BackColor = Color.LightBlue;
@@ -1656,7 +1682,7 @@ public class MainForm : Form
 
         Cursor = tool switch
         {
-            ToolManager.Tool.CreateRoom => Cursors.Cross,
+            ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom => Cursors.Cross,
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
@@ -1841,7 +1867,8 @@ public class MainForm : Form
                 Render();
                 return;
             }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom)
+            else if (_toolManager.CurrentTool == ToolManager.Tool.CreateRoom ||
+                     _toolManager.CurrentTool == ToolManager.Tool.SubtractRoom)
             {
                 _isDrawing = true;
                 _startPoint = e.Location;
@@ -2474,13 +2501,40 @@ public class MainForm : Form
             return;
         }
 
-        if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
+if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
         {
+            if (_toolManager.CurrentTool == ToolManager.Tool.SubtractRoom)
+            {
+                if (_currentRoom.Width >= 1 && _currentRoom.Height >= 1)
+                {
+                    bool changed = RoomSubtractor.ApplyToGrid(
+                        _map.ActiveGrid, _currentRoom.X, _currentRoom.Y, _currentRoom.Width, _currentRoom.Height);
+
+                    if (changed)
+                    {
+                        _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+                        UpdateTileGrid();
+                        SaveState();
+                    }
+                }
+
+                _currentRoom = null;
+                _isDrawing = false;
+                Render();
+                return;
+            }
+
             if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
+
+                // Новая комната вырезает пересекающуюся площадь из уже существующих —
+                // без этого Room-объекты продолжали бы дублировать территорию друг друга
+                RoomSubtractor.ApplyToGrid(
+                    _map.ActiveGrid, _currentRoom.X, _currentRoom.Y, _currentRoom.Width, _currentRoom.Height);
+
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
-                _doorUpdater.RecalculateDoorsInRoom(_map.ActiveGrid, _currentRoom); // снять и переставить двери на её территории
+                _doorUpdater.RecalculateAllDoors(_map.ActiveGrid); // вычитание могло затронуть несколько комнат сразу
                 UpdateTileGrid();
                 SaveState();
             }
@@ -2975,11 +3029,9 @@ public class MainForm : Form
         }
     }
 
-    private bool HasFloorAt(Grid grid, int x, int y)
+   private bool HasFloorAt(Grid grid, int x, int y)
     {
-        return grid.Rooms.Any(r =>
-            x >= r.X && x < r.X + r.Width &&
-            y >= r.Y && y < r.Y + r.Height);
+        return grid.Rooms.Any(r => r.Contains(x, y));
     }
 
     private void ShowAlarmSettingsDialog()

@@ -138,7 +138,7 @@ public class Renderer
                     })
                     .ToList();
                 DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, grid.Position, opacity);
-                
+
                 DrawDecalsBatch(g, grid.Decals, tileSize, viewOffset, grid.Position, opacity);
 
                 DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, grid.Position, opacity);
@@ -162,8 +162,19 @@ public class Renderer
 
                     if (currentRoom != null && isActive)
                     {
-                        DrawRoomFill(g, currentRoom, tileSize, viewOffset, grid.Position, 1.0f);
-                        DrawRoomLine(g, currentRoom, tileSize, viewOffset, grid.Position, true, 1.0f);
+                        if (toolName == "SubtractRoom")
+                        {
+                            DrawSubtractPreview(g, currentRoom, tileSize, viewOffset, grid.Position);
+                        }
+                        else
+                        {
+                            // currentRoom ещё не добавлена в grid.Rooms — передаём rooms
+                            // отдельно, чтобы её собственная граница уже учитывала
+                            // владение стеной с уже существующими комнатами при наложении
+                            var previewContext = new List<Room>(rooms) { currentRoom };
+                            DrawRoomFill(g, currentRoom, previewContext, tileSize, viewOffset, grid.Position, 1.0f);
+                            DrawRoomLine(g, currentRoom, previewContext, tileSize, viewOffset, grid.Position, true, 1.0f);
+                        }
                     }
                     else
                     {
@@ -255,7 +266,7 @@ public class Renderer
 
 
 
-private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         if (decals == null || decals.Count == 0) return;
 
@@ -538,7 +549,7 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
 
         foreach (var room in rooms)
         {
-            DrawRoomFill(g, room, tileSize, viewOffset, gridOffset, opacity);
+            DrawRoomFill(g, room, rooms, tileSize, viewOffset, gridOffset, opacity);
         }
     }
 
@@ -548,7 +559,7 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
 
         foreach (var room in rooms)
         {
-            DrawRoomLine(g, room, tileSize, viewOffset, gridOffset, false, opacity);
+            DrawRoomLine(g, room, rooms, tileSize, viewOffset, gridOffset, false, opacity);
         }
     }
 
@@ -761,47 +772,116 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
             g.DrawLine(pen, 0, y, _buffer.Width, y);
     }
 
-    private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+/// <summary>
+    /// Величина отступа границы комнаты на конкретной стороне тайла (x,y).
+    /// 0 — сторона внутренняя (сосед та же комната, отступа нет, клетки стыкуются вплотную).
+    /// +half — эта комната физически владеет тайлом стены на этой стороне (её собственный
+    /// wall-тайл, включая случай настоящей внешней границы без соседней комнаты вообще) —
+    /// граница отступает ВНУТРЬ, на середину своего тайла стены, как и раньше.
+    /// -half — тайл стены на этой стороне физически принадлежит СОСЕДНЕЙ комнате (см.
+    /// TileBuilder.GetBoundaryWallProto, правило dx==1||dy==1), у этой комнаты своего
+    /// wall-тайла тут нет. Чтобы граница легла на ту же физическую стену, а не "исчезла",
+    /// отступаем НАРУЖУ, за пределы своего тайла, ровно на середину чужого тайла стены —
+    /// тогда обе комнаты рисуют границу в одном и том же месте, а не одна "отменяет" другую.
+    /// </summary>
+    private float GetWallInset(Room room, List<Room> allRooms, int x, int y, int dx, int dy, float half)
     {
-        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
-        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-        float width = room.Width * tileSize;
-        float height = room.Height * tileSize;
+        int nx = x + dx, ny = y + dy;
+        if (room.Contains(nx, ny)) return 0f; // сосед — та же комната, внутренняя сторона
 
-        float offset = tileSize / 2f;
-        var rect = new Rectangle(
-            (int)(startX + offset),
-            (int)(startY + offset),
-            (int)(width - tileSize),
-            (int)(height - tileSize)
-        );
+        var neighborRoom = allRooms.FirstOrDefault(r => r != room && r.Contains(nx, ny));
+        if (neighborRoom == null) return half; // настоящая внешняя граница — свой wall-тайл
 
-        int alpha = (int)(room.FillColor.A * opacity);
-        using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
-        g.FillRectangle(brush, rect);
+        return (dx == 1 || dy == 1) ? half : -half;
     }
 
-    private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
+    /// <summary>
+    /// Прямоугольник клетки с инсетом в половину тайла ТОЛЬКО с тех сторон, где у
+    /// комнаты реально есть свой тайл стены (см. HasWallOnSide). Сторона, "проигравшая"
+    /// владение общей стеной соседней комнате, инсета не получает — заливка/линия там
+    /// доходит вплотную до края тайла, потому что стены в этом тайле физически нет,
+    /// пол начинается сразу с края и упирается в чужую стену, стоящую в соседнем тайле.
+    /// </summary>
+private RectangleF GetCellInsetRect(Room room, List<Room> allRooms, int x, int y, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
-        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-        float width = room.Width * tileSize;
-        float height = room.Height * tileSize;
+        float cellX = (x + gridOffset.X) * tileSize - viewOffset.X;
+        float cellY = (y + gridOffset.Y) * tileSize - viewOffset.Y;
+        float half = tileSize / 2f;
 
-        float offset = tileSize / 2f;
-        var rect = new Rectangle(
-            (int)(startX + offset),
-            (int)(startY + offset),
-            (int)(width - tileSize),
-            (int)(height - tileSize)
-        );
+        float left = cellX + GetWallInset(room, allRooms, x, y, -1, 0, half);
+        float right = cellX + tileSize - GetWallInset(room, allRooms, x, y, 1, 0, half);
+        float top = cellY + GetWallInset(room, allRooms, x, y, 0, -1, half);
+        float bottom = cellY + tileSize - GetWallInset(room, allRooms, x, y, 0, 1, half);
 
+        return RectangleF.FromLTRB(left, top, right, bottom);
+    }
+    /// <summary>
+    /// Заливка идёт по фактически занятым клеткам комнаты (bounding box минус
+    /// RemovedCells), а не по всему прямоугольнику — иначе после вычитания
+    /// заливка "наезжает" на территорию другой комнаты, стоящей в вырезе.
+    /// </summary>
+    private void DrawRoomFill(Graphics g, Room room, List<Room> allRooms, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        int alpha = (int)(room.FillColor.A * opacity);
+        using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
+
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            for (int y = room.Y; y < room.Y + room.Height; y++)
+            {
+                if (room.RemovedCells.Contains((x, y))) continue;
+
+                var rect = GetCellInsetRect(room, allRooms, x, y, tileSize, viewOffset, gridOffset);
+                if (rect.Width > 0 && rect.Height > 0)
+                    g.FillRectangle(brush, rect);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Обводка — это трассировка реального контура комнаты: для каждой занятой
+    /// клетки проверяем 4 соседей через room.Contains (то же условие, что и в
+    /// TileBuilder.GetBoundaryWallProto), и если сосед не принадлежит этой же
+    /// комнате — рисуем отрезок ровно по этой стороне клетки. Так обводка
+    /// "обтекает" вырез и совпадает с фактическим положением стен, а не рисует
+    /// старый прямоугольник целиком.
+    /// </summary>
+    private void DrawRoomLine(Graphics g, Room room, List<Room> allRooms, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
+    {
         Color color = isCurrent ? Color.Red : Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
         using var pen = new Pen(color, isCurrent ? 3 : 2);
-        g.DrawRectangle(pen, rect);
+
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            for (int y = room.Y; y < room.Y + room.Height; y++)
+            {
+                if (room.RemovedCells.Contains((x, y))) continue;
+
+
+var rect = GetCellInsetRect(room, allRooms, x, y, tileSize, viewOffset, gridOffset);
+                float half = tileSize / 2f;
+
+                // Линию рисуем на любой стороне, где вообще есть граница (инсет != 0) —
+                // и на "своей" стене (+half), и на стороне соседской стены (-half).
+                // Обе смежные комнаты в итоге рисуют линию в ОДНОМ и том же месте
+                // (середина общего wall-тайла), совпадая, а не гася друг друга
+                if (GetWallInset(room, allRooms, x, y, 0, -1, half) != 0f)
+                    g.DrawLine(pen, rect.Left, rect.Top, rect.Right, rect.Top);
+                if (GetWallInset(room, allRooms, x, y, 0, 1, half) != 0f)
+                    g.DrawLine(pen, rect.Left, rect.Bottom, rect.Right, rect.Bottom);
+                if (GetWallInset(room, allRooms, x, y, -1, 0, half) != 0f)
+                    g.DrawLine(pen, rect.Left, rect.Top, rect.Left, rect.Bottom);
+                if (GetWallInset(room, allRooms, x, y, 1, 0, half) != 0f)
+                    g.DrawLine(pen, rect.Right, rect.Top, rect.Right, rect.Bottom);
+            
+            }
+        }
 
         if (!HideRoomOverlay && tileSize > 20 && opacity > 0.3f)
         {
+            float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X + tileSize / 2f;
+            float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y + tileSize / 2f;
+
             using var font = new Font("Arial", Math.Min(10, tileSize / 3));
             Color textColor = GetContrastColor(room.FillColor);
             int alpha = (int)(200 * opacity);
@@ -809,10 +889,40 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
 
             int innerWidth = Math.Max(0, room.Width - 2);
             int innerHeight = Math.Max(0, room.Height - 2);
-            g.DrawString($"{innerWidth}×{innerHeight}", font, brush, rect.X + 2, rect.Y + 2);
+            g.DrawString($"{innerWidth}×{innerHeight}", font, brush, startX + 2, startY + 2);
         }
     }
+    private void DrawSubtractPreview(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        // Заливка вырезаемой области — по полным клеткам (сама область вычитания
+        // задаётся целыми тайлами, инсет тут не нужен, это не контур комнаты)
+        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+        float width = room.Width * tileSize;
+        float height = room.Height * tileSize;
 
+        var fillRect = new RectangleF(startX, startY, width, height);
+        using var brush = new SolidBrush(Color.FromArgb(90, 255, 0, 0));
+        g.FillRectangle(brush, fillRect);
+
+        // Рамку вырезаемой области рисуем с тем же инсетом в половину тайла,
+        // что и обводку комнат (DrawRoomLine) — иначе во время перетягивания
+        // рамка идёт по краю тайлов, а не по их середине, и визуально не совпадает
+        // с тем, как будет выглядеть итоговый контур после применения вычитания
+        float half = tileSize / 2f;
+        var lineRect = RectangleF.FromLTRB(
+            startX + half,
+            startY + half,
+            startX + width - half,
+            startY + height - half);
+
+        using var pen = new Pen(Color.Red, 3)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        if (lineRect.Width > 0 && lineRect.Height > 0)
+            g.DrawRectangle(pen, lineRect.X, lineRect.Y, lineRect.Width, lineRect.Height);
+    }
     private Color GetContrastColor(Color backgroundColor)
     {
         int brightness = (int)(backgroundColor.R * 0.299 + backgroundColor.G * 0.587 + backgroundColor.B * 0.114);
@@ -1168,7 +1278,7 @@ private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize,
         {
             Rectangle rect;
 
-switch (obj)
+            switch (obj)
             {
                 case Room room:
                     float rx = (room.X + gridOffsetX / tileSize) * tileSize - viewOffset.X;

@@ -22,9 +22,49 @@ public class TileBuilder
 
     private int GetPriority(string wall) => _wallPriority.GetValueOrDefault(wall, 2);
     private string BestWall(string a, string b) => GetPriority(a) >= GetPriority(b) ? a : b;
-    private Room? GetRoomAt(List<Room> rooms, int x, int y) => 
-        rooms.FirstOrDefault(r => x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height);
+private Room? GetRoomAt(List<Room> rooms, int x, int y) => 
+        rooms.FirstOrDefault(r => r.Contains(x, y));
 
+
+    /// <summary>
+    /// Стена — это тайл, который может принадлежать только одной из двух соседних
+    /// комнат, иначе между соприкасающимися комнатами получается двойная толщина
+    /// (каждая ставит свою стену впритык к чужой). На общей границе с другой
+    /// комнатой стену ставит только сторона, "смотрящая" вправо или вниз
+    /// (dx==1 или dy==1) — противоположная сторона стену не ставит, её пол
+    /// просто доходит вплотную до чужой стены. На настоящей внешней границе
+    /// (соседа-комнаты нет вообще) правило не действует — стена ставится всегда.
+    /// </summary>
+    private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int y)
+    {
+        var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+        bool needsWall = false;
+        string wall = room.WallProto;
+
+        foreach (var (dx, dy) in directions)
+        {
+            int nx = x + dx, ny = y + dy;
+            if (room.Contains(nx, ny)) continue; // сосед — та же комната, эта сторона внутренняя
+
+            var neighborRoom = GetRoomAt(allRooms, nx, ny);
+
+            if (neighborRoom == null)
+            {
+                // Настоящая внешняя граница — стена нужна всегда
+                needsWall = true;
+            }
+            else if (dx == 1 || dy == 1)
+            {
+                // Общая граница с другой комнатой — стену ставит только эта сторона
+                needsWall = true;
+                wall = BestWall(wall, neighborRoom.WallProto);
+            }
+            // dx == -1 или dy == -1 с соседней комнатой — стену не ставим,
+            // здесь остаётся пол (уже проставлен отдельным проходом по полу)
+        }
+
+        return needsWall ? wall : null;
+    }
     public TileGrid BuildFromRooms(Grid grid, TileGrid? existingGrid = null)
     {
         var tileGrid = existingGrid ?? new TileGrid(grid.Uid, grid.Name);
@@ -46,7 +86,8 @@ public class TileBuilder
             }
         }
 
-        // 1. ПОЛ (тайлы) - под ВСЕЙ комнатой (включая периметр)
+
+        // 1. ПОЛ (тайлы) - под всеми занятыми клетками комнаты, кроме вырезанных
         foreach (var room in allRooms)
         {
             int roomUid = room.GetHashCode();
@@ -55,92 +96,37 @@ public class TileBuilder
             {
                 for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
+                    if (room.RemovedCells.Contains((x, y))) continue;
                     tileGrid.SetTile(x, y, TileContent.Floor, room.FloorProto, room.RoomType, roomUid);
                 }
             }
         }
 
         // 2. СТЕНЫ (тайлы для рендера) - на границах, кроме дверей
+
+
+
+        // комнаты (внешний периметр + края внутренних выемок после RoomSubtractor),
+        // а не только по внешнему прямоугольнику — так вырез формирует внутренний
+        // угол, а не расщепляет комнату
         foreach (var room in allRooms)
         {
             int roomUid = room.GetHashCode();
 
-            // Верхняя стена
             for (int x = room.X; x < room.X + room.Width; x++)
             {
-                int y = room.Y;
-                if (!doorPositions.Contains((x, y)))
+                for (int y = room.Y; y < room.Y + room.Height; y++)
                 {
-                    var neighbor = GetRoomAt(allRooms, x, y - 1);
-                    if (neighbor != null)
-                    {
-                        string wall = BestWall(room.WallProto, neighbor.WallProto);
-                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
-                    }
-                    else
-                    {
-                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
-                    }
-                }
-            }
+                    if (room.RemovedCells.Contains((x, y))) continue;
+                    if (doorPositions.Contains((x, y))) continue;
 
-            // Нижняя стена
-            for (int x = room.X; x < room.X + room.Width; x++)
-            {
-                int y = room.Y + room.Height - 1;
-                if (!doorPositions.Contains((x, y)))
-                {
-                    var neighbor = GetRoomAt(allRooms, x, y + 1);
-                    if (neighbor != null)
-                    {
-                        string wall = BestWall(room.WallProto, neighbor.WallProto);
+                    string? wall = GetBoundaryWallProto(room, allRooms, x, y);
+                    if (wall != null)
                         tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
-                    }
-                    else
-                    {
-                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
-                    }
-                }
-            }
-
-            // Левая стена (без углов)
-            for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
-            {
-                int x = room.X;
-                if (!doorPositions.Contains((x, y)))
-                {
-                    var neighbor = GetRoomAt(allRooms, x - 1, y);
-                    if (neighbor != null)
-                    {
-                        string wall = BestWall(room.WallProto, neighbor.WallProto);
-                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
-                    }
-                    else
-                    {
-                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
-                    }
-                }
-            }
-
-            // Правая стена (без углов)
-            for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
-            {
-                int x = room.X + room.Width - 1;
-                if (!doorPositions.Contains((x, y)))
-                {
-                    var neighbor = GetRoomAt(allRooms, x + 1, y);
-                    if (neighbor != null)
-                    {
-                        string wall = BestWall(room.WallProto, neighbor.WallProto);
-                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
-                    }
-                    else
-                    {
-                        tileGrid.SetTile(x, y, TileContent.Wall, room.WallProto, room.RoomType, roomUid);
-                    }
                 }
             }
         }
+
 
         // 3. ДВЕРИ (привязанные к комнатам)
         foreach (var room in allRooms)

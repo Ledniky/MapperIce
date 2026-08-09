@@ -68,7 +68,7 @@ public class DoorUpdater
     private Room? GetBestRoomAt(Grid grid, int x, int y)
     {
         var candidates = grid.Rooms
-            .Where(r => x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+            .Where(r => r.Contains(x, y))
             .ToList();
 
         if (candidates.Count == 0) return null;

@@ -5,6 +5,7 @@ public class Room
 {
     public int X { get; set; }
     public int Y { get; set; }
+    public HashSet<(int X, int Y)> RemovedCells { get; set; } = new();
     public int Width { get; set; }
     public int Height { get; set; }
     public string RoomType { get; set; } = "General";
@@ -19,7 +20,7 @@ public class Room
     public List<Door> Doors { get; set; } = new();
     public int Priority { get; set; } = 0;
     
-    public Room Clone()
+public Room Clone()
     {
         var clone = new Room
         {
@@ -35,7 +36,9 @@ public class Room
             AirAlarmProto = AirAlarmProto,
             FireAlarmProto = FireAlarmProto,
             FillColor = FillColor,
-            LineColor = LineColor
+            LineColor = LineColor,
+            Priority = Priority,
+            RemovedCells = new HashSet<(int X, int Y)>(RemovedCells)
         };
         
         foreach (var door in Doors)
@@ -49,5 +52,14 @@ public class Room
         }
         
         return clone;
+    }
+    
+    
+    
+    public bool Contains(int x, int y)
+    {
+        return x >= X && x < X + Width &&
+               y >= Y && y < Y + Height &&
+               !RemovedCells.Contains((x, y));
     }
 }
