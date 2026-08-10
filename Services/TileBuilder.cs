@@ -26,46 +26,29 @@ private Room? GetRoomAt(List<Room> rooms, int x, int y) =>
         rooms.FirstOrDefault(r => r.Contains(x, y));
 
 
-    /// <summary>
-    /// Стена — это тайл, который может принадлежать только одной из двух соседних
-    /// комнат, иначе между соприкасающимися комнатами получается двойная толщина
-    /// (каждая ставит свою стену впритык к чужой). На общей границе с другой
-    /// комнатой стену ставит только сторона, "смотрящая" вправо или вниз
-    /// (dx==1 или dy==1) — противоположная сторона стену не ставит, её пол
-    /// просто доходит вплотную до чужой стены. На настоящей внешней границе
-    /// (соседа-комнаты нет вообще) правило не действует — стена ставится всегда.
-    /// </summary>
     private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int y)
     {
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-        bool needsWall = false;
+        bool isBoundary = false;
         string wall = room.WallProto;
 
         foreach (var (dx, dy) in directions)
         {
             int nx = x + dx, ny = y + dy;
-            if (room.Contains(nx, ny)) continue; // сосед — та же комната, эта сторона внутренняя
+            if (room.Contains(nx, ny)) continue; // сосед - та же комната, внутренняя сторона
+
+            isBoundary = true;
 
             var neighborRoom = GetRoomAt(allRooms, nx, ny);
-
-            if (neighborRoom == null)
-            {
-                // Настоящая внешняя граница — стена нужна всегда
-                needsWall = true;
-            }
-            else if (dx == 1 || dy == 1)
-            {
-                // Общая граница с другой комнатой — стену ставит только эта сторона
-                needsWall = true;
+            if (neighborRoom != null && neighborRoom != room)
                 wall = BestWall(wall, neighborRoom.WallProto);
-            }
-            // dx == -1 или dy == -1 с соседней комнатой — стену не ставим,
-            // здесь остаётся пол (уже проставлен отдельным проходом по полу)
         }
 
-        return needsWall ? wall : null;
+        return isBoundary ? wall : null;
     }
-    public TileGrid BuildFromRooms(Grid grid, TileGrid? existingGrid = null)
+
+    
+        public TileGrid BuildFromRooms(Grid grid, TileGrid? existingGrid = null)
     {
         var tileGrid = existingGrid ?? new TileGrid(grid.Uid, grid.Name);
         tileGrid.Clear();

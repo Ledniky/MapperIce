@@ -1988,8 +1988,8 @@ public class MainForm : Form
                         if (_snapEntityToCenter)
                         {
                             var centerTile = GetTilePosition(e.Location);
-    finalX = centerTile.x + _centerOffset.X;
-    finalY = centerTile.y + _centerOffset.Y;
+                            finalX = centerTile.x + _centerOffset.X;
+                            finalY = centerTile.y + _centerOffset.Y;
                         }
                         else
                         {
@@ -2501,7 +2501,7 @@ public class MainForm : Form
             return;
         }
 
-if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
+        if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.ActiveGrid != null)
         {
             if (_toolManager.CurrentTool == ToolManager.Tool.SubtractRoom)
             {
@@ -2522,19 +2522,20 @@ if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.
                 _isDrawing = false;
                 Render();
                 return;
-            }
-
-            if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
+            } 
+            
+if (_currentRoom.Width > 1 || _currentRoom.Height > 1)
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
 
-                // Новая комната вырезает пересекающуюся площадь из уже существующих —
-                // без этого Room-объекты продолжали бы дублировать территорию друг друга
-                RoomSubtractor.ApplyToGrid(
-                    _map.ActiveGrid, _currentRoom.X, _currentRoom.Y, _currentRoom.Width, _currentRoom.Height);
+                // Обрабатывает и "впритык" (нахлёст создаётся), и "глубокое" наложение
+                // (вырезается только внутренность, оставляя общее кольцо стены в 1 тайл) —
+                // в обоих случаях граничный тайл стены оказывается один и тот же
+                // физический тайл у старой и новой комнаты, без дублирования
+                RoomSubtractor.ApplyForNewRoom(_map.ActiveGrid, _currentRoom);
 
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
-                _doorUpdater.RecalculateAllDoors(_map.ActiveGrid); // вычитание могло затронуть несколько комнат сразу
+                _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
                 UpdateTileGrid();
                 SaveState();
             }
@@ -3029,7 +3030,7 @@ if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.
         }
     }
 
-   private bool HasFloorAt(Grid grid, int x, int y)
+    private bool HasFloorAt(Grid grid, int x, int y)
     {
         return grid.Rooms.Any(r => r.Contains(x, y));
     }
@@ -3525,7 +3526,7 @@ if (e.Button == MouseButtons.Left && _isDrawing && _currentRoom != null && _map.
         panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
         row++;
 
-panel.Controls.Add(new Label { Text = "Смещение X:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+        panel.Controls.Add(new Label { Text = "Смещение X:", AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
         var nudX = new NumericUpDown
         {
             Value = (decimal)_centerOffset.X,
