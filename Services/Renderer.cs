@@ -226,41 +226,88 @@ public class Renderer
         }
     }
 
+    #region Общие хелперы координат/отрисовки (новое — заменяют дублировавшуюся логику в *Batch методах)
+
+    /// <summary>
+    /// Экранный прямоугольник тайла tileSize×tileSize для мировой позиции (worldX, worldY).
+    /// offsetTiles* сдвигает якорь на долю тайла: 0 — левый верхний угол клетки (как у пола/стен/дверей/огнешлюзов),
+    /// -0.5 — центр клетки (как у декалей/generic-сущностей/превью, чьи X/Y — уже дробные мировые координаты).
+    /// </summary>
+    private static Rectangle ToRect(float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset,
+        float offsetTilesX = 0f, float offsetTilesY = 0f)
+    {
+        float sx = (worldX + offsetTilesX + gridOffset.X) * tileSize - viewOffset.X;
+        float sy = (worldY + offsetTilesY + gridOffset.Y) * tileSize - viewOffset.Y;
+        return new Rectangle((int)sx, (int)sy, tileSize, tileSize);
+    }
+
+    /// <summary>
+    /// Выполняет draw() с временным поворотом g.Transform вокруг точки (cx, cy) на rotation радиан,
+    /// затем гарантированно восстанавливает исходный Transform. При rotation == 0 поворот не применяется.
+    /// </summary>
+    private static void WithRotation(Graphics g, float cx, float cy, float rotation, Action draw)
+    {
+        if (rotation == 0)
+        {
+            draw();
+            return;
+        }
+
+        var old = g.Transform;
+        var matrix = new Matrix();
+        matrix.RotateAt(rotation * 180 / (float)Math.PI, new PointF(cx, cy));
+        g.Transform = matrix;
+        try { draw(); }
+        finally { g.Transform = old; }
+    }
+
+    /// <summary>
+    /// Рисует текстуру прототипа в rect (с опциональным тонированием tint), либо, если текстуры
+    /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
+    /// каждого типа объекта своя.
+    /// </summary>
+    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback)
+    {
+        Image? texture = GetOrLoadTexture(protoId ?? "");
+        if (texture != null)
+        {
+            var src = GetSourceRect(protoId!, texture);
+            if (tint != null)
+                g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+            else
+                g.DrawImage(texture, rect, src, GraphicsUnit.Pixel);
+        }
+        else
+        {
+            fallback?.Invoke(g, rect);
+        }
+    }
+
+    #endregion
+
     #region Оптимизированные методы пакетной отрисовки
 
     private void DrawFloorTilesBatch(Graphics g, List<TileData> tiles, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         if (tiles.Count == 0) return;
 
-        var grouped = tiles.GroupBy(t => t.ProtoId ?? "Plating");
+        var fallbackColor = Color.FromArgb((int)(150 * opacity), 200, 200, 200);
 
-        foreach (var group in grouped)
+        foreach (var group in tiles.GroupBy(t => t.ProtoId ?? "Plating"))
         {
             string protoId = group.Key;
-            Image? texture = GetOrLoadTexture(protoId);
 
             foreach (var tile in group)
             {
-                float tileX = (tile.X + gridOffset.X) * tileSize - viewOffset.X;
-                float tileY = (tile.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-                var rect = new Rectangle((int)tileX, (int)tileY, tileSize, tileSize);
-
-                if (texture != null)
+                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
                 {
-                    var srcRect = GetSourceRect(protoId, texture);
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                }
-                else
-                {
-                    using var brush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
-                    g.FillRectangle(brush, rect);
-                }
+                    using var brush = new SolidBrush(fallbackColor);
+                    gg.FillRectangle(brush, r);
+                });
             }
         }
     }
-
-
-
 
     private void DrawDecalsBatch(Graphics g, List<PlacedDecal> decals, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
@@ -269,51 +316,32 @@ public class Renderer
         foreach (var group in decals.GroupBy(d => d.Proto))
         {
             string protoId = group.Key;
-            Image? texture = GetOrLoadTexture(protoId);
 
             foreach (var decal in group)
             {
-                // decal.X/Y — это точная мировая координата (как у MapEntity), а не индекс
-                // тайла, поэтому центрируем прямоугольник текстуры так же, как для
-                // обычных сущностей (DrawGenericEntitiesBatch), а не рисуем от угла как тайл
-                float cx = (decal.X + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (decal.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-                var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+                // decal.X/Y — точная мировая координата (как у MapEntity), центрируем прямоугольник,
+                // а не рисуем от угла как тайл — отсюда offsetTiles = -0.5
+                var rect = ToRect(decal.X, decal.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+                float cx = rect.X + tileSize / 2f;
+                float cy = rect.Y + tileSize / 2f;
 
-                var oldTransform = g.Transform;
-
-                if (decal.Rotation != 0)
+                WithRotation(g, cx, cy, decal.Rotation, () =>
                 {
-                    var matrix = new Matrix();
-                    float angleDegrees = decal.Rotation * 180 / (float)Math.PI;
-                    matrix.RotateAt(angleDegrees, new PointF(cx, cy));
-                    g.Transform = matrix;
-                }
-
-                if (texture != null)
-                {
-                    var srcRect = GetSourceRect(protoId, texture);
                     var tintAttrs = GetDecalTintAttributes(decal.Color);
-                    g.DrawImage(texture, rect, srcRect.X, srcRect.Y, srcRect.Width, srcRect.Height,
-                        GraphicsUnit.Pixel, tintAttrs);
-                }
-                else
-                {
-                    // Фолбэк-заглушку (нет текстуры) тоже красим в цвет декали, чтобы
-                    // цвет был виден даже без спрайта
-                    var fallbackColor = ParseDecalColor(decal.Color);
-                    using var brush = new SolidBrush(Color.FromArgb(
-                        (int)(160 * opacity),
-                        fallbackColor.R, fallbackColor.G, fallbackColor.B));
-                    g.FillRectangle(brush, rect);
-                }
-
-                g.Transform = oldTransform;
+                    DrawTexturedRect(g, protoId, rect, tintAttrs, (gg, r) =>
+                    {
+                        // Фолбэк-заглушку (нет текстуры) тоже красим в цвет декали, чтобы
+                        // цвет был виден даже без спрайта
+                        var fallbackColor = ParseDecalColor(decal.Color);
+                        using var brush = new SolidBrush(Color.FromArgb(
+                            (int)(160 * opacity),
+                            fallbackColor.R, fallbackColor.G, fallbackColor.B));
+                        gg.FillRectangle(brush, r);
+                    });
+                });
             }
         }
     }
-
-
 
     private void DrawWallTilesBatch(Graphics g, List<TileData> tiles, TileGrid tileGrid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
@@ -332,24 +360,15 @@ public class Renderer
         foreach (var group in grouped)
         {
             string wallProto = group.Key;
-            Image? texture = GetOrLoadTexture(wallProto);
 
             foreach (var tile in group.Value)
             {
-                float wx = (tile.X + gridOffset.X) * tileSize - viewOffset.X;
-                float wy = (tile.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-                var rect = new Rectangle((int)wx, (int)wy, tileSize, tileSize);
-
-                if (texture != null)
-                {
-                    var srcRect = GetSourceRect(wallProto, texture);
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                }
-                else
+                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+                DrawTexturedRect(g, wallProto, rect, null, (gg, r) =>
                 {
                     using var pen = new Pen(Color.Gray, 1);
-                    g.DrawRectangle(pen, rect);
-                }
+                    gg.DrawRectangle(pen, r);
+                });
             }
         }
     }
@@ -363,29 +382,21 @@ public class Renderer
         foreach (var group in grouped)
         {
             string protoId = group.Key;
-            Image? texture = GetOrLoadTexture(protoId);
 
             foreach (var tile in group)
             {
-                float x = (tile.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X - tileSize / 2f;
-                float y = (tile.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y - tileSize / 2f;
-                var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
-
-                if (texture != null)
-                {
-                    var srcRect = GetSourceRect(protoId, texture);
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                }
-                else
+                // (x + 0.5 - 0.5) эквивалентно углу клетки — та же формула, что у пола
+                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
                 {
                     using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
-                    g.FillRectangle(brush, rect);
+                    gg.FillRectangle(brush, r);
                     using var pen = new Pen(Color.DarkBlue, 2);
-                    g.DrawRectangle(pen, rect);
+                    gg.DrawRectangle(pen, r);
                     using var font = new Font("Segoe UI", 14);
                     using var textBrush = new SolidBrush(Color.White);
-                    g.DrawString("🚪", font, textBrush, rect.X + 4, rect.Y + 2);
-                }
+                    gg.DrawString("🚪", font, textBrush, r.X + 4, r.Y + 2);
+                });
             }
         }
     }
@@ -396,29 +407,19 @@ public class Renderer
 
         foreach (var firelock in firelocks)
         {
-            float x = (firelock.X + gridOffset.X) * tileSize - viewOffset.X;
-            float y = (firelock.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-            var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
-
-            Image? texture = GetOrLoadTexture(firelock.Proto);
-
-            if (texture != null)
-            {
-                var srcRect = GetSourceRect(firelock.Proto, texture);
-                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-            }
-            else
+            var rect = ToRect(firelock.X, firelock.Y, tileSize, viewOffset, gridOffset);
+            DrawTexturedRect(g, firelock.Proto, rect, null, (gg, r) =>
             {
                 Color color = firelock.IsGlass ? Color.FromArgb(150, 100, 200, 255) : Color.FromArgb(200, 200, 100, 100);
                 using var brush = new SolidBrush(color);
-                g.FillRectangle(brush, rect);
+                gg.FillRectangle(brush, r);
                 using var pen = new Pen(Color.Black, 1);
-                g.DrawRectangle(pen, rect);
+                gg.DrawRectangle(pen, r);
 
                 using var font = new Font("Segoe UI", tileSize / 3, FontStyle.Bold);
                 using var textBrush = new SolidBrush(Color.White);
-                g.DrawString("🔥", font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
-            }
+                gg.DrawString("🔥", font, textBrush, r.X + tileSize / 4, r.Y + tileSize / 4);
+            });
         }
     }
 
@@ -486,36 +487,28 @@ public class Renderer
     {
         if (alarms.Count == 0) return;
 
-        Image? texture = GetOrLoadTexture(protoId);
-
         foreach (var entity in alarms)
         {
-            float x = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
-            float y = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-            var rect = new Rectangle((int)x, (int)y, tileSize, tileSize);
+            var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset);
 
-            float rotation = 0;
-            if (entity is AirAlarmEntity airAlarm)
-                rotation = airAlarm.Rotation;
-            else if (entity is FireAlarmEntity fireAlarm)
-                rotation = fireAlarm.Rotation;
+            float rotation = entity switch
+            {
+                AirAlarmEntity a => a.Rotation,
+                FireAlarmEntity f => f.Rotation,
+                _ => 0f
+            };
 
+            float cx = rect.X + rect.Width / 2f;
+            float cy = rect.Y + rect.Height / 2f;
+
+            Image? texture = GetOrLoadTexture(protoId);
             if (texture != null)
             {
-                var oldTransform = g.Transform;
-
-                if (rotation != 0)
+                WithRotation(g, cx, cy, rotation, () =>
                 {
-                    var matrix = new Matrix();
-                    float angleDegrees = rotation * 180 / (float)Math.PI;
-                    matrix.RotateAt(angleDegrees, new PointF(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
-                    g.Transform = matrix;
-                }
-
-                var srcRect = GetSourceRect(protoId, texture);
-                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-
-                g.Transform = oldTransform;
+                    var srcRect = GetSourceRect(protoId, texture);
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                });
             }
             else
             {
@@ -530,16 +523,13 @@ public class Renderer
                 g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
 
                 using var arrowPen = new Pen(Color.Red, 2);
-                float cx = rect.X + rect.Width / 2;
-                float cy = rect.Y + rect.Height / 2;
                 float radius = tileSize / 2 - 4;
-                float angle = rotation;
-                g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(angle) * radius, cy + (float)Math.Sin(angle) * radius);
+                g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(rotation) * radius, cy + (float)Math.Sin(rotation) * radius);
             }
         }
     }
 
-private void DrawRoomFillsBatch(Graphics g, List<Room> rooms, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    private void DrawRoomFillsBatch(Graphics g, List<Room> rooms, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         if (rooms.Count == 0) return;
 
@@ -1156,52 +1146,29 @@ private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset
         if (_currentMap?.ActiveGrid == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+        var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y);
 
-        float cx = _previewEntityX * tileSize + gridOffsetX - viewOffset.X;
-        float cy = _previewEntityY * tileSize + gridOffsetY - viewOffset.Y;
-        var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+        var rect = ToRect(_previewEntityX, _previewEntityY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+        float cx = rect.X + tileSize / 2f;
+        float cy = rect.Y + tileSize / 2f;
 
-        var oldTransform = g.Transform;
-
-        if (_previewEntityRotation != 0)
+        WithRotation(g, cx, cy, _previewEntityRotation, () =>
         {
-            var matrix = new Matrix();
-            float angleDegrees = _previewEntityRotation * 180 / (float)Math.PI;
-            matrix.RotateAt(angleDegrees, new PointF(cx, cy));
-            g.Transform = matrix;
-        }
+            ImageAttributes? tint = !string.IsNullOrEmpty(_previewDecalColor)
+                ? GetDecalTintAttributes(_previewDecalColor)
+                : null;
 
-        Image? texture = GetOrLoadTexture(_previewEntityProto);
-
-        if (texture != null)
-        {
-            var srcRect = GetSourceRect(_previewEntityProto, texture);
-
-            if (!string.IsNullOrEmpty(_previewDecalColor))
+            DrawTexturedRect(g, _previewEntityProto, rect, tint, (gg, r) =>
             {
-                var tintAttrs = GetDecalTintAttributes(_previewDecalColor);
-                g.DrawImage(texture, rect, srcRect.X, srcRect.Y, srcRect.Width, srcRect.Height,
-                    GraphicsUnit.Pixel, tintAttrs);
-            }
-            else
-            {
-                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-            }
-        }
-        else
-        {
-            Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
-                ? ParseDecalColor(_previewDecalColor)
-                : Color.FromArgb(255, 0, 255);
-            using var brush = new SolidBrush(Color.FromArgb(120, fallback.R, fallback.G, fallback.B));
-            g.FillRectangle(brush, rect);
-            using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
-            g.DrawRectangle(pen, rect);
-        }
-
-        g.Transform = oldTransform;
+                Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
+                    ? ParseDecalColor(_previewDecalColor)
+                    : Color.FromArgb(255, 0, 255);
+                using var brush = new SolidBrush(Color.FromArgb(120, fallback.R, fallback.G, fallback.B));
+                gg.FillRectangle(brush, r);
+                using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
+                gg.DrawRectangle(pen, r);
+            });
+        });
     }
 
     private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
@@ -1251,46 +1218,31 @@ private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset
         foreach (var group in entities.GroupBy(e => e.Proto))
         {
             string protoId = group.Key;
-            Image? texture = GetOrLoadTexture(protoId);
 
             foreach (var entity in group)
             {
-                float cx = (entity.X + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (entity.Y + gridOffset.Y) * tileSize - viewOffset.Y;
-                var rect = new Rectangle((int)(cx - tileSize / 2f), (int)(cy - tileSize / 2f), tileSize, tileSize);
+                var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+                float cx = rect.X + tileSize / 2f;
+                float cy = rect.Y + tileSize / 2f;
 
-                var oldTransform = g.Transform;
-
-                if (entity.Rotation != 0)
+                WithRotation(g, cx, cy, entity.Rotation, () =>
                 {
-                    var matrix = new Matrix();
-                    float angleDegrees = entity.Rotation * 180 / (float)Math.PI;
-                    matrix.RotateAt(angleDegrees, new PointF(cx, cy));
-                    g.Transform = matrix;
-                }
-
-                if (texture != null)
-                {
-                    var srcRect = GetSourceRect(protoId, texture);
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                }
-                else
-                {
-                    using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
-                    g.FillRectangle(brush, rect);
-                    using var pen = new Pen(Color.Black, 1);
-                    g.DrawRectangle(pen, rect);
-
-                    if (tileSize > 16)
+                    DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
                     {
-                        using var font = new Font("Segoe UI", 6);
-                        using var textBrush = new SolidBrush(Color.White);
-                        string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
-                        g.DrawString(label, font, textBrush, rect.X + 1, rect.Y + 1);
-                    }
-                }
+                        using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+                        gg.FillRectangle(brush, r);
+                        using var pen = new Pen(Color.Black, 1);
+                        gg.DrawRectangle(pen, r);
 
-                g.Transform = oldTransform;
+                        if (tileSize > 16)
+                        {
+                            using var font = new Font("Segoe UI", 6);
+                            using var textBrush = new SolidBrush(Color.White);
+                            string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                            gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
+                        }
+                    });
+                });
             }
         }
     }
