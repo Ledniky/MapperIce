@@ -20,6 +20,8 @@ public class Renderer
     // Кэш текстур для ускорения рендеринга
     private readonly Dictionary<string, Image?> _textureCache = new();
     private readonly Dictionary<string, Rectangle> _sourceRectCache = new();
+    private readonly Dictionary<int, TileGrid> _tileGridCache = new();
+    private readonly HashSet<int> _dirtyTileGrids = new();
 
     // Размеры тайлов в пикселях для кэширования
     private int _cachedTileSize = 0;
@@ -117,7 +119,14 @@ public class Renderer
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
-                var tileGrid = _tileBuilder.BuildFromRooms(grid);
+                bool needsRebuild = !_tileGridCache.TryGetValue(grid.Uid, out var tileGrid) ||
+                                     _dirtyTileGrids.Contains(grid.Uid);
+                if (needsRebuild)
+                {
+                    tileGrid = _tileBuilder.BuildFromRooms(grid, tileGrid);
+                    _tileGridCache[grid.Uid] = tileGrid;
+                    _dirtyTileGrids.Remove(grid.Uid);
+                }
 
                 var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
                 var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
@@ -1052,6 +1061,15 @@ private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset
         _currentNetwork = network;
     }
 
+    /// <summary>
+    /// Помечает TileGrid конкретного грида как устаревший — при следующем Render()
+    /// он будет пересобран заново. Вызывать из MainForm при любом структурном
+    /// изменении грида (комнаты, двери, ручные тайлы), а не на каждый рендер.
+    /// </summary>
+    public void InvalidateTileGrid(int gridUid)
+    {
+        _dirtyTileGrids.Add(gridUid);
+    }
     public void SetAlarmPreview(int x, int y, float rotation, string type)
     {
         _previewX = x;
