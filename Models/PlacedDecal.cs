@@ -14,4 +14,9 @@ public class PlacedDecal
     public string Color { get; set; } = "#FFFFFFFF";
     public float Rotation { get; set; } = 0;
     public bool Cleanable { get; set; } = false;
+
+    // Заполнено только у декалей, сгенерированных Decal Rule — позволяет снести
+    // и перестроить именно их при пересчёте, не трогая ручные декали с левой панели
+    public int? PatternOwnerId { get; set; } = null;
+    public int PatternLayerIndex { get; set; } = 0;
 }

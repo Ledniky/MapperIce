@@ -22,7 +22,8 @@ public partial class MainForm : Form
     private PipeBuilder _pipeBuilder = null!;
     private PipeTypeManager _pipeTypeManager = new();
     private AlarmNetwork? _cachedAlarmNetwork;
-
+    private DecalPatternBuilder _decalPatternBuilder = new();
+    private List<DecalPack> _scannedDecalPacks = new(); // паки, собранные из репозитория кнопкой "Собрать"
     private Point _startPoint;
     private bool _isDrawing = false;
 
@@ -92,6 +93,7 @@ public partial class MainForm : Form
     // ===== Инструмент "Перемещение" =====
     private Button? _btnMove;
     private Button? _btnMoveSettings;
+    private Button? _btnDecalRule;
     private MoveSettings _moveSettings = new MoveSettings();
     private Form? _moveSettingsForm = null;
     private List<object> _selectedObjects = new();
@@ -249,7 +251,11 @@ public partial class MainForm : Form
             _cachedAlarmNetwork = networkBuilder.BuildNetwork(_map.ActiveGrid);
         }
     }
-
+    private void RecalculateDecalPatterns()
+    {
+        if (_map.ActiveGrid == null) return;
+        _decalPatternBuilder.RecalculateAll(_map.ActiveGrid);
+    }
 
     // === ХОЛСТ ===
     private void CreateCanvas()
@@ -309,7 +315,7 @@ public partial class MainForm : Form
         _btnPipeWaste.BackColor = Color.White;
         _btnPipeNormal.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
-
+                if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
@@ -385,6 +391,10 @@ public partial class MainForm : Form
                 if (_btnMove != null) _btnMove.BackColor = Color.LightBlue;
                 _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}  (ЛКМ — выбрать, CTRL — добавить, SHIFT — область)";
                 break;
+            case ToolManager.Tool.DecalRule:
+                if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.LightBlue;
+                _typeLabel.Text = "Decal Rule: кликните по комнате, чтобы настроить узор";
+                break;
 
             default:
                 _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
@@ -395,6 +405,7 @@ public partial class MainForm : Form
         {
             ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom => Cursors.Cross,
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
+            ToolManager.Tool.DecalRule => Cursors.Hand,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
@@ -442,7 +453,7 @@ public partial class MainForm : Form
         }
         else
         {
-            _renderer.SetAlarmNetwork(null);
+            _renderer.SetAlarmNetwork(null!);
         }
 
         _canvas.Invalidate();

@@ -98,8 +98,19 @@ public class GridSnapshot
             .ToList();
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
-        Decals = grid.Decals.Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable }).ToList();
-            }
+
+        Decals = grid.Decals.Select(d => new PlacedDecal
+        {
+            X = d.X,
+            Y = d.Y,
+            Proto = d.Proto,
+            Color = d.Color,
+            Rotation = d.Rotation,
+            Cleanable = d.Cleanable,
+            PatternOwnerId = d.PatternOwnerId,
+            PatternLayerIndex = d.PatternLayerIndex
+        }).ToList();
+    }
 
     public void RestoreTo(Grid grid)
     {
@@ -175,9 +186,13 @@ public class GridSnapshot
             grid.Tiles.Add(new PlacedTile { X = tile.X, Y = tile.Y, Proto = tile.Proto });
         }
 
-        foreach (var decal in Decals)
+foreach (var decal in Decals)
         {
-            grid.Decals.Add(new PlacedDecal { X = decal.X, Y = decal.Y, Proto = decal.Proto, Color = decal.Color, Rotation = decal.Rotation, Cleanable = decal.Cleanable });
+            grid.Decals.Add(new PlacedDecal
+            {
+                X = decal.X, Y = decal.Y, Proto = decal.Proto, Color = decal.Color, Rotation = decal.Rotation, Cleanable = decal.Cleanable,
+                PatternOwnerId = decal.PatternOwnerId, PatternLayerIndex = decal.PatternLayerIndex
+            });
         }
     }
 }

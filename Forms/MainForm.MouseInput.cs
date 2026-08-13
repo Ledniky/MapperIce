@@ -272,7 +272,15 @@ public partial class MainForm
                 UpdateTileGrid();
                 Render();
             }
-
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DecalRule)
+            {
+                var grid = _map.ActiveGrid;
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room != null)
+                {
+                    ShowDecalRuleDialog(room);
+                }
+            }
             else if (_toolManager.CurrentTool == ToolManager.Tool.Move)
             {
                 var grid = _map.ActiveGrid;
@@ -639,8 +647,10 @@ public partial class MainForm
             if (_moveDidMove)
             {
                 if (_map.ActiveGrid != null)
+                {
                     _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
-
+                    RecalculateDecalPatterns();
+                }
                 UpdateTileGrid();
                 SaveState(); // ← логирование в undo/redo
             }

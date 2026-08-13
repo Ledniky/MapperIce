@@ -428,7 +428,32 @@ public partial class MainForm
         y += 40 + 2;
 
 
+var decalRuleLabel = new Label
+        {
+            Text = "Decal Rule:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(decalRuleLabel);
+        y += 20 + 2;
 
+        _btnDecalRule = new Button
+        {
+            Text = "🧱 Узор по периметру",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnDecalRule.Click += (s, e) => { _toolManager.SetTool(ToolManager.Tool.DecalRule); };
+        _toolPanel.Controls.Add(_btnDecalRule);
+        y += 40 + 2;
 
 
 

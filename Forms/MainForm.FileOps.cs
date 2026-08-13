@@ -229,6 +229,7 @@ public partial class MainForm
                 }
 
                 _doorUpdater.UpdateAllDoors(_map.ActiveGrid); // пересоздаёт Firelock из дверей
+                RecalculateDecalPatterns();
                 UpdateTileGrid();
                 SaveState();
                 Render();

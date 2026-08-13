@@ -21,7 +21,8 @@ public class ToolManager
         AirAlarm,
         FireAlarm,
         PlacePrototype,
-        Move
+        Move,
+        DecalRule
     }
 
     private Tool _currentTool = Tool.None;
