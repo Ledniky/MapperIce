@@ -26,7 +26,7 @@ private Room? GetRoomAt(List<Room> rooms, int x, int y) =>
         rooms.FirstOrDefault(r => r.Contains(x, y));
 
 
-    private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int y)
+private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int y)
     {
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
         bool isBoundary = false;
@@ -45,6 +45,40 @@ private Room? GetRoomAt(List<Room> rooms, int x, int y) =>
         }
 
         return isBoundary ? wall : null;
+    }
+
+    /// <summary>
+    /// Клетка-"пинч" во внутреннем (вогнутом) углу выемки: сама клетка ортогонально
+    /// окружена комнатой с обеих сторон (поэтому GetBoundaryWallProto её пропускает
+    /// и она остаётся полом), но один из диагональных соседей уже вне комнаты
+    /// (вырезан RoomSubtractor'ом или это чужая комната). Без стены здесь между
+    /// двумя ортогональными стенами угла образуется диагональная дыра толщиной 0 —
+    /// через неё можно пройти по диагонали. Возвращаем proto стены для такой клетки,
+    /// превращая угол в сплошной (толщина 1→2 на повороте), либо null, если клетка
+    /// не является таким углом. Тот же диагональный признак уже используется в
+    /// Renderer.DrawConcaveCornerConnectors и DecalPatternBuilder.TryAddInnerCorner.
+    /// </summary>
+    private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x, int y)
+    {
+        var diagonals = new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) };
+
+        foreach (var (dx, dy) in diagonals)
+        {
+            bool orthoOpen = room.Contains(x + dx, y) && room.Contains(x, y + dy);
+            if (!orthoOpen) continue;
+
+            bool diagonalForeign = !room.Contains(x + dx, y + dy);
+            if (!diagonalForeign) continue;
+
+            string wall = room.WallProto;
+            var neighborRoom = GetRoomAt(allRooms, x + dx, y + dy);
+            if (neighborRoom != null && neighborRoom != room)
+                wall = BestWall(wall, neighborRoom.WallProto);
+
+            return wall; // одной подходящей диагонали достаточно
+        }
+
+        return null;
     }
 
     
@@ -92,7 +126,7 @@ private Room? GetRoomAt(List<Room> rooms, int x, int y) =>
         // комнаты (внешний периметр + края внутренних выемок после RoomSubtractor),
         // а не только по внешнему прямоугольнику — так вырез формирует внутренний
         // угол, а не расщепляет комнату
-        foreach (var room in allRooms)
+foreach (var room in allRooms)
         {
             int roomUid = room.GetHashCode();
 
@@ -104,6 +138,30 @@ private Room? GetRoomAt(List<Room> rooms, int x, int y) =>
                     if (doorPositions.Contains((x, y))) continue;
 
                     string? wall = GetBoundaryWallProto(room, allRooms, x, y);
+                    if (wall != null)
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                }
+            }
+        }
+
+        // 2б. ДИАГОНАЛЬНЫЕ ВНУТРЕННИЕ УГЛЫ — заполняем "пинч"-клетки после вычитания,
+        // иначе на повороте выемки стена истончается до 0 по диагонали (см. комментарий
+        // у GetConcaveCornerWallProto). Толщина стены на таких углах становится 2 вместо 0.
+        foreach (var room in allRooms)
+        {
+            int roomUid = room.GetHashCode();
+
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                for (int y = room.Y; y < room.Y + room.Height; y++)
+                {
+                    if (room.RemovedCells.Contains((x, y))) continue;
+                    if (doorPositions.Contains((x, y))) continue;
+
+                    var existing = tileGrid.GetTile(x, y);
+                    if (existing != null && existing.Content == TileContent.Wall) continue; // уже стена из прямого прохода
+
+                    string? wall = GetConcaveCornerWallProto(room, allRooms, x, y);
                     if (wall != null)
                         tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
                 }
