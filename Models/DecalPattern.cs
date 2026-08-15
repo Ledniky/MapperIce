@@ -10,15 +10,24 @@ public enum DecalPosition
     Door
 }
 
+public enum DecalPackSource { Extracted, Custom }
+
 /// <summary>
-/// Пак — переиспользуемый шаблон декалей одного визуального стиля (например "Brick").
-/// Хранит только id прототипов по позициям, без цвета — цвет и порядок задаются на уровне слоя.
+/// Пак — набор декалей одного визуального стиля. Теперь хранит и цвет (раньше цвет
+/// жил в DecalLayer — перенесён сюда, т.к. по факту у одного стиля декалей всегда
+/// один и тот же цвет, настраивать его на уровне отдельного слоя было избыточно).
 /// </summary>
 public class DecalPack
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "Новый пак";
+    public string Category { get; set; } = "Custom"; // имя папки/категории в дереве DecalPackDialog
     public Dictionary<DecalPosition, string> Positions { get; set; } = new();
+    public string Color { get; set; } = "#FFFFFFFF";
+
+    public DecalPackSource Source { get; set; } = DecalPackSource.Custom;
+
+    public override string ToString() => Name;
 
     public DecalPack Clone()
     {
@@ -26,66 +35,27 @@ public class DecalPack
         {
             Id = Id,
             Name = Name,
-            Positions = new Dictionary<DecalPosition, string>(Positions)
+            Category = Category,
+            Positions = new Dictionary<DecalPosition, string>(Positions),
+            Color = Color,
+            Source = Source
         };
     }
-
-    // Пример под кирпичный набор из задачи. Внутренние углы и дверь там не описаны —
-    // оставлены пустыми, пользователь заполняет вручную под свои текстуры.
-    public static DecalPack CreateBrickExample()
-    {
-        return new DecalPack
-        {
-            Name = "Brick (пример)",
-            Positions = new Dictionary<DecalPosition, string>
-            {
-                [DecalPosition.SideN] = "BrickLineOverlayN",
-                [DecalPosition.SideS] = "BrickLineOverlayS",
-                [DecalPosition.SideE] = "BrickLineOverlayE",
-                [DecalPosition.SideW] = "BrickLineOverlayW",
-                [DecalPosition.OuterCornerNE] = "BrickCornerOverlayNE",
-                [DecalPosition.OuterCornerNW] = "BrickCornerOverlayNW",
-                [DecalPosition.OuterCornerSE] = "BrickCornerOverlaySE",
-                [DecalPosition.OuterCornerSW] = "BrickCornerOverlaySW",
-                [DecalPosition.DeadEndN] = "BrickEndOverlayN",
-                [DecalPosition.DeadEndS] = "BrickEndOverlayS",
-                [DecalPosition.DeadEndE] = "BrickEndOverlayE",
-                [DecalPosition.DeadEndW] = "BrickEndOverlayW",
-            }
-        };
-    }
-
-    public static Dictionary<string, DecalPack> Examples =
-        new[] { CreateBrickExample() }.ToDictionary(p => p.Id, p => p);
 }
 
-/// <summary>
-/// Один слой "бутерброда" — как слой в фотошопе: свой цвет, своя позиция в стопке
-/// (порядок в List&lt;DecalLayer&gt; = порядок отрисовки/экспорта, нижний слой первый),
-/// свой набор proto по позициям (преднаполняется из пака, но каждая позиция редактируема).
-/// </summary>
+/// <summary>Один слой "бутерброда" — теперь только ссылка на пак + вкл/выкл, без своего цвета и своих позиций.</summary>
 public class DecalLayer
 {
     public string Name { get; set; } = "Слой";
     public string? SourcePackId { get; set; }
-    public string Color { get; set; } = "#FFFFFFFF"; // формат как у PlacedDecal.Color
     public bool Enabled { get; set; } = true;
-    public Dictionary<DecalPosition, string> Positions { get; set; } = new();
 
     public DecalLayer Clone()
     {
-        return new DecalLayer
-        {
-            Name = Name,
-            SourcePackId = SourcePackId,
-            Color = Color,
-            Enabled = Enabled,
-            Positions = new Dictionary<DecalPosition, string>(Positions)
-        };
+        return new DecalLayer { Name = Name, SourcePackId = SourcePackId, Enabled = Enabled };
     }
 }
 
-/// <summary>"Decal Rule" — весь бутерброд слоёв, применённый к комнате (Auto) или к одной ручной области (Manual).</summary>
 public class DecalRuleSet
 {
     public List<DecalLayer> Layers { get; set; } = new();
@@ -96,12 +66,8 @@ public class DecalRuleSet
     }
 }
 
-public enum DecalPatternMode { None, Auto, Manual }
+public enum DecalPatternMode { Auto, Manual }
 
-/// <summary>
-/// Ручная область применения узора внутри комнаты. Прикреплена к комнате (пересчитываема),
-/// но границы и глубина — на усмотрение автора. Свой независимый набор слоёв.
-/// </summary>
 public class ManualDecalArea
 {
     public int X { get; set; }
@@ -114,4 +80,13 @@ public class ManualDecalArea
     {
         return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height, Rule = Rule.Clone() };
     }
+}
+
+/// <summary>Формат для экспорта/импорта одного пака в JSON-файл (по образцу ExportData у RoomType).</summary>
+public class DecalPackExportData
+{
+    public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Color { get; set; } = "#FFFFFFFF";
+    public Dictionary<string, string> Positions { get; set; } = new(); // ключ — DecalPosition.ToString()
 }
