@@ -114,9 +114,9 @@ public partial class MainForm
                 };
                 btnPickPack.Click += (s, e) =>
                 {
-                    var dialog = new DecalPackDialog(_decalPackManager)
-                    {
-                        RescanCallback = () =>
+var dialog = new DecalPackDialog(_decalPackManager, _indexer)
+                {
+                    RescanCallback = () =>
                         {
                             var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
                             var (added, updated) = _decalPackManager.MergeScanned(scanned);

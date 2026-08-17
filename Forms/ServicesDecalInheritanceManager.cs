@@ -342,14 +342,14 @@ public partial class DecalInheritanceDialog : Form
                 };
                 btnPickPack.Click += (s, e) =>
                                 {
-                                    var dialog = new DecalPackDialog(_packManager)
+                                    var dialog = new DecalPackDialog(_packManager, _indexer)
                                     {
                                         RescanCallback = () =>
-                                        {
-                                            var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
-                                            var (added, updated) = _packManager.MergeScanned(scanned);
-                                            MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
-                                        }
+                                                        {
+                                                            var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
+                                                            var (added, updated) = _packManager.MergeScanned(scanned);
+                                                            MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
+                                                        }
                                     };
                                     dialog.OnPackSelected += (pack) =>
                                     {

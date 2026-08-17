@@ -7,6 +7,7 @@ namespace MapperIce.Forms;
 public partial class DecalPackDialog : Form
 {
     private readonly DecalPackManager _manager;
+    private readonly PrototypeIndexer? _indexer;
     private readonly TreeView _treeView;
     private readonly Panel _editorPanel;
     private DecalPack? _selectedPack;
@@ -18,9 +19,12 @@ public partial class DecalPackDialog : Form
     [System.ComponentModel.Browsable(false)]
     public Action? RescanCallback { get; set; }
 
-    public DecalPackDialog(DecalPackManager manager)
+    // indexer необязателен (nullable) — диалог создаётся в нескольких местах, где-то
+    // индексер уже под рукой, а без него просто не будет доступна кнопка "из палитры"
+    public DecalPackDialog(DecalPackManager manager, PrototypeIndexer? indexer = null)
     {
         _manager = manager;
+        _indexer = indexer;
 
         Text = "Паки декалей";
         Size = new Size(560, 520);
@@ -346,13 +350,13 @@ public partial class DecalPackDialog : Form
         _editorPanel.Controls.Add(txtName);
         y += 30;
 
-        // Цвет теперь настраивается тут, привязан к паку (а не к слою Decal Rule)
+// Цвет теперь настраивается тут, привязан к паку (а не к слою Decal Rule)
         _editorPanel.Controls.Add(new Label { Text = "Цвет:", Location = new Point(5, y + 3), AutoSize = true });
         var packColor = ParseHexColor(pack.Color);
         var btnColor = new Button
         {
             Text = pack.Color, BackColor = packColor, ForeColor = GetContrastTextColor(packColor),
-            Location = new Point(90, y), Width = 190, Height = 26, FlatStyle = FlatStyle.Flat
+            Location = new Point(90, y), Width = 150, Height = 26, FlatStyle = FlatStyle.Flat
         };
         btnColor.Click += (s, e) =>
         {
@@ -367,6 +371,33 @@ public partial class DecalPackDialog : Form
             }
         };
         _editorPanel.Controls.Add(btnColor);
+
+        var btnPickFromPalette = new Button
+        {
+            Text = "🎨",
+            Location = new Point(245, y),
+            Width = 35,
+            Height = 26,
+            FlatStyle = FlatStyle.Flat,
+            Enabled = _indexer != null
+        };
+        var paletteTip = new ToolTip();
+        paletteTip.SetToolTip(btnPickFromPalette, _indexer != null
+            ? "Выбрать цвет из палитры репозитория"
+            : "Недоступно — индексер прототипов не передан в это окно");
+        btnPickFromPalette.Click += (s, e) =>
+        {
+            if (_indexer == null) return;
+            ShowPaletteColorPicker(color =>
+            {
+                pack.Color = ToHexColor(color);
+                btnColor.BackColor = color;
+                btnColor.ForeColor = GetContrastTextColor(color);
+                btnColor.Text = pack.Color;
+                _manager.AddOrUpdate(pack);
+            });
+        };
+        _editorPanel.Controls.Add(btnPickFromPalette);
         y += 34;
 
         _editorPanel.Controls.Add(new Label
@@ -433,5 +464,105 @@ public partial class DecalPackDialog : Form
     {
         int brightness = (background.R * 299 + background.G * 587 + background.B * 114) / 1000;
         return brightness < 128 ? Color.White : Color.Black;
+    }
+
+    /// <summary>
+    /// Отдельное окошко: выбор палитры (из "- type: palette" репозитория) + сетка свотчей.
+    /// Клик по свотчу вызывает onColorPicked и закрывает окно. Тот же принцип, что и
+    /// выбор цвета декали в MainForm.ShowCenterSettingsDialog, но самостоятельный —
+    /// этот диалог не зависит от MainForm.
+    /// </summary>
+    private void ShowPaletteColorPicker(Action<Color> onColorPicked)
+    {
+        if (_indexer == null) return;
+
+        var palettes = _indexer.GetPalettes();
+        if (palettes.Count == 0)
+        {
+            MessageBox.Show("В текущем репозитории не найдено ни одной палитры (\"- type: palette\").", "Палитра");
+            return;
+        }
+
+        var pickerForm = new Form
+        {
+            Text = "Выбор цвета из палитры",
+            Size = new Size(320, 400),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var paletteCombo = new ComboBox
+        {
+            Location = new Point(10, 10),
+            Width = 280,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Segoe UI", 9)
+        };
+        foreach (var p in palettes) paletteCombo.Items.Add(p);
+        paletteCombo.SelectedIndex = 0;
+        pickerForm.Controls.Add(paletteCombo);
+
+        var swatchPanel = new FlowLayoutPanel
+        {
+            Location = new Point(10, 45),
+            Size = new Size(280, 300),
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        pickerForm.Controls.Add(swatchPanel);
+
+        void RebuildSwatches()
+        {
+            swatchPanel.Controls.Clear();
+            if (paletteCombo.SelectedItem is not Palette selectedPalette) return;
+
+            foreach (var kvp in selectedPalette.Colors)
+            {
+                var swatchColor = ParseHexColor(kvp.Value);
+                var swatch = new Button
+                {
+                    Width = 26,
+                    Height = 26,
+                    BackColor = swatchColor,
+                    FlatStyle = FlatStyle.Flat,
+                    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(120, 120, 120) },
+                    Margin = new Padding(2),
+                    Cursor = Cursors.Hand,
+                    Tag = kvp.Value
+                };
+                var tooltip = new ToolTip();
+                tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
+
+                swatch.Click += (s, e) =>
+                {
+                    // Палитра хранит "#RRGGBB" (без альфы) — декали ожидают "#RRGGBBAA"
+                    string paletteHex = (string)swatch.Tag;
+                    string decalHex = ToDecalColorFormat(paletteHex);
+                    onColorPicked(ParseHexColor(decalHex));
+                    pickerForm.Close();
+                };
+
+                swatchPanel.Controls.Add(swatch);
+            }
+        }
+
+        paletteCombo.SelectedIndexChanged += (s, e) => RebuildSwatches();
+        RebuildSwatches();
+
+        pickerForm.ShowDialog(this);
+    }
+
+    // Цвета палитр хранятся без альфы ("#RRGGBB") — декали экспортируются как "#RRGGBBAA"
+    private static string ToDecalColorFormat(string paletteHex)
+    {
+        var h = paletteHex.TrimStart('#');
+        if (h.Length == 6) return $"#{h.ToUpperInvariant()}FF";
+        if (h.Length == 8) return $"#{h.ToUpperInvariant()}";
+        return "#FFFFFFFF";
     }
 }
