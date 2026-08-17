@@ -26,6 +26,7 @@ public partial class MainForm : Form
     private DecalInheritanceManager _decalInheritanceManager = new();
     private DecalPatternBuilder _decalPatternBuilder;
     private Button? _btnDecalInheritance;
+    private Form? _decalInheritanceForm = null;
     private Point _startPoint;
     private bool _isDrawing = false;
 
@@ -318,7 +319,13 @@ public partial class MainForm : Form
         _btnPipeWaste.BackColor = Color.White;
         _btnPipeNormal.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
-                if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
+
+        // Наследование декалей — не инструмент канвы, но переключение НА любой
+        // инструмент (включая "Узор по периметру") должно закрывать это окно,
+        // чтобы два режима не путались и не оставались активными одновременно
+        if (_decalInheritanceForm != null && !_decalInheritanceForm.IsDisposed)
+            _decalInheritanceForm.Close();
+        if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
