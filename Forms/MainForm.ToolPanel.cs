@@ -428,7 +428,7 @@ public partial class MainForm
         y += 40 + 2;
 
 
-var decalRuleLabel = new Label
+        var decalRuleLabel = new Label
         {
             Text = "Decal Rule:",
             Location = new Point(leftMargin + 2, y),
@@ -453,6 +453,25 @@ var decalRuleLabel = new Label
         };
         _btnDecalRule.Click += (s, e) => { _toolManager.SetTool(ToolManager.Tool.DecalRule); };
         _toolPanel.Controls.Add(_btnDecalRule);
+        y += 40 + 2;
+
+        // Отдельная кнопка — не инструмент канвы, а обычный диалог, работающий не с
+        // конкретными установленными комнатами, а с абстрактными RoomType-классами
+        _btnDecalInheritance = new Button
+        {
+            Text = "🌳 Наследование декалей",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnDecalInheritance.Click += (s, e) =>
+                {
+                    new DecalInheritanceDialog(_decalInheritanceManager, _decalPackManager, _indexer).Show(this);
+                };
+        _toolPanel.Controls.Add(_btnDecalInheritance);
         y += 40 + 2;
 
 

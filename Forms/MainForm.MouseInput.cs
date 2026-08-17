@@ -76,8 +76,7 @@ public partial class MainForm
 
                 // Двери и вручную поставленные тайлы всегда удаляемы точечно — как и в области,
                 // для них нет отдельных чекбоксов в DeleteSettings
-                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { SaveState(); UpdateTileGrid(); Render(); return; }
-
+                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); return; }
                 var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
                 if (anyEntity != null)
                 {
@@ -130,7 +129,7 @@ public partial class MainForm
                 string doorProto = targetRoom?.DoorProto ?? "Airlock";
 
                 if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, doorProto, out _, _snapToGrid))
-                { SaveState(); UpdateTileGrid(); Render(); }
+                { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
             }
 
 
@@ -142,10 +141,8 @@ public partial class MainForm
                 string glassDoorProto = targetRoom?.GlassDoorProto ?? "AirlockGlass";
 
                 if (_doorUpdater.TryCreateDoor(_map.ActiveGrid, tileX, tileY, glassDoorProto, out _, _snapToGrid))
-                { SaveState(); UpdateTileGrid(); Render(); }
+                { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
             }
-
-
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
@@ -774,6 +771,7 @@ public partial class MainForm
                     if (changed)
                     {
                         _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+                        RecalculateDecalPatterns();
                         UpdateTileGrid();
                         SaveState();
                     }
@@ -789,6 +787,18 @@ public partial class MainForm
             {
                 _roomTypeManager.ApplyTypeToRoom(_currentRoom);
 
+                // Подхватываем унаследованное Decal Rule для выбранного типа комнаты
+                // (по реальной C#-иерархии RoomType, см. DecalInheritanceManager) —
+                // если явное правило есть хоть у одного предка в цепочке, новая комната
+                // сразу получает его копию вместо пустого узора
+                var roomTypeInstance = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
+                var inheritedRule = _decalInheritanceManager.ResolveEffectiveRule(roomTypeInstance.GetType());
+                if (inheritedRule != null)
+                {
+                    _currentRoom.AutoDecalRule = inheritedRule.Clone();
+                    _currentRoom.DecalMode = DecalPatternMode.Auto;
+                }
+
                 // Обрабатывает и "впритык" (нахлёст создаётся), и "глубокое" наложение
                 // (вырезается только внутренность, оставляя общее кольцо стены в 1 тайл) —
                 // в обоих случаях граничный тайл стены оказывается один и тот же
@@ -797,6 +807,14 @@ public partial class MainForm
 
                 _map.ActiveGrid.Rooms.Add(_currentRoom);
                 _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+
+                // Раньше узор для новой комнаты не пересчитывался тут вовсе — декали
+                // появлялись только если пользователь вручную открывал диалог "Узор по
+                // периметру" для этой конкретной комнаты. Теперь, когда правило может
+                // прийти по наследству автоматически, пересчёт тоже должен быть
+                // автоматическим сразу при создании
+                RecalculateDecalPatterns();
+
                 UpdateTileGrid();
                 SaveState();
             }

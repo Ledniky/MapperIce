@@ -5,21 +5,28 @@ namespace MapperIce.Services;
 
 /// <summary>
 /// Автоматически собирает DecalPack из проиндексированного репозитория: группирует
-/// декали по общему "стеблю" имени (без ключевого слова роли и без суффикса
-/// направления), определяет позицию каждой по суффиксу NE/NW/SE/SW/N/S/E/W.
-/// Например BrickCornerOverlayNE, BrickEndOverlayN, BrickLineOverlayE — все дают
-/// стебель "BrickOverlay" и попадают в один пак.
+/// декали по общему "стеблю" имени. Направление (N/S/E/W/NE/NW/SE/SW) ищется НЕ на
+/// конце всей строки id (как было раньше — ломалось на именах вида
+/// "WoodTrimThinLineEWhite", где после направления ещё идёт хвост с цветом), а сразу
+/// ПОСЛЕ ключевого слова роли (Line/Corner/End/Inner). Стебель — это всё остальное:
+/// префикс до роли + всё, что шло после направления (включая цветовой хвост типа
+/// "White"), склеенные вместе. Так "WoodTrimThinLineEWhite" и "WoodTrimThinLineNWhite"
+/// дают одинаковый стебель "WoodTrimThinWhite" и корректно попадают в один пак.
 /// </summary>
 public static class DecalPackScanner
 {
     private static readonly string[] DiagonalSuffixes = { "NE", "NW", "SE", "SW" };
     private static readonly string[] CardinalSuffixes = { "N", "S", "E", "W" };
+    private static readonly (string keyword, Role role)[] RoleKeywords =
+    {
+        ("Inner", Role.InnerCorner),   // Inner проверяем раньше Corner — "InnerCorner" содержит "Corner" как подстроку
+        ("Corner", Role.OuterCorner),
+        ("End", Role.DeadEnd),
+        ("Line", Role.Side),
+    };
 
     private enum Role { InnerCorner, OuterCorner, DeadEnd, Side }
 
-    // Кэш последнего результата сканирования по repoId — повторный клик "🔄" на том же
-    // репозитории не гоняет заново по всем прототипам, только явная смена репозитория
-    // или принудительный forceRescan
     private static string? _cachedRepoId = null;
     private static List<DecalPack> _cachedResult = new();
 
@@ -38,85 +45,62 @@ public static class DecalPackScanner
     {
         var families = new Dictionary<string, DecalPack>(StringComparer.OrdinalIgnoreCase);
 
-
         foreach (var id in indexer.GetPrototypeIds())
         {
             var proto = indexer.FindPrototype(id);
             if (proto == null || proto.Type != "decal") continue;
 
-            if (!TryMatchSuffix(id, out string baseName, out string suffix)) continue;
-            if (!TryClassifyRole(baseName, out Role role, out string stem)) continue;
+            if (!TryExtractRoleDirectionStem(id, out Role role, out string direction, out string stem)) continue;
 
-            var position = ResolvePosition(role, suffix);
+            var position = ResolvePosition(role, direction);
             if (position == null) continue;
 
             if (!families.TryGetValue(stem, out var pack))
             {
-                pack = new DecalPack { Name = stem };
+                pack = new DecalPack { Name = stem, Category = "Extracted", Source = DecalPackSource.Extracted };
                 families[stem] = pack;
             }
             pack.Positions[position.Value] = id;
         }
 
         return families.Values
-                    .Where(p => p.Positions.Count > 0)
-                    .OrderBy(p => p.Name)
-                    .ToList();
-    }
-    
-    private static bool TryMatchSuffix(string id, out string baseName, out string suffix)
-    {
-        // Сначала диагональные (2 буквы) — иначе "...NE" ошибочно поймается как "...N" + "E" потерян
-        foreach (var s in DiagonalSuffixes)
-        {
-            if (id.Length > s.Length && id.EndsWith(s, StringComparison.OrdinalIgnoreCase))
-            {
-                baseName = id.Substring(0, id.Length - s.Length);
-                suffix = s;
-                return true;
-            }
-        }
-        foreach (var s in CardinalSuffixes)
-        {
-            if (id.Length > s.Length && id.EndsWith(s, StringComparison.OrdinalIgnoreCase))
-            {
-                baseName = id.Substring(0, id.Length - s.Length);
-                suffix = s;
-                return true;
-            }
-        }
-        baseName = ""; suffix = "";
-        return false;
+            .Where(p => p.Positions.Count > 0)
+            .OrderBy(p => p.Name)
+            .ToList();
     }
 
-    private static bool TryClassifyRole(string baseName, out Role role, out string stem)
+    /// <summary>
+    /// Ищет ключевое слово роли в id, а направление — СРАЗУ ПОСЛЕ него (не на конце
+    /// строки). Стебель = префикс (до ключевого слова) + суффикс (всё после
+    /// направления, например "White"), склеенные без ключевого слова и направления.
+    /// </summary>
+    private static bool TryExtractRoleDirectionStem(string id, out Role role, out string direction, out string stem)
     {
-        int idx;
-        if ((idx = baseName.IndexOf("Inner", StringComparison.OrdinalIgnoreCase)) >= 0)
+        role = default; direction = ""; stem = "";
+
+        foreach (var (keyword, r) in RoleKeywords)
         {
-            role = Role.InnerCorner;
-            stem = baseName.Remove(idx, "Inner".Length);
+            int idx = id.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+
+            int afterKeyword = idx + keyword.Length;
+            string rest = id.Substring(afterKeyword);
+
+            // Сначала диагональные (2 буквы) — иначе "NE" ошибочно поймается как "N" + "E" потерян
+            string? foundDir = DiagonalSuffixes.FirstOrDefault(s => rest.StartsWith(s, StringComparison.OrdinalIgnoreCase))
+                             ?? CardinalSuffixes.FirstOrDefault(s => rest.StartsWith(s, StringComparison.OrdinalIgnoreCase));
+
+            if (foundDir == null) continue; // это ключевое слово встретилось, но направления сразу после него нет — не наш случай, пробуем следующее ключевое слово
+
+            role = r;
+            direction = foundDir;
+
+            string prefix = id.Substring(0, idx);
+            string tail = rest.Substring(foundDir.Length); // всё, что шло после направления (например "White")
+            stem = prefix + tail;
             return true;
         }
-        if ((idx = baseName.IndexOf("Corner", StringComparison.OrdinalIgnoreCase)) >= 0)
-        {
-            role = Role.OuterCorner;
-            stem = baseName.Remove(idx, "Corner".Length);
-            return true;
-        }
-        if ((idx = baseName.IndexOf("End", StringComparison.OrdinalIgnoreCase)) >= 0)
-        {
-            role = Role.DeadEnd;
-            stem = baseName.Remove(idx, "End".Length);
-            return true;
-        }
-        if ((idx = baseName.IndexOf("Line", StringComparison.OrdinalIgnoreCase)) >= 0)
-        {
-            role = Role.Side;
-            stem = baseName.Remove(idx, "Line".Length);
-            return true;
-        }
-        role = default; stem = "";
+
         return false;
     }
 

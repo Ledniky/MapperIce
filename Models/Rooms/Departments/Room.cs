@@ -18,7 +18,7 @@ public class Room
     public Color FillColor { get; set; } = Color.FromArgb(100, 230, 230, 230);
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
-    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.None;
+    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;    
     public DecalRuleSet AutoDecalRule { get; set; } = new();
     public List<ManualDecalArea> ManualDecalAreas { get; set; } = new();
     public int Priority { get; set; } = 0;

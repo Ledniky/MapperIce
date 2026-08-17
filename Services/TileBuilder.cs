@@ -58,7 +58,7 @@ private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int 
     /// не является таким углом. Тот же диагональный признак уже используется в
     /// Renderer.DrawConcaveCornerConnectors и DecalPatternBuilder.TryAddInnerCorner.
     /// </summary>
-    private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x, int y)
+private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x, int y)
     {
         var diagonals = new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) };
 
@@ -70,17 +70,26 @@ private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int 
             bool diagonalForeign = !room.Contains(x + dx, y + dy);
             if (!diagonalForeign) continue;
 
+            // Отличаем настоящий "пинч" (диагональ вырезана RoomSubtractor'ом изнутри
+            // прямоугольника комнаты — там нужна стена, иначе дыра для прохода) от
+            // естественного ВНЕШНЕГО угла (диагональ просто вне прямоугольника комнаты
+            // вовсе, это нормальная граница, не вырез — там стены здесь быть не должно,
+            // угол должен остаться полом для OuterCorner-декали).
+            int dxi = x + dx, dyi = y + dy;
+            bool diagonalInsideBounds = dxi >= room.X && dxi < room.X + room.Width &&
+                                         dyi >= room.Y && dyi < room.Y + room.Height;
+            if (!diagonalInsideBounds) continue; // естественная внешняя граница — не пинч
+
             string wall = room.WallProto;
-            var neighborRoom = GetRoomAt(allRooms, x + dx, y + dy);
+            var neighborRoom = GetRoomAt(allRooms, dxi, dyi);
             if (neighborRoom != null && neighborRoom != room)
                 wall = BestWall(wall, neighborRoom.WallProto);
 
-            return wall; // одной подходящей диагонали достаточно
+            return wall; // одной подходящей диагонали (реально вырезанной) достаточно
         }
 
         return null;
     }
-
     
         public TileGrid BuildFromRooms(Grid grid, TileGrid? existingGrid = null)
     {

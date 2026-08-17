@@ -22,8 +22,10 @@ public partial class MainForm : Form
     private PipeBuilder _pipeBuilder = null!;
     private PipeTypeManager _pipeTypeManager = new();
     private AlarmNetwork? _cachedAlarmNetwork;
-    private DecalPatternBuilder _decalPatternBuilder = new();
-    private List<DecalPack> _scannedDecalPacks = new(); // паки, собранные из репозитория кнопкой "Собрать"
+    private DecalPackManager _decalPackManager = new();
+    private DecalInheritanceManager _decalInheritanceManager = new();
+    private DecalPatternBuilder _decalPatternBuilder;
+    private Button? _btnDecalInheritance;
     private Point _startPoint;
     private bool _isDrawing = false;
 
@@ -147,6 +149,7 @@ public partial class MainForm : Form
         WindowState = FormWindowState.Maximized;
 
         _pipeTypeManager = new PipeTypeManager();
+        _decalPatternBuilder = new DecalPatternBuilder(_decalPackManager);
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
         _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater);
