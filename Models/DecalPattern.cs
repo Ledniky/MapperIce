@@ -50,9 +50,15 @@ public class DecalLayer
     public string? SourcePackId { get; set; }
     public bool Enabled { get; set; } = true;
 
+    // null = использовать цвет пака по умолчанию. Задан = переопределение цвета
+    // именно для этого узла (типа комнаты в Наследовании) или конкретной комнаты —
+    // так разные отделы/комнаты могут красить один и тот же пак по-разному, не трогая
+    // сам пак и не влияя друг на друга.
+    public string? Color { get; set; } = null;
+
     public DecalLayer Clone()
     {
-        return new DecalLayer { Name = Name, SourcePackId = SourcePackId, Enabled = Enabled };
+        return new DecalLayer { Name = Name, SourcePackId = SourcePackId, Enabled = Enabled, Color = Color };
     }
 }
 

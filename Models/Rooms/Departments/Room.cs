@@ -21,6 +21,15 @@ public class Room
     public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;    
     public DecalRuleSet AutoDecalRule { get; set; } = new();
     public List<ManualDecalArea> ManualDecalAreas { get; set; } = new();
+
+    // false (по умолчанию) — AutoDecalRule ещё не редактировалось вручную через "Узор
+    // по периметру", поэтому при каждом пересчёте декалей DecalPatternBuilder имеет
+    // право заново подтягивать актуальное правило узла из "Наследования декалей"
+    // (или дефолт RoomType, если явного правила нигде в цепочке нет). true — комната
+    // хоть раз была отредактирована вручную (добавлен/удалён/переставлен слой, выбран
+    // другой пак, изменён цвет и т.п.) — с этого момента она "отвязывается" от узла
+    // и живёт своей собственной, независимой копией правила.
+    public bool HasCustomDecalRule { get; set; } = false;
     public int Priority { get; set; } = 0;
     
 public Room Clone()

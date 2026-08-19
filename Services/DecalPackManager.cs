@@ -98,6 +98,25 @@ public (int added, int updated) MergeScanned(List<DecalPack> scanned)
         OnPacksChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Создаёт независимую копию пака (новый Id, категория "PerType") — используется
+    /// окном "Наследование декалей", чтобы разные абстрактные типы комнат (например,
+    /// Command и Engineering) могли использовать один и тот же узор декалей, но
+    /// настраивать себе разный цвет, не влияя друг на друга.
+    /// </summary>
+    public DecalPack CloneForOwnUse(DecalPack source, string newName)
+    {
+        var clone = source.Clone();
+        clone.Id = Guid.NewGuid().ToString();
+        clone.Name = newName;
+        clone.Category = "PerType";
+        clone.Source = DecalPackSource.Custom;
+        _packs[clone.Id] = clone;
+        Save();
+        OnPacksChanged?.Invoke();
+        return clone;
+    }
+
     public void Remove(string id)
     {
         if (_packs.Remove(id))

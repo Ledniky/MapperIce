@@ -467,31 +467,31 @@ public partial class MainForm
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold)
         };
-_btnDecalInheritance.Click += (s, e) =>
-        {
-            // Симметрично с диалогом конкретной комнаты (_decalRuleForm): одно окно,
-            // повторный клик по кнопке при уже открытом окне закрывает его, а не
-            // плодит новые копии. Плюс сбрасываем активный инструмент канвы — иначе
-            // "Узор по периметру" оставался включённым в фоне, и случайный клик по
-            // карте после закрытия окна наследования неожиданно открывал диалог
-            // конкретной комнаты
-            if (_decalInheritanceForm != null && !_decalInheritanceForm.IsDisposed)
-            {
-                _decalInheritanceForm.Close();
-                return;
-            }
+        _btnDecalInheritance.Click += (s, e) =>
+                {
+                    // Симметрично с диалогом конкретной комнаты (_decalRuleForm): одно окно,
+                    // повторный клик по кнопке при уже открытом окне закрывает его, а не
+                    // плодит новые копии. Плюс сбрасываем активный инструмент канвы — иначе
+                    // "Узор по периметру" оставался включённым в фоне, и случайный клик по
+                    // карте после закрытия окна наследования неожиданно открывал диалог
+                    // конкретной комнаты
+                    if (_decalInheritanceForm != null && !_decalInheritanceForm.IsDisposed)
+                    {
+                        _decalInheritanceForm.Close();
+                        return;
+                    }
 
-            _toolManager.ResetTool();
+                    _toolManager.ResetTool();
 
-            _decalInheritanceForm = new DecalInheritanceDialog(_decalInheritanceManager, _decalPackManager, _indexer);
-            _btnDecalInheritance.BackColor = Color.LightBlue;
-            _decalInheritanceForm.FormClosed += (fs, fe) =>
-            {
-                _decalInheritanceForm = null;
-                _btnDecalInheritance.BackColor = Color.White;
-            };
-            _decalInheritanceForm.Show(this);
-        };
+                    _decalInheritanceForm = new DecalInheritanceDialog(_decalInheritanceManager, _decalPackManager, _indexer);
+                    _btnDecalInheritance.BackColor = Color.LightBlue;
+                    _decalInheritanceForm.FormClosed += (fs, fe) =>
+                    {
+                        _decalInheritanceForm = null;
+                        _btnDecalInheritance.BackColor = Color.White;
+                    };
+                    _decalInheritanceForm.Show(this);
+                };
         _toolPanel.Controls.Add(_btnDecalInheritance);
         y += 40 + 2;
 

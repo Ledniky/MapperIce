@@ -16,7 +16,7 @@ public partial class MainForm
             _decalRuleForm = null;
         }
 
-        int formWidth = 460;
+        int formWidth = 500;
         int formHeight = 500;
 
         _decalRuleForm = new Form
@@ -91,7 +91,7 @@ public partial class MainForm
                 chkEnabled.CheckedChanged += (s, e) => { layer.Enabled = chkEnabled.Checked; ApplyLiveChanges(); };
                 row.Controls.Add(chkEnabled);
 
-                var txtName = new TextBox { Text = layer.Name, Location = new Point(22, 3), Width = 100 };
+                var txtName = new TextBox { Text = layer.Name, Location = new Point(24, 3), Width = 90 };
                 void CommitName()
                 {
                     if (layer.Name == txtName.Text || string.IsNullOrWhiteSpace(txtName.Text)) return;
@@ -106,22 +106,22 @@ public partial class MainForm
                 var btnPickPack = new Button
                 {
                     Text = currentPack?.Name ?? "(не выбран)",
-                    Location = new Point(128, 2),
-                    Width = 140,
+                    Location = new Point(118, 2),
+                    Width = 130,
                     Height = 24,
                     FlatStyle = FlatStyle.Flat,
                     TextAlign = ContentAlignment.MiddleLeft
                 };
                 btnPickPack.Click += (s, e) =>
                 {
-var dialog = new DecalPackDialog(_decalPackManager, _indexer)
-                {
-                    RescanCallback = () =>
-                        {
-                            var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
-                            var (added, updated) = _decalPackManager.MergeScanned(scanned);
-                            MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
-                        }
+                    var dialog = new DecalPackDialog(_decalPackManager, _indexer)
+                    {
+                        RescanCallback = () =>
+                            {
+                                var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
+                                var (added, updated) = _decalPackManager.MergeScanned(scanned);
+                                MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
+                            }
                     };
                     dialog.OnPackSelected += (pack) =>
                     {
@@ -133,7 +133,88 @@ var dialog = new DecalPackDialog(_decalPackManager, _indexer)
                 };
                 row.Controls.Add(btnPickPack);
 
-                var btnUp = new Button { Text = "↑", Location = new Point(272, 2), Width = 24, Height = 24, FlatStyle = FlatStyle.Flat };
+                // Клонирует пак этого слоя в приватную копию, привязанную только к
+                // ЭТОЙ конкретной комнате (категория "PerRoom") — без этого правка
+                // цвета/позиций через DecalPackDialog меняла бы общий пак, а значит
+                // и все остальные места, где он выбран (другие комнаты, наследование,
+                // саму запись в папке паков программы)
+                var btnClonePack = new Button
+                {
+                    Text = "📋",
+                    Location = new Point(252, 2),
+                    Width = 24,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    Enabled = !string.IsNullOrEmpty(layer.SourcePackId)
+                };
+                var cloneTip = new ToolTip();
+                cloneTip.SetToolTip(btnClonePack,
+                    "Создать свою копию пака только для ЭТОЙ комнаты — цвет и позиции " +
+                    "можно будет настроить независимо от других комнат, типов и общей папки паков");
+                btnClonePack.Click += (s, e) =>
+                {
+                    if (string.IsNullOrEmpty(layer.SourcePackId)) return;
+                    var source = _decalPackManager.GetById(layer.SourcePackId);
+                    if (source == null)
+                    {
+                        MessageBox.Show("Пак не найден.");
+                        return;
+                    }
+                    var clone = _decalPackManager.CloneForOwnUse(source, $"{source.Name} ({room.RoomType} room)");
+                    layer.SourcePackId = clone.Id;
+                    RebuildList();
+                    ApplyLiveChanges();
+                };
+                row.Controls.Add(btnClonePack);
+                Color EffectiveColor()
+                {
+                    var pack = !string.IsNullOrEmpty(layer.SourcePackId) ? _decalPackManager.GetById(layer.SourcePackId) : null;
+                    return ParseHexColor(layer.Color ?? pack?.Color ?? "#FFFFFFFF");
+                }
+
+                var btnColor = new Button
+                {
+                    Location = new Point(280, 2),
+                    Width = 36,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = EffectiveColor(),
+                    Text = layer.Color == null ? "· авто" : "",
+                    Font = new Font("Segoe UI", 6),
+                    ForeColor = GetContrastTextColor(EffectiveColor())
+                };
+                var colorTip = new ToolTip();
+                colorTip.SetToolTip(btnColor, "Цвет декали только для ЭТОЙ комнаты (переопределяет цвет типа/пака)");
+                btnColor.Click += (s, e) =>
+                {
+                    if (ArgbColorPickerDialog.Pick(this, EffectiveColor(), out var picked))
+                    {
+                        layer.Color = ToHexColor(picked);
+                        ApplyLiveChanges();
+                        RebuildList();
+                    }
+                };
+                row.Controls.Add(btnColor);
+
+                var btnResetColor = new Button
+                {
+                    Text = "⟲",
+                    Location = new Point(320, 2),
+                    Width = 20,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    Enabled = layer.Color != null
+                };
+                var resetTip = new ToolTip();
+                resetTip.SetToolTip(btnResetColor, "Сбросить — использовать цвет типа комнаты / пака");
+                btnResetColor.Click += (s, e) =>
+                {
+                    layer.Color = null;
+                    ApplyLiveChanges();
+                    RebuildList();
+                };
+                row.Controls.Add(btnResetColor);
+                var btnUp = new Button { Text = "↑", Location = new Point(344, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnUp.Click += (s, e) =>
                 {
                     if (idx <= 0) return;
@@ -143,7 +224,7 @@ var dialog = new DecalPackDialog(_decalPackManager, _indexer)
                 };
                 row.Controls.Add(btnUp);
 
-                var btnDown = new Button { Text = "↓", Location = new Point(298, 2), Width = 24, Height = 24, FlatStyle = FlatStyle.Flat };
+                var btnDown = new Button { Text = "↓", Location = new Point(370, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnDown.Click += (s, e) =>
                 {
                     if (idx >= room.AutoDecalRule.Layers.Count - 1) return;
@@ -153,7 +234,7 @@ var dialog = new DecalPackDialog(_decalPackManager, _indexer)
                 };
                 row.Controls.Add(btnDown);
 
-                var btnDel = new Button { Text = "🗑", Location = new Point(324, 2), Width = 24, Height = 24, FlatStyle = FlatStyle.Flat };
+                var btnDel = new Button { Text = "🗑", Location = new Point(396, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnDel.Click += (s, e) =>
                 {
                     room.AutoDecalRule.Layers.RemoveAt(idx);
@@ -167,12 +248,12 @@ var dialog = new DecalPackDialog(_decalPackManager, _indexer)
             }
         }
 
-btnAddLayer.Click += (s, e) =>
-        {
-            room.AutoDecalRule.Layers.Add(new DecalLayer { Name = $"Слой {room.AutoDecalRule.Layers.Count + 1}" });
-            RebuildList();
-            ApplyLiveChanges();
-        };
+        btnAddLayer.Click += (s, e) =>
+                {
+                    room.AutoDecalRule.Layers.Add(new DecalLayer { Name = $"Слой {room.AutoDecalRule.Layers.Count + 1}" });
+                    RebuildList();
+                    ApplyLiveChanges();
+                };
 
         btnInherit.Click += (s, e) =>
         {

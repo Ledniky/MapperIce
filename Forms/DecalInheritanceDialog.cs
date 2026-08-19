@@ -232,10 +232,43 @@ public partial class DecalInheritanceDialog : Form
             Height = 26,
             FlatStyle = FlatStyle.Flat
         };
+        var makeOwnTip = new ToolTip();
+        makeOwnTip.SetToolTip(btnMakeOwn, hasOwn
+            ? "Удаляет собственное правило — тип снова начнёт наследовать от родителя"
+            : "Создаёт независимую копию правила для этого типа. Паки каждого слоя " +
+              "тоже клонируются персонально для него — правка цвета/позиций дальше " +
+              "не затронет родителя и другие типы, использующие те же паки");
         btnMakeOwn.Click += (s, e) =>
         {
-            if (hasOwn) _inheritance.ClearRule(node.Type);
-            else _inheritance.GetOrCreateOwn(node.Type, seedFrom: effective);
+            if (hasOwn)
+            {
+                _inheritance.ClearRule(node.Type);
+            }
+            else
+            {
+                // Готовим "приватную" версию правила ДО вызова GetOrCreateOwn: у каждого
+                // слоя, ссылающегося на пак, делаем персональную копию именно для этого
+                // типа (CloneForOwnUse). Без этого шага слои после Clone() продолжали бы
+                // указывать SourcePackId на тот же самый общий пак, что и родитель —
+                // и правка цвета/позиций через общий список паков "протекала" бы сразу
+                // во все типы, которые на него ссылаются.
+                DecalRuleSet? seed = effective;
+                if (seed != null)
+                {
+                    seed = seed.Clone();
+                    foreach (var layer in seed.Layers)
+                    {
+                        if (string.IsNullOrEmpty(layer.SourcePackId)) continue;
+                        var source = _packManager.GetById(layer.SourcePackId);
+                        if (source == null) continue;
+
+                        var clone = _packManager.CloneForOwnUse(source, $"{source.Name} ({node.DisplayName})");
+                        layer.SourcePackId = clone.Id;
+                    }
+                }
+
+                _inheritance.GetOrCreateOwn(node.Type, seedFrom: seed);
+            }
             // OnChanged перестроит дерево и переоткроет редактор на этом же узле
         };
         _editorPanel.Controls.Add(btnMakeOwn);
@@ -266,7 +299,7 @@ public partial class DecalInheritanceDialog : Form
         }
 
         var working = _inheritance.GetOrCreateOwn(node.Type);
-        RenderLayersEditable(node.Type, working, y);
+        RenderLayersEditable(node.Type, node.DisplayName, working, y);
     }
 
     private void RenderLayersReadOnly(DecalRuleSet? ruleSet, int y)
@@ -292,7 +325,7 @@ public partial class DecalInheritanceDialog : Form
         }
     }
 
-    private void RenderLayersEditable(Type type, DecalRuleSet ruleSet, int startY)
+    private void RenderLayersEditable(Type type, string typeDisplayName, DecalRuleSet ruleSet, int startY)
     {
         int y = startY;
 
@@ -312,7 +345,6 @@ public partial class DecalInheritanceDialog : Form
             {
                 var layer = ruleSet.Layers[i];
                 int idx = i;
-
                 var row = new Panel { Location = new Point(0, rowY), Size = new Size(rowsHost.Width, 30) };
 
                 var chk = new CheckBox { Checked = layer.Enabled, Location = new Point(0, 5), Width = 20 };
@@ -335,33 +367,112 @@ public partial class DecalInheritanceDialog : Form
                 {
                     Text = currentPack?.Name ?? "(не выбран)",
                     Location = new Point(116, 2),
-                    Width = 130,
+                    Width = 100,
                     Height = 24,
                     FlatStyle = FlatStyle.Flat,
                     TextAlign = ContentAlignment.MiddleLeft
                 };
+                var pickTip = new ToolTip();
+                pickTip.SetToolTip(btnPickPack, "Пак задаёт узор (позиции декалей). Цвет настраивается отдельной кнопкой справа — за пак он больше не отвечает.");
                 btnPickPack.Click += (s, e) =>
-                                {
-                                    var dialog = new DecalPackDialog(_packManager, _indexer)
-                                    {
-                                        RescanCallback = () =>
-                                                        {
-                                                            var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
-                                                            var (added, updated) = _packManager.MergeScanned(scanned);
-                                                            MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
-                                                        }
-                                    };
-                                    dialog.OnPackSelected += (pack) =>
-                                    {
-                                        layer.SourcePackId = pack.Id;
-                                        btnPickPack.Text = pack.Name;
-                                        _inheritance.Save();
-                                    };
-                                    dialog.Show(this);
-                                };
+                {
+                    var dialog = new DecalPackDialog(_packManager, _indexer)
+                    {
+                        RescanCallback = () =>
+                        {
+                            var scanned = DecalPackScanner.ScanFromIndexer(_indexer, forceRescan: true);
+                            var (added, updated) = _packManager.MergeScanned(scanned);
+                            MessageBox.Show($"Добавлено новых: {added}, обновлено: {updated}", "Обновление паков");
+                        }
+                    };
+                    dialog.OnPackSelected += (pack) =>
+                    {
+                        layer.SourcePackId = pack.Id;
+                        btnPickPack.Text = pack.Name;
+                        _inheritance.Save();
+                    };
+                    dialog.Show(this);
+                };
                 row.Controls.Add(btnPickPack);
 
-                var btnUp = new Button { Text = "↑", Location = new Point(250, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
+                // Цвет теперь задаётся ЗДЕСЬ, локально для этого узла (типа комнаты), а не
+                // в общем паке — так один и тот же пак (BrickTileWhite и т.п.) может быть
+                // синим у Command и красным у Security, не затрагивая ни сам пак, ни другие
+                // узлы/комнаты. null (не задан) — используется цвет пака по умолчанию.
+                Color EffectiveColor() => ParseColorHex(layer.Color ?? currentPack?.Color ?? "#FFFFFFFF");
+
+                var btnColor = new Button
+                {
+                    Location = new Point(219, 2),
+                    Width = 36,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = EffectiveColor(),
+                    Text = layer.Color == null ? "· авто" : "",
+                    Font = new Font("Segoe UI", 6),
+                    ForeColor = GetReadableTextColor(EffectiveColor())
+                };
+                var colorTip = new ToolTip();
+                colorTip.SetToolTip(btnColor, $"Цвет декали для «{typeDisplayName}». Сейчас: {(layer.Color == null ? "по умолчанию из пака" : layer.Color)}");
+                btnColor.Click += (s, e) =>
+                {
+                    if (ArgbColorPickerDialog.Pick(this, EffectiveColor(), out var picked))
+                    {
+                        layer.Color = ToHexColorLocal(picked);
+                        btnColor.BackColor = picked;
+                        btnColor.Text = "";
+                        btnColor.ForeColor = GetReadableTextColor(picked);
+                        colorTip.SetToolTip(btnColor, $"Цвет декали для «{typeDisplayName}». Сейчас: {layer.Color}");
+                        _inheritance.Save();
+                    }
+                };
+                row.Controls.Add(btnColor);
+
+                var btnPalette = new Button
+                {
+                    Text = "🎨",
+                    Location = new Point(257, 2),
+                    Width = 22,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    Enabled = _indexer.GetPalettes().Count > 0
+                };
+                var paletteTip = new ToolTip();
+                paletteTip.SetToolTip(btnPalette,
+                    _indexer.GetPalettes().Count > 0
+                        ? "Выбрать цвет из палитры репозитория (только для этого узла)"
+                        : "Недоступно — в репозитории не найдено палитр");
+                btnPalette.Click += (s, e) =>
+                {
+                    ShowPaletteColorPickerLocal(color =>
+                    {
+                        layer.Color = ToHexColorLocal(color);
+                        _inheritance.Save();
+                        RebuildRows();
+                    });
+                };
+                row.Controls.Add(btnPalette);
+
+                var btnResetColor = new Button
+                {
+                    Text = "⟲",
+                    Location = new Point(281, 2),
+                    Width = 20,
+                    Height = 24,
+                    FlatStyle = FlatStyle.Flat,
+                    Enabled = layer.Color != null
+                };
+                var resetTip = new ToolTip();
+                resetTip.SetToolTip(btnResetColor, "Сбросить — снова использовать цвет пака по умолчанию");
+                btnResetColor.Click += (s, e) =>
+                {
+                    layer.Color = null;
+                    _inheritance.Save();
+                    RebuildRows();
+                };
+                row.Controls.Add(btnResetColor);
+
+                var btnUp = new Button { Text = "↑", Location = new Point(304, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnUp.Click += (s, e) =>
                 {
                     if (idx <= 0) return;
@@ -371,7 +482,7 @@ public partial class DecalInheritanceDialog : Form
                 };
                 row.Controls.Add(btnUp);
 
-                var btnDown = new Button { Text = "↓", Location = new Point(274, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
+                var btnDown = new Button { Text = "↓", Location = new Point(328, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnDown.Click += (s, e) =>
                 {
                     if (idx >= ruleSet.Layers.Count - 1) return;
@@ -381,7 +492,7 @@ public partial class DecalInheritanceDialog : Form
                 };
                 row.Controls.Add(btnDown);
 
-                var btnDel = new Button { Text = "🗑", Location = new Point(298, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
+                var btnDel = new Button { Text = "🗑", Location = new Point(352, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnDel.Click += (s, e) =>
                 {
                     ruleSet.Layers.RemoveAt(idx);
@@ -403,5 +514,137 @@ public partial class DecalInheritanceDialog : Form
         };
 
         RebuildRows();
+    }
+
+    private static Color ParseColorHex(string hex)
+    {
+        try
+        {
+            var h = hex.TrimStart('#');
+            if (h.Length == 8)
+            {
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                int a = Convert.ToInt32(h.Substring(6, 2), 16);
+                return Color.FromArgb(a, r, g, b);
+            }
+            if (h.Length == 6)
+            {
+                int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                return Color.FromArgb(255, r, g, b);
+            }
+        }
+        catch { }
+        return Color.White;
+    }
+
+    private static string ToHexColorLocal(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}{color.A:X2}";
+
+    private static Color GetReadableTextColor(Color background)
+    {
+        int brightness = (background.R * 299 + background.G * 587 + background.B * 114) / 1000;
+        return brightness < 128 ? Color.White : Color.Black;
+    }
+
+    /// <summary>
+    /// Отдельное окошко: выбор палитры (из "- type: palette" репозитория) + сетка свотчей.
+    /// Клик по свотчу вызывает onColorPicked и закрывает окно. Самостоятельная копия
+    /// логики из DecalPackDialog.ShowPaletteColorPicker — этот диалог не должен зависеть
+    /// ни от MainForm, ни от DecalPackDialog.
+    /// </summary>
+    private void ShowPaletteColorPickerLocal(Action<Color> onColorPicked)
+    {
+        var palettes = _indexer.GetPalettes();
+        if (palettes.Count == 0)
+        {
+            MessageBox.Show("В текущем репозитории не найдено ни одной палитры (\"- type: palette\").", "Палитра");
+            return;
+        }
+
+        var pickerForm = new Form
+        {
+            Text = "Выбор цвета из палитры",
+            Size = new Size(320, 400),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var paletteCombo = new ComboBox
+        {
+            Location = new Point(10, 10),
+            Width = 280,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Segoe UI", 9)
+        };
+        foreach (var p in palettes) paletteCombo.Items.Add(p);
+        paletteCombo.DisplayMember = "Name";
+        paletteCombo.SelectedIndex = 0;
+        pickerForm.Controls.Add(paletteCombo);
+
+        var swatchPanel = new FlowLayoutPanel
+        {
+            Location = new Point(10, 45),
+            Size = new Size(280, 300),
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        pickerForm.Controls.Add(swatchPanel);
+
+        void RebuildSwatches()
+        {
+            swatchPanel.Controls.Clear();
+            if (paletteCombo.SelectedItem is not Palette selectedPalette) return;
+
+            foreach (var kvp in selectedPalette.Colors)
+            {
+                var swatchColor = ParseColorHex(kvp.Value);
+                var swatch = new Button
+                {
+                    Width = 26,
+                    Height = 26,
+                    BackColor = swatchColor,
+                    FlatStyle = FlatStyle.Flat,
+                    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(120, 120, 120) },
+                    Margin = new Padding(2),
+                    Cursor = Cursors.Hand,
+                    Tag = kvp.Value
+                };
+                var tooltip = new ToolTip();
+                tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
+
+                swatch.Click += (s, e) =>
+                {
+                    // Палитра хранит "#RRGGBB" (без альфы) — декали ожидают "#RRGGBBAA"
+                    string paletteHex = (string)swatch.Tag;
+                    string decalHex = ToDecalColorFormatLocal(paletteHex);
+                    onColorPicked(ParseColorHex(decalHex));
+                    pickerForm.Close();
+                };
+
+                swatchPanel.Controls.Add(swatch);
+            }
+        }
+
+        paletteCombo.SelectedIndexChanged += (s, e) => RebuildSwatches();
+        RebuildSwatches();
+
+        pickerForm.ShowDialog(this);
+    }
+
+    // Цвета палитр хранятся без альфы ("#RRGGBB") — декали экспортируются как "#RRGGBBAA"
+    private static string ToDecalColorFormatLocal(string paletteHex)
+    {
+        var h = paletteHex.TrimStart('#');
+        if (h.Length == 6) return $"#{h.ToUpperInvariant()}FF";
+        if (h.Length == 8) return $"#{h.ToUpperInvariant()}";
+        return "#FFFFFFFF";
     }
 }

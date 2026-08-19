@@ -331,6 +331,20 @@ public partial class DecalPackDialog : Form
                 }
     }
 
+
+
+    /// <summary>Публичный доступ к выделению узла по Id пака — используется вызывающими
+    /// диалогами (Decal Rule комнаты, Наследование декалей), чтобы сразу открыть
+    /// редактор на нужном (уже гарантированно личном) паке, а не заставлять
+    /// пользователя искать его в дереве самому.</summary>
+    public void SelectPack(string packId)
+    {
+        var pack = _manager.GetById(packId);
+        if (pack != null) SelectNodeByPack(pack);
+    }
+
+
+    
     /// <summary>Полностью редактируемо — включая Extracted (раз сканер больше не единственный источник правды, цвет и позиции можно поправить вручную поверх результата сканирования).</summary>
     private void ShowPackEditor(DecalPack pack)
     {
@@ -356,16 +370,15 @@ public partial class DecalPackDialog : Form
         var btnColor = new Button
         {
             Text = pack.Color, BackColor = packColor, ForeColor = GetContrastTextColor(packColor),
-            Location = new Point(90, y), Width = 150, Height = 26, FlatStyle = FlatStyle.Flat
+            Location = new Point(90, y), Width = 120, Height = 26, FlatStyle = FlatStyle.Flat
         };
         btnColor.Click += (s, e) =>
         {
-            using var dlg = new ColorDialog { Color = btnColor.BackColor, FullOpen = true };
-            if (dlg.ShowDialog() == DialogResult.OK)
+            if (ArgbColorPickerDialog.Pick(this, btnColor.BackColor, out var picked))
             {
-                pack.Color = ToHexColor(dlg.Color);
-                btnColor.BackColor = dlg.Color;
-                btnColor.ForeColor = GetContrastTextColor(dlg.Color);
+                pack.Color = ToHexColor(picked);
+                btnColor.BackColor = picked;
+                btnColor.ForeColor = GetContrastTextColor(picked);
                 btnColor.Text = pack.Color;
                 _manager.AddOrUpdate(pack);
             }
@@ -375,7 +388,7 @@ public partial class DecalPackDialog : Form
         var btnPickFromPalette = new Button
         {
             Text = "🎨",
-            Location = new Point(245, y),
+            Location = new Point(222, y),
             Width = 35,
             Height = 26,
             FlatStyle = FlatStyle.Flat,
@@ -502,6 +515,7 @@ public partial class DecalPackDialog : Form
             Font = new Font("Segoe UI", 9)
         };
         foreach (var p in palettes) paletteCombo.Items.Add(p);
+        paletteCombo.DisplayMember = "Name";
         paletteCombo.SelectedIndex = 0;
         pickerForm.Controls.Add(paletteCombo);
 

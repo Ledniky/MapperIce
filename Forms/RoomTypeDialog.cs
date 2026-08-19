@@ -504,11 +504,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         btnPickFill.Click += (s, e) =>
         {
             var parts = txtFill.Text.Split(',').Select(int.Parse).ToArray();
-            using var dialog = new ColorDialog();
-            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var current = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (ArgbColorPickerDialog.Pick(this, current, out var picked))
             {
-                txtFill.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                txtFill.Text = $"{picked.A},{picked.R},{picked.G},{picked.B}";
             }
         };
         _editorPanel.Controls.Add(btnPickFill);
@@ -532,11 +531,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         btnPickLine.Click += (s, e) =>
         {
             var parts = txtLine.Text.Split(',').Select(int.Parse).ToArray();
-            using var dialog = new ColorDialog();
-            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var current = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (ArgbColorPickerDialog.Pick(this, current, out var picked))
             {
-                txtLine.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                txtLine.Text = $"{picked.A},{picked.R},{picked.G},{picked.B}";
             }
         };
         _editorPanel.Controls.Add(btnPickLine);
@@ -742,11 +740,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         btnPickCategoryColor.Click += (s, e) =>
         {
             var parts = txtCategoryColor.Text.Split(',').Select(int.Parse).ToArray();
-            using var dialog = new ColorDialog();
-            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var current = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (ArgbColorPickerDialog.Pick(this, current, out var picked))
             {
-                txtCategoryColor.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                txtCategoryColor.Text = $"{picked.A},{picked.R},{picked.G},{picked.B}";
             }
         };
         _editorPanel.Controls.Add(btnPickCategoryColor);  // ← ЭТА СТРОЧКА ДОБАВЛЯЕТ КНОПКУ
@@ -790,11 +787,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         btnPickFill.Click += (s, e) =>
         {
             var parts = txtFill.Text.Split(',').Select(int.Parse).ToArray();
-            using var dialog = new ColorDialog();
-            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var current = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (ArgbColorPickerDialog.Pick(this, current, out var picked))
             {
-                txtFill.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                txtFill.Text = $"{picked.A},{picked.R},{picked.G},{picked.B}";
             }
         };
         _editorPanel.Controls.Add(btnPickFill);
@@ -818,11 +814,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         btnPickLine.Click += (s, e) =>
         {
             var parts = txtLine.Text.Split(',').Select(int.Parse).ToArray();
-            using var dialog = new ColorDialog();
-            dialog.Color = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var current = Color.FromArgb(parts[0], parts[1], parts[2], parts[3]);
+            if (ArgbColorPickerDialog.Pick(this, current, out var picked))
             {
-                txtLine.Text = $"{dialog.Color.A},{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                txtLine.Text = $"{picked.A},{picked.R},{picked.G},{picked.B}";
             }
         };
         _editorPanel.Controls.Add(btnPickLine);

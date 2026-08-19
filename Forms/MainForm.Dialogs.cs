@@ -90,12 +90,10 @@ public partial class MainForm
             };
             btnColor.Click += (s, e) =>
             {
-                using var dialog = new ColorDialog();
-                dialog.Color = settings.Color;
-                if (dialog.ShowDialog() == DialogResult.OK)
+                if (ArgbColorPickerDialog.Pick(this, settings.Color, out var picked))
                 {
-                    settings.Color = dialog.Color;
-                    btnColor.BackColor = dialog.Color;
+                    settings.Color = picked;
+                    btnColor.BackColor = picked;
                     UpdatePipeButtonColors();
                     Render();
                 }
@@ -797,12 +795,11 @@ public partial class MainForm
         };
         btnDecalColor.Click += (s, e) =>
         {
-            using var dialog = new ColorDialog { Color = btnDecalColor.BackColor, FullOpen = true };
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (ArgbColorPickerDialog.Pick(this, btnDecalColor.BackColor, out var picked))
             {
-                btnDecalColor.BackColor = dialog.Color;
-                btnDecalColor.ForeColor = GetContrastTextColor(dialog.Color);
-                btnDecalColor.Text = ToHexColor(dialog.Color);
+                btnDecalColor.BackColor = picked;
+                btnDecalColor.ForeColor = GetContrastTextColor(picked);
+                btnDecalColor.Text = ToHexColor(picked);
                 _decalColor = btnDecalColor.Text;
             }
         };

@@ -314,7 +314,7 @@ public class DecalPatternBuilder
                 X = x + 0.5f + offsetX,
                 Y = y + 0.5f + offsetY,
                 Proto = proto,
-                Color = pack.Color,
+                Color = string.IsNullOrEmpty(layer.Color) ? pack.Color : layer.Color,
                 Rotation = 0,
                 Cleanable = false,
                 PatternOwnerId = ownerId,
