@@ -4,17 +4,22 @@ using MapperIce.Models;
 namespace MapperIce.Services;
 
 /// <summary>
-/// Строит декали "Decal Rule" вдоль периметра комнаты (Auto, глубина всегда 1) или
-/// внутри ручной области. Классификация — полноценный 8-направленный tile rule (как
-/// в Unity RuleTile): для каждой клетки опрашиваются все 8 соседей (N/S/E/W и 4
-/// диагонали), и по полной битовой маске выбирается позиция(и) декали.
+/// Строит декали "Decal Rule" вдоль периметра комнаты (для слоёв в режиме Auto,
+/// глубина всегда 1) или внутри ручных областей слоя (для слоёв в режиме Manual).
+/// Режим теперь задаётся ПОСЛОЙНО (DecalLayer.Mode), а не для комнаты в целом —
+/// в одной комнате один слой может идти по периметру автоматически, а другой
+/// расставляться вручную своими прямоугольниками, независимо друг от друга.
 ///
-/// ВАЖНО: в этом движке комната физически не различает "пол" и "стену" по прямоугольнику —
-/// Room.Contains(x,y) верно и для клетки пола, и для клетки стены. Поэтому есть предикат
-/// IsWallCell, объединяющий ОБА источника стен, которые знает TileBuilder:
+/// Классификация — полноценный 8-направленный tile rule (как в Unity RuleTile):
+/// для каждой клетки опрашиваются все 8 соседей (N/S/E/W и 4 диагонали), и по
+/// полной битовой маске выбирается позиция(и) декали.
+///
+/// ВАЖНО: в этом движке комната физически не различает "пол" и "стену" по
+/// прямоугольнику — Room.Contains(x,y) верно и для клетки пола, и для клетки
+/// стены. Поэтому есть предикат IsWallCell, объединяющий ОБА источника стен,
+/// которые знает TileBuilder:
 /// 1) обычная граница комнаты (ортогональный сосед вне Room.Contains);
-/// 2) диагональный "пинч" во внутреннем углу выемки (RoomSubtractor) — раньше
-///    DecalPatternBuilder про него не знал и клал декаль прямо в клетку стены.
+/// 2) диагональный "пинч" во внутреннем углу выемки (RoomSubtractor).
 /// </summary>
 public class DecalPatternBuilder
 {
@@ -24,12 +29,8 @@ public class DecalPatternBuilder
     {
         _packManager = packManager;
     }
+
     // Подбираемые визуальные коэффициенты смещения декалей в углах (в долях тайла).
-    // InnerCorner: 1.0f = смещение на ЦЕЛЫЙ тайл (центр соседней клетки пола по диагонали).
-    //   Меньшие дробные значения (0.5f и т.п.) приземляют декаль на ГРАНИЦУ между клетками,
-    //   а не на центр ни одной из них — визуально "подвешенное" нецелотайловое положение.
-    // OuterCorner: положительное значение = сдвиг ОТ угла к центру комнаты;
-    //   отрицательное — ближе к самому углу. Подбирается на глаз под текстуры пака.
     private const float InnerCornerOffset = 0f;
     private const float OuterCornerOffset = 0f;
 
@@ -46,9 +47,7 @@ public class DecalPatternBuilder
         return false;
     }
 
-    // Клетка-"пинч" во внутреннем углу выемки — зеркалит TileBuilder.GetConcaveCornerWallProto:
-    // оба ортогональных соседа ещё "внутри" (room.Contains == true), но диагональный сосед
-    // вырезан (RemovedCells) внутри прямоугольника комнаты.
+    // Клетка-"пинч" во внутреннем углу выемки — зеркалит TileBuilder.GetConcaveCornerWallProto.
     private static bool IsConcavePinchWall(Room room, int x, int y)
     {
         if (!room.Contains(x, y)) return false;
@@ -65,22 +64,17 @@ public class DecalPatternBuilder
             int dxi = x + dx, dyi = y + dy;
             bool diagonalInsideBounds = dxi >= room.X && dxi < room.X + room.Width &&
                                          dyi >= room.Y && dyi < room.Y + room.Height;
-            if (diagonalInsideBounds) return true; // реально вырезанная диагональ — пинч
+            if (diagonalInsideBounds) return true;
         }
 
         return false;
     }
 
-    // Единая точка правды "эта клетка — стена?" для декального модуля — объединяет
-    // оба источника стен из TileBuilder.
     private static bool IsWallCell(Room room, int x, int y)
     {
         return IsOrthogonalBoundaryWall(room, x, y) || IsConcavePinchWall(room, x, y);
     }
 
-    // "Стена" с точки зрения соседа клетки-кандидата на декаль: физическая стена
-    // (IsWallCell), выход за пределы комнаты, либо дверь — дверь геометрически может
-    // не быть IsWallCell, но для трассировки узора тоже считается препятствием.
     private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
     {
         if (!room.Contains(x, y)) return true;
@@ -89,11 +83,6 @@ public class DecalPatternBuilder
         return false;
     }
 
-    // Раньше проверялся только room.Doors ТЕКУЩЕЙ комнаты — дверь физически принадлежит
-    // одной комнате (владельцу), поэтому соседняя комната у той же самой двери никогда
-    // не видела её в своём списке и рисовала обычный Side/Corner вместо Door. Теперь
-    // ищем дверь по ВСЕМУ гриду (все комнаты + LooseDoors), чтобы обе соседние комнаты
-    // одинаково распознавали дверь на границе.
     private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
     {
         foreach (var r in grid.Rooms)
@@ -101,7 +90,39 @@ public class DecalPatternBuilder
         return grid.LooseDoors.Any(d => d.X == x && d.Y == y);
     }
 
-    /// <summary>Полная 8-направленная маска соседей клетки (x, y) внутри room.</summary>
+    // Для РУЧНОЙ области прямоугольник — это ГРАНИЦА тайлрула (виртуальная стена),
+    // а не просто список клеток, которые нужно залить декалью. Сосед считается
+    // "препятствием", если он вышел за пределы прямоугольника области — так вдоль
+    // краёв прямоугольника получается кайма (Side/Corner/DeadEnd), в точности как
+    // по периметру настоящей комнаты, а не одна и та же декаль на всех клетках подряд.
+    // Настоящие стены комнаты и двери остаются препятствиями всегда, даже если
+    // формально ещё внутри прямоугольника.
+    private static bool IsObstacleForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+    {
+        bool insideRect = x >= area.X && x < area.X + area.Width &&
+                           y >= area.Y && y < area.Y + area.Height;
+        if (!insideRect) return true;
+        if (!room.Contains(x, y)) return true;
+        if (IsWallCell(room, x, y)) return true;
+        if (IsDoorAnywhereInGrid(grid, x, y)) return true;
+        return false;
+    }
+
+    private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+    {
+        return new NeighborMask
+        {
+            N = IsObstacleForArea(grid, room, area, x, y - 1),
+            S = IsObstacleForArea(grid, room, area, x, y + 1),
+            E = IsObstacleForArea(grid, room, area, x + 1, y),
+            W = IsObstacleForArea(grid, room, area, x - 1, y),
+            NE = IsObstacleForArea(grid, room, area, x + 1, y - 1),
+            NW = IsObstacleForArea(grid, room, area, x - 1, y - 1),
+            SE = IsObstacleForArea(grid, room, area, x + 1, y + 1),
+            SW = IsObstacleForArea(grid, room, area, x - 1, y + 1),
+        };
+    }
+
     private struct NeighborMask
     {
         public bool N, S, E, W, NE, NW, SE, SW;
@@ -128,17 +149,22 @@ public class DecalPatternBuilder
         int ownerId = room.GetHashCode();
         grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
 
-        if (room.DecalMode == DecalPatternMode.Auto)
+        for (int i = 0; i < room.AutoDecalRule.Layers.Count; i++)
         {
-            grid.Decals.AddRange(BuildAutoPattern(grid, room));
-        }
-        else if (room.DecalMode == DecalPatternMode.Manual)
-        {
-            foreach (var area in room.ManualDecalAreas)
-                grid.Decals.AddRange(BuildAreaPattern(grid, room, area, ownerId));
+            var layer = room.AutoDecalRule.Layers[i];
+            if (!layer.Enabled) continue;
+
+            if (layer.Mode == DecalPatternMode.Auto)
+            {
+                grid.Decals.AddRange(BuildAutoPatternForLayer(grid, room, layer, i, ownerId));
+            }
+            else
+            {
+                foreach (var area in layer.ManualAreas)
+                    grid.Decals.AddRange(BuildAreaPatternForLayer(grid, room, area, layer, i, ownerId));
+            }
         }
     }
-
 
     /// <summary>Пересчёт для всех комнат грида — используется после массовых операций (delete area, undo/redo, load).</summary>
     public void RecalculateAll(Grid grid)
@@ -147,37 +173,43 @@ public class DecalPatternBuilder
 
         foreach (var room in grid.Rooms)
         {
-            if (room.DecalMode == DecalPatternMode.Auto)
+            int ownerId = room.GetHashCode();
+
+            for (int i = 0; i < room.AutoDecalRule.Layers.Count; i++)
             {
-                grid.Decals.AddRange(BuildAutoPattern(grid, room));
-            }
-            else if (room.DecalMode == DecalPatternMode.Manual)
-            {
-                int ownerId = room.GetHashCode();
-                foreach (var area in room.ManualDecalAreas)
-                    grid.Decals.AddRange(BuildAreaPattern(grid, room, area, ownerId));
+                var layer = room.AutoDecalRule.Layers[i];
+                if (!layer.Enabled) continue;
+
+                if (layer.Mode == DecalPatternMode.Auto)
+                {
+                    grid.Decals.AddRange(BuildAutoPatternForLayer(grid, room, layer, i, ownerId));
+                }
+                else
+                {
+                    foreach (var area in layer.ManualAreas)
+                        grid.Decals.AddRange(BuildAreaPatternForLayer(grid, room, area, layer, i, ownerId));
+                }
             }
         }
     }
 
-    private List<PlacedDecal> BuildAutoPattern(Grid grid, Room room)
+    private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLayer layer, int layerIndex, int ownerId)
     {
         var result = new List<PlacedDecal>();
-        int ownerId = room.GetHashCode();
 
         for (int x = room.X; x < room.X + room.Width; x++)
         {
             for (int y = room.Y; y < room.Y + room.Height; y++)
             {
                 if (room.RemovedCells.Contains((x, y))) continue;
-                if (IsWallCell(room, x, y)) continue; // сама клетка стены (включая пинч) — декали не ставим
+                if (IsWallCell(room, x, y)) continue;
 
                 var mask = GetNeighborMask(grid, room, x, y);
 
                 if (IsDoorAnywhereInGrid(grid, x, y - 1) || IsDoorAnywhereInGrid(grid, x, y + 1) ||
                     IsDoorAnywhereInGrid(grid, x + 1, y) || IsDoorAnywhereInGrid(grid, x - 1, y))
                 {
-                    AddDecalsForPosition(room.AutoDecalRule, room, x, y, DecalPosition.Door, ownerId, result);
+                    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.Door, ownerId, result);
                     continue;
                 }
 
@@ -186,9 +218,6 @@ public class DecalPatternBuilder
                     if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
                         or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
                     {
-                        // Диагональ cornerDir физически стена/пинч. Сдвигаем декаль вглубь
-                        // комнаты, НО только если клетка назначения реально пол — иначе
-                        // (узкая выемка) декаль может улететь в клетку стены другого угла
                         int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
                         int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
 
@@ -196,23 +225,83 @@ public class DecalPatternBuilder
 
                         if (targetIsFloor)
                         {
-                            AddDecalsForPositionOffset(room.AutoDecalRule, room, x, y, position, ownerId, result,
+                            AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
                                 -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
                         }
                         else
                         {
-                            AddDecalsForPosition(room.AutoDecalRule, room, x, y, position, ownerId, result);
+                            AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
                         }
                     }
                     else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
                         or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
                     {
-                        AddDecalsForPositionOffset(room.AutoDecalRule, room, x, y, position, ownerId, result,
+                        AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
                             -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
                     }
                     else
                     {
-                        AddDecalsForPosition(room.AutoDecalRule, room, x, y, position, ownerId, result);
+                        AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private List<PlacedDecal> BuildAreaPatternForLayer(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+    {
+        var result = new List<PlacedDecal>();
+
+        for (int x = area.X; x < area.X + area.Width; x++)
+        {
+            for (int y = area.Y; y < area.Y + area.Height; y++)
+            {
+                if (!room.Contains(x, y)) continue;
+                if (IsWallCell(room, x, y)) continue;
+
+                // Ключевое отличие от авто-режима по периметру комнаты: тут границей
+                // "стен" для тайлрула служит сам прямоугольник area, а не реальные
+                // стены комнаты — поэтому GetNeighborMaskForArea, а не GetNeighborMask.
+                var mask = GetNeighborMaskForArea(grid, room, area, x, y);
+
+                if (IsDoorAnywhereInGrid(grid, x, y - 1) || IsDoorAnywhereInGrid(grid, x, y + 1) ||
+                    IsDoorAnywhereInGrid(grid, x + 1, y) || IsDoorAnywhereInGrid(grid, x - 1, y))
+                {
+                    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.Door, ownerId, result);
+                    continue;
+                }
+
+                foreach (var (position, cornerDir) in ClassifyPositions(mask))
+                {
+                    if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
+                        or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
+                    {
+                        int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
+                        int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
+
+                        bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
+
+                        if (targetIsFloor)
+                        {
+                            AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
+                                -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
+                        }
+                        else
+                        {
+                            AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
+                        }
+                    }
+                    else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
+                        or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
+                    {
+                        AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
+                            -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
+                    }
+                    else
+                    {
+                        AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
                     }
                 }
             }
@@ -222,12 +311,10 @@ public class DecalPatternBuilder
     }
 
 
-
     /// <summary>
     /// Возвращает СПИСОК позиций для клетки (обычно один элемент, но для узкого коридора
     /// в 1 тайл — стены сразу с двух ПРОТИВОПОЛОЖНЫХ сторон, N+S или E+W — возвращает
-    /// два элемента: эффект от одной стены и эффект от другой складываются в одной
-    /// клетке, а не выбирается одна сторона произвольно/пропускается совсем.
+    /// два элемента).
     /// </summary>
     private static List<(DecalPosition position, (int dx, int dy) cornerDir)> ClassifyPositions(NeighborMask m)
     {
@@ -236,9 +323,6 @@ public class DecalPatternBuilder
 
         if (ortho == 3)
         {
-            // Суффикс DeadEnd означает сторону СТЕНЫ-заглушки (куда упирается тупик),
-            // а не открытую сторону прохода. !m.N значит "открыт север" => стена-заглушка
-            // с юга => DeadEndS.
             if (!m.N) result.Add((DecalPosition.DeadEndS, (0, 0)));
             else if (!m.S) result.Add((DecalPosition.DeadEndN, (0, 0)));
             else if (!m.E) result.Add((DecalPosition.DeadEndW, (0, 0)));
@@ -248,14 +332,11 @@ public class DecalPatternBuilder
 
         if (ortho == 2)
         {
-            // Смежные стены — обычный внешний угол (cornerDir — направление к углу)
             if (m.N && m.E) { result.Add((DecalPosition.OuterCornerNE, (1, -1))); return result; }
             if (m.N && m.W) { result.Add((DecalPosition.OuterCornerNW, (-1, -1))); return result; }
             if (m.S && m.E) { result.Add((DecalPosition.OuterCornerSE, (1, 1))); return result; }
             if (m.S && m.W) { result.Add((DecalPosition.OuterCornerSW, (-1, 1))); return result; }
 
-            // Противоположные стены (узкий коридор в 1 тайл) — складываем оба эффекта:
-            // и SideN, и SideS (или SideE+SideW) ставятся в одну и ту же клетку сразу
             if (m.N && m.S)
             {
                 result.Add((DecalPosition.SideN, (0, 0)));
@@ -280,8 +361,6 @@ public class DecalPatternBuilder
             return result;
         }
 
-        // ortho == 0 — все 4 ортогональные стороны открыты. Проверяем диагонали на InnerCorner
-        // (в редких случаях может сработать сразу несколько диагоналей — складываем и их)
         if (m.NE) result.Add((DecalPosition.InnerCornerNE, (1, -1)));
         if (m.NW) result.Add((DecalPosition.InnerCornerNW, (-1, -1)));
         if (m.SE) result.Add((DecalPosition.InnerCornerSE, (1, 1)));
@@ -290,86 +369,29 @@ public class DecalPatternBuilder
         return result;
     }
 
-    private void AddDecalsForPosition(DecalRuleSet rule, Room room, int x, int y, DecalPosition position, int ownerId, List<PlacedDecal> result)
+    private void AddDecalForLayerPosition(DecalLayer layer, int layerIndex, Room room, int x, int y, DecalPosition position, int ownerId, List<PlacedDecal> result)
     {
-        AddDecalsForPositionOffset(rule, room, x, y, position, ownerId, result, 0f, 0f);
+        AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result, 0f, 0f);
     }
 
-    private void AddDecalsForPositionOffset(DecalRuleSet rule, Room room, int x, int y, DecalPosition position, int ownerId, List<PlacedDecal> result, float offsetX, float offsetY)
+    private void AddDecalForLayerPositionOffset(DecalLayer layer, int layerIndex, Room room, int x, int y, DecalPosition position, int ownerId, List<PlacedDecal> result, float offsetX, float offsetY)
     {
-        if (rule == null) return;
+        if (string.IsNullOrEmpty(layer.SourcePackId)) return;
 
-        for (int i = 0; i < rule.Layers.Count; i++)
+        var pack = _packManager.GetById(layer.SourcePackId);
+        if (pack == null) return;
+        if (!pack.Positions.TryGetValue(position, out var proto) || string.IsNullOrEmpty(proto)) return;
+
+        result.Add(new PlacedDecal
         {
-            var layer = rule.Layers[i];
-            if (!layer.Enabled) continue;
-            if (string.IsNullOrEmpty(layer.SourcePackId)) continue;
-
-            var pack = _packManager.GetById(layer.SourcePackId);
-            if (pack == null) continue;
-            if (!pack.Positions.TryGetValue(position, out var proto) || string.IsNullOrEmpty(proto)) continue;
-
-            result.Add(new PlacedDecal
-            {
-                X = x + 0.5f + offsetX,
-                Y = y + 0.5f + offsetY,
-                Proto = proto,
-                Color = string.IsNullOrEmpty(layer.Color) ? pack.Color : layer.Color,
-                Rotation = 0,
-                Cleanable = false,
-                PatternOwnerId = ownerId,
-                PatternLayerIndex = i
-            });
-        }
-    }
-
-    private List<PlacedDecal> BuildAreaPattern(Grid grid, Room room, ManualDecalArea area, int ownerId)
-    {
-        var result = new List<PlacedDecal>();
-
-        for (int x = area.X; x < area.X + area.Width; x++)
-        {
-            for (int y = area.Y; y < area.Y + area.Height; y++)
-            {
-                if (!room.Contains(x, y)) continue;
-                if (IsWallCell(room, x, y)) continue;
-
-                var mask = GetNeighborMask(grid, room, x, y);
-
-                foreach (var (position, cornerDir) in ClassifyPositions(mask))
-                {
-                    if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
-                        or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
-                    {
-                        int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
-                        int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
-
-                        bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
-
-                        if (targetIsFloor)
-                        {
-                            AddDecalsForPositionOffset(area.Rule, room, x, y, position, ownerId, result,
-                                -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
-                        }
-                        else
-                        {
-                            AddDecalsForPosition(area.Rule, room, x, y, position, ownerId, result);
-                        }
-                    }
-                    else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
-                        or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
-                    {
-                        AddDecalsForPositionOffset(area.Rule, room, x, y, position, ownerId, result,
-                            -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
-                    }
-                    else
-                    {
-                        AddDecalsForPosition(area.Rule, room, x, y, position, ownerId, result);
-                    }
-                }
-            }
-        }
-
-        return result;
+            X = x + 0.5f + offsetX,
+            Y = y + 0.5f + offsetY,
+            Proto = proto,
+            Color = string.IsNullOrEmpty(layer.Color) ? pack.Color : layer.Color,
+            Rotation = 0,
+            Cleanable = false,
+            PatternOwnerId = ownerId,
+            PatternLayerIndex = layerIndex
+        });
     }
 }

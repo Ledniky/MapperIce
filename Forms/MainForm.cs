@@ -112,6 +112,14 @@ public partial class MainForm : Form
     private List<MoveSnapshotItem> _moveSnapshot = new();
     private string _decalColor = "#FFFFFFFF";
     private bool _decalCleanable = false;
+    // ===== Интерактивное редактирование ручной области декалей на канвасе =====
+    private ManualDecalArea? _editingDecalArea = null;
+    private Room? _editingDecalAreaRoom = null;
+    private Action? _editingDecalAreaApplyCallback = null;
+    private int _draggingDecalCornerIndex = -1;
+    private bool _isDraggingDecalWholeArea = false;
+    private ManualDecalArea? _decalAreaDragSnapshot = null;
+    private (int x, int y) _decalAreaDragStartMouseTile;
 
 
     private class MoveSnapshotItem
@@ -219,6 +227,12 @@ public partial class MainForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (keyData == Keys.Escape && _editingDecalArea != null)
+        {
+            EndEditDecalArea();
+            return true;
+        }
+
         if (keyData == (Keys.Control | Keys.Z))
         {
             if (_undo.CanUndo)

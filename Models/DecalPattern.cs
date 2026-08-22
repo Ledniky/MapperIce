@@ -44,6 +44,8 @@ public class DecalPack
 }
 
 /// <summary>Один слой "бутерброда" — теперь только ссылка на пак + вкл/выкл, без своего цвета и своих позиций.</summary>
+
+
 public class DecalLayer
 {
     public string Name { get; set; } = "Слой";
@@ -56,11 +58,27 @@ public class DecalLayer
     // сам пак и не влияя друг на друга.
     public string? Color { get; set; } = null;
 
+    // Режим теперь задаётся ПО СЛОЮ, а не для всей комнаты сразу — один слой может
+    // идти по периметру автоматически, а другой (например, декоративные пятна/пятна
+    // ржавчины) быть расставлен вручную по своим областям, и оба живут в одной комнате
+    // одновременно.
+    public DecalPatternMode Mode { get; set; } = DecalPatternMode.Auto;
+    public List<ManualDecalArea> ManualAreas { get; set; } = new();
+
     public DecalLayer Clone()
     {
-        return new DecalLayer { Name = Name, SourcePackId = SourcePackId, Enabled = Enabled, Color = Color };
+        return new DecalLayer
+        {
+            Name = Name,
+            SourcePackId = SourcePackId,
+            Enabled = Enabled,
+            Color = Color,
+            Mode = Mode,
+            ManualAreas = ManualAreas.Select(a => a.Clone()).ToList()
+        };
     }
 }
+
 
 public class DecalRuleSet
 {
@@ -80,11 +98,10 @@ public class ManualDecalArea
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public DecalRuleSet Rule { get; set; } = new();
 
     public ManualDecalArea Clone()
     {
-        return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height, Rule = Rule.Clone() };
+        return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height };
     }
 }
 

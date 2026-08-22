@@ -10,6 +10,14 @@ public partial class MainForm
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
+        // Перехватываем только ЛКМ (перетаскивание углов/области). ПКМ (панорамирование)
+        // и СКМ должны обрабатываться обычной логикой ниже даже в режиме редактирования области.
+        if (_editingDecalArea != null && e.Button == MouseButtons.Left)
+        {
+            HandleDecalAreaEditMouseDown(e);
+            return;
+        }
+
         if (_canvas.Width == 0 || _canvas.Height == 0) return;
         if (_map.ActiveGrid == null) return;
 
@@ -442,6 +450,14 @@ public partial class MainForm
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
+        // Перехватываем только когда реально идёт перетаскивание угла/области (ЛКМ зажата).
+        // Если сейчас панорамирование (_isPanning от ПКМ), пропускаем в обычную логику ниже.
+        if (_editingDecalArea != null && (_draggingDecalCornerIndex >= 0 || _isDraggingDecalWholeArea))
+        {
+            HandleDecalAreaEditMouseMove(e);
+            return;
+        }
+
         _lastMousePosition = e.Location;
 
         if (_isBoxSelecting)
@@ -587,6 +603,15 @@ public partial class MainForm
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
     {
+        // Аналогично MouseMove — перехватываем отпускание только если реально
+        // тащили угол/область; иначе (например, отпускание ПКМ после панорамирования)
+        // отдаём обработку обычной логике ниже.
+        if (_editingDecalArea != null && (_draggingDecalCornerIndex >= 0 || _isDraggingDecalWholeArea))
+        {
+            HandleDecalAreaEditMouseUp(e);
+            return;
+        }
+
         if (_isBoxSelecting)
         {
             _isBoxSelecting = false;

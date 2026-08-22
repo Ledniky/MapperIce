@@ -20,8 +20,8 @@ public partial class DecalInheritanceDialog : Form
         _indexer = indexer;
 
         Text = "Наследование декалей";
-        Size = new Size(660, 560);
-        MinimumSize = new Size(540, 420);
+        Size = new Size(780, 560);
+        MinimumSize = new Size(660, 420);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false;
@@ -31,7 +31,7 @@ public partial class DecalInheritanceDialog : Form
         var headerPanel = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(660, 40),
+            Size = new Size(780, 40),
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.FixedSingle,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
@@ -48,7 +48,7 @@ public partial class DecalInheritanceDialog : Form
         var mainPanel = new Panel
         {
             Location = new Point(0, 40),
-            Size = new Size(660, 470),
+            Size = new Size(780, 470),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
 
@@ -73,7 +73,7 @@ public partial class DecalInheritanceDialog : Form
         _editorPanel = new Panel
         {
             Location = new Point(265, 0),
-            Size = new Size(395, 470),
+            Size = new Size(515, 470),
             BorderStyle = BorderStyle.FixedSingle,
             AutoScroll = true,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
@@ -84,12 +84,12 @@ public partial class DecalInheritanceDialog : Form
         var bottomPanel = new Panel
         {
             Location = new Point(0, 510),
-            Size = new Size(660, 50),
+            Size = new Size(780, 50),
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.FixedSingle,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
-        var btnClose = new Button { Text = "Закрыть", Location = new Point(555, 10), Size = new Size(85, 30), FlatStyle = FlatStyle.Flat };
+        var btnClose = new Button { Text = "Закрыть", Location = new Point(675, 10), Size = new Size(85, 30), FlatStyle = FlatStyle.Flat };
         btnClose.Click += (s, e) => Close();
         bottomPanel.Controls.Add(btnClose);
         Controls.Add(bottomPanel);
@@ -345,6 +345,7 @@ public partial class DecalInheritanceDialog : Form
             {
                 var layer = ruleSet.Layers[i];
                 int idx = i;
+
                 var row = new Panel { Location = new Point(0, rowY), Size = new Size(rowsHost.Width, 30) };
 
                 var chk = new CheckBox { Checked = layer.Enabled, Location = new Point(0, 5), Width = 20 };

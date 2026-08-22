@@ -48,7 +48,17 @@ public class Renderer
     private Point _selectionBoxStart;
     private Point _selectionBoxEnd;
 
+    private (int x, int y, int w, int h)? _decalAreaEditRect = null;
 
+    public void SetDecalAreaEditRect(int x, int y, int w, int h)
+    {
+        _decalAreaEditRect = (x, y, w, h);
+    }
+
+    public void ClearDecalAreaEditRect()
+    {
+        _decalAreaEditRect = null;
+    }
     public void SetSelectionBox(Point start, Point end)
     {
         _selectionBoxStart = start;
@@ -230,6 +240,7 @@ public class Renderer
             DrawEntityPreview(g, scale, viewOffset);
             DrawSelectionHighlight(g, scale, viewOffset);
             DrawSelectionBox(g);
+            DrawDecalAreaEditOverlay(g, scale, viewOffset);
 
             return _buffer;
         }
@@ -781,7 +792,7 @@ public class Renderer
     /// доходит вплотную до края тайла, потому что стены в этом тайле физически нет,
     /// пол начинается сразу с края и упирается в чужую стену, стоящую в соседнем тайле.
     /// </summary>
-private RectangleF GetCellInsetRect(Room room, int x, int y, int tileSize, PointF viewOffset, PointF gridOffset)
+    private RectangleF GetCellInsetRect(Room room, int x, int y, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         float cellX = (x + gridOffset.X) * tileSize - viewOffset.X;
         float cellY = (y + gridOffset.Y) * tileSize - viewOffset.Y;
@@ -822,7 +833,7 @@ private RectangleF GetCellInsetRect(Room room, int x, int y, int tileSize, Point
 
 
 
-/// <summary>
+    /// <summary>
     /// Достраивает Г-образные коннекторы во внутренних (вогнутых) углах комнаты —
     /// там линии двух соседних клеток не встречаются сами по себе, каждая
     /// утапливается на пол-тайла в свою сторону. Работает чисто в пределах одной
@@ -884,7 +895,7 @@ private RectangleF GetCellInsetRect(Room room, int x, int y, int tileSize, Point
 
 
 
-private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         int alpha = (int)(room.FillColor.A * opacity);
         using var brush = new SolidBrush(Color.FromArgb(alpha, room.FillColor.R, room.FillColor.G, room.FillColor.B));
@@ -909,7 +920,7 @@ private void DrawRoomFill(Graphics g, Room room, int tileSize, PointF viewOffset
     /// "обтекает" вырез и совпадает с фактическим положением стен, а не рисует
     /// старый прямоугольник целиком.
     /// </summary>
-private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
+    private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset, bool isCurrent, float opacity)
     {
         Color color = isCurrent ? Color.Red : Color.FromArgb((int)(room.LineColor.A * opacity), room.LineColor.R, room.LineColor.G, room.LineColor.B);
         using var pen = new Pen(color, isCurrent ? 3 : 2);
@@ -952,9 +963,9 @@ private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset
     }
 
 
-    
-    
-    
+
+
+
     private void DrawSubtractPreview(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         // Заливка вырезаемой области — по полным клеткам (сама область вычитания
@@ -1287,7 +1298,48 @@ private void DrawRoomLine(Graphics g, Room room, int tileSize, PointF viewOffset
     }
 
 
+    private void DrawDecalAreaEditOverlay(Graphics g, float scale, PointF viewOffset)
+    {
+        if (_decalAreaEditRect == null) return;
+        if (_currentMap?.ActiveGrid == null) return;
 
+        var (ax, ay, aw, ah) = _decalAreaEditRect.Value;
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
+        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+
+        float left = ax * tileSize + gridOffsetX - viewOffset.X;
+        float top = ay * tileSize + gridOffsetY - viewOffset.Y;
+        float width = aw * tileSize;
+        float height = ah * tileSize;
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(50, 255, 200, 0));
+        g.FillRectangle(fillBrush, left, top, width, height);
+
+        using var pen = new Pen(Color.FromArgb(255, 255, 160, 0), 2)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        g.DrawRectangle(pen, left, top, width, height);
+
+        // Угловые "ручки" для перетаскивания — фиксированный размер в пикселях экрана,
+        // не зависящий от масштаба, чтобы хват оставался удобным при любом зуме
+        float handleSize = 10f;
+        using var handleBrush = new SolidBrush(Color.FromArgb(255, 255, 160, 0));
+        using var handlePen = new Pen(Color.Black, 1);
+
+        var corners = new (float x, float y)[]
+        {
+        (left, top), (left + width, top), (left, top + height), (left + width, top + height)
+        };
+
+        foreach (var (cx, cy) in corners)
+        {
+            var rect = new RectangleF(cx - handleSize / 2, cy - handleSize / 2, handleSize, handleSize);
+            g.FillRectangle(handleBrush, rect);
+            g.DrawRectangle(handlePen, rect.X, rect.Y, rect.Width, rect.Height);
+        }
+    }
 
 
     private void DrawSelectionHighlight(Graphics g, float scale, PointF viewOffset)
