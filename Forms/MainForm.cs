@@ -52,6 +52,7 @@ public partial class MainForm : Form
     private Button _btnRemoveRepo = null!;
     private Button _btnIndexRepo = null!;
     private ListBox _protoList = null!;
+    private readonly Dictionary<string, Image?> _protoIconCache = new();
     private TextBox _searchBox = null!;
     private ComboBox _filterCombo = null!;
     private string _currentFilter = "all";
@@ -186,6 +187,7 @@ public partial class MainForm : Form
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
         _indexer.OnIndexingComplete += () =>
         {
+            ClearProtoIconCache();
             UpdatePrototypeList();
             UpdateDoorIcons();
             Render();

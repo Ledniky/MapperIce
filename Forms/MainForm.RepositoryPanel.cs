@@ -39,9 +39,12 @@ public partial class MainForm
         {
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 9),
-            IntegralHeight = false
+            IntegralHeight = false,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 30
         };
         _protoList.DoubleClick += OnPrototypeDoubleClick;
+        _protoList.DrawItem += ProtoList_DrawItem;
         listContainer.Controls.Add(_protoList);
         panel.Controls.Add(listContainer);
 
@@ -286,6 +289,8 @@ public partial class MainForm
 
     private void OnRepoSelected(object? sender, EventArgs e)
     {
+        ClearProtoIconCache();
+
         var repo = _repoSelector.SelectedItem as Repository;
         bool hasRepo = repo != null;
 
@@ -531,7 +536,60 @@ public partial class MainForm
         return null;
     }
 
+    private Image? GetCachedProtoIcon(string protoId)
+    {
+        if (_protoIconCache.TryGetValue(protoId, out var cached))
+            return cached;
 
+        var icon = GetPrototypeIcon(protoId);
+        _protoIconCache[protoId] = icon;
+        return icon;
+    }
+
+    private void ClearProtoIconCache()
+    {
+        foreach (var kvp in _protoIconCache)
+            kvp.Value?.Dispose();
+        _protoIconCache.Clear();
+    }
+
+    private void ProtoList_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0) return;
+
+        e.DrawBackground();
+
+        string? id = _protoList.Items[e.Index]?.ToString();
+        const int iconSize = 32;
+        const int padding = 3;
+        int textX = e.Bounds.Left + padding + iconSize + padding;
+
+        bool isRealProto = !string.IsNullOrEmpty(id) &&
+                            !id.StartsWith("(") && !id.StartsWith("⚠") &&
+                            !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
+                            !id.StartsWith("Нажмите");
+
+        if (isRealProto)
+        {
+            var icon = GetCachedProtoIcon(id!);
+            if (icon != null)
+            {
+                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
+                e.Graphics.DrawImage(icon, e.Bounds.Left + padding, iconY, iconSize, iconSize);
+            }
+        }
+        else
+        {
+            textX = e.Bounds.Left + padding;
+        }
+
+        using var textBrush = new SolidBrush(e.ForeColor);
+        var textFont = e.Font;
+        float textY = e.Bounds.Top + (e.Bounds.Height - textFont.Height) / 2f;
+        e.Graphics.DrawString(id, textFont, textBrush, textX, textY);
+
+        e.DrawFocusRectangle();
+    }
     private void UpdateDoorIcons()
     {
         if (_btnAirlock != null)
