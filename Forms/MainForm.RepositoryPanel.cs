@@ -48,6 +48,17 @@ public partial class MainForm
         listContainer.Controls.Add(_protoList);
         panel.Controls.Add(listContainer);
 
+        _iconRedrawTimer = new System.Windows.Forms.Timer { Interval = 80 };
+        _iconRedrawTimer.Tick += (s, e) =>
+        {
+            if (_pendingIconRedraw)
+            {
+                _pendingIconRedraw = false;
+                if (!_protoList.IsDisposed) _protoList.Invalidate();
+            }
+        };
+        _iconRedrawTimer.Start();
+
         var searchPanel = new Panel
         {
             Dock = DockStyle.Top,
@@ -250,7 +261,7 @@ public partial class MainForm
 
         var title = new Label
         {
-            Text = "Репозитории",
+            Text = "Репозиторий",
             Font = new Font("Arial", 12, FontStyle.Bold),
             Dock = DockStyle.Top,
             Height = 30,
@@ -511,6 +522,35 @@ public partial class MainForm
     }
 
 
+    private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
+
+    private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
+    {
+        string dir = Path.GetDirectoryName(texturePath) ?? "";
+        if (_rsiFrameSizeCache.TryGetValue(dir, out var cached)) return cached;
+
+        Size result = new Size(Math.Min(32, fallbackImage.Width), Math.Min(32, fallbackImage.Height));
+        try
+        {
+            string metaPath = Path.Combine(dir, "meta.json");
+            if (File.Exists(metaPath))
+            {
+                var json = File.ReadAllText(metaPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("size", out var sizeElem) &&
+                    sizeElem.TryGetProperty("x", out var xEl) &&
+                    sizeElem.TryGetProperty("y", out var yEl))
+                {
+                    result = new Size(xEl.GetInt32(), yEl.GetInt32());
+                }
+            }
+        }
+        catch { }
+
+        _rsiFrameSizeCache[dir] = result;
+        return result;
+    }
+
     private Image? GetPrototypeIcon(string protoId)
     {
         try
@@ -519,11 +559,14 @@ public partial class MainForm
             if (path != null && File.Exists(path))
             {
                 using var original = Image.FromFile(path);
+                var frameSize = GetRsiFrameSize(path, original);
+
                 var icon = new Bitmap(32, 32);
                 using (var g = Graphics.FromImage(icon))
                 {
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.DrawImage(original, new Rectangle(0, 0, 32, 32));
+                    var srcRect = new Rectangle(0, 0, frameSize.Width, frameSize.Height);
+                    g.DrawImage(original, new Rectangle(0, 0, 32, 32), srcRect, GraphicsUnit.Pixel);
                 }
                 return icon;
             }
@@ -539,11 +582,30 @@ public partial class MainForm
     private Image? GetCachedProtoIcon(string protoId)
     {
         if (_protoIconCache.TryGetValue(protoId, out var cached))
-            return cached;
+            return cached; // уже загружена (или уже точно известно, что иконки нет — null тоже кэшируется)
 
-        var icon = GetPrototypeIcon(protoId);
-        _protoIconCache[protoId] = icon;
-        return icon;
+        // Ещё не грузили и сейчас не грузится — запускаем фоновую загрузку и возвращаем
+        // null на этот кадр отрисовки (DrawItem нарисует заглушку вместо иконки)
+        if (_iconLoadInFlight.TryAdd(protoId, 0))
+        {
+            _ = Task.Run(async () =>
+            {
+                await _iconLoadSemaphore.WaitAsync();
+                try
+                {
+                    var icon = GetPrototypeIcon(protoId);
+                    _protoIconCache[protoId] = icon;
+                }
+                finally
+                {
+                    _iconLoadSemaphore.Release();
+                    _iconLoadInFlight.TryRemove(protoId, out _);
+                    _pendingIconRedraw = true;
+                }
+            });
+        }
+
+        return null;
     }
 
     private void ClearProtoIconCache()
@@ -551,8 +613,8 @@ public partial class MainForm
         foreach (var kvp in _protoIconCache)
             kvp.Value?.Dispose();
         _protoIconCache.Clear();
+        _iconLoadInFlight.Clear();
     }
-
     private void ProtoList_DrawItem(object? sender, DrawItemEventArgs e)
     {
         if (e.Index < 0) return;
@@ -572,10 +634,15 @@ public partial class MainForm
         if (isRealProto)
         {
             var icon = GetCachedProtoIcon(id!);
+            int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
             if (icon != null)
             {
-                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
                 e.Graphics.DrawImage(icon, e.Bounds.Left + padding, iconY, iconSize, iconSize);
+            }
+            else
+            {
+                using var placeholderBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0));
+                e.Graphics.FillRectangle(placeholderBrush, e.Bounds.Left + padding, iconY, iconSize, iconSize);
             }
         }
         else

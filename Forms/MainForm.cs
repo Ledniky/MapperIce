@@ -52,8 +52,11 @@ public partial class MainForm : Form
     private Button _btnRemoveRepo = null!;
     private Button _btnIndexRepo = null!;
     private ListBox _protoList = null!;
-    private readonly Dictionary<string, Image?> _protoIconCache = new();
-    private TextBox _searchBox = null!;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Image?> _protoIconCache = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _iconLoadInFlight = new();
+    private readonly SemaphoreSlim _iconLoadSemaphore = new SemaphoreSlim(4);
+    private volatile bool _pendingIconRedraw = false;
+    private System.Windows.Forms.Timer? _iconRedrawTimer; private TextBox _searchBox = null!;
     private ComboBox _filterCombo = null!;
     private string _currentFilter = "all";
 

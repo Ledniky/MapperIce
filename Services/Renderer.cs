@@ -20,8 +20,10 @@ public class Renderer
     // Кэш текстур для ускорения рендеринга
     private readonly Dictionary<string, Image?> _textureCache = new();
     private readonly Dictionary<string, Rectangle> _sourceRectCache = new();
-    private readonly Dictionary<int, TileGrid> _tileGridCache = new();
+    private readonly Dictionary<string, string> _protoTextureDirCache = new();
+    private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
     private readonly HashSet<int> _dirtyTileGrids = new();
+    private readonly Dictionary<int, TileGrid> _tileGridCache = new();
 
     // Размеры тайлов в пикселях для кэширования
     private int _cachedTileSize = 0;
@@ -286,21 +288,53 @@ public class Renderer
     /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
     /// каждого типа объекта своя.
     /// </summary>
-    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback)
+    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f)
     {
         Image? texture = GetOrLoadTexture(protoId ?? "");
         if (texture != null)
         {
-            var src = GetSourceRect(protoId!, texture);
-            if (tint != null)
-                g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+            var src = GetSourceRect(protoId!, texture, rotation);
+
+            void DoDraw()
+            {
+                if (tint != null)
+                    g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+                else
+                    g.DrawImage(texture, rect, src, GraphicsUnit.Pixel);
+            }
+
+            // У спрайтов с направленными строками (RSI: юг/север/восток/запад) поворот
+            // уже "зашит" в выбор строки в GetSourceRect — доп. аффинный поворот тут
+            // не нужен (иначе спрайт крутился бы дважды). А для однокадровых
+            // прототипов (без направленных состояний) строка всегда одна и та же,
+            // и без явного WithRotation колесо мыши визуально ничего не поворачивало —
+            // отсюда и была "сломана" видимая ротация в редакторе.
+            if (HasDirectionalFrames(protoId!, texture))
+            {
+                DoDraw();
+            }
             else
-                g.DrawImage(texture, rect, src, GraphicsUnit.Pixel);
+            {
+                float cx = rect.X + rect.Width / 2f;
+                float cy = rect.Y + rect.Height / 2f;
+                WithRotation(g, cx, cy, rotation, DoDraw);
+            }
         }
         else
         {
             fallback?.Invoke(g, rect);
         }
+    }
+
+    /// <summary>
+    /// true, если RSI-спрайтшит прототипа содержит ≥4 строк (юг/север/восток/запад) —
+    /// т.е. поворот у него выражается сменой кадра, а не наклоном текстуры.
+    /// </summary>
+    private bool HasDirectionalFrames(string protoId, Image img)
+    {
+        var frameSize = GetRsiFrameSize(protoId, img);
+        int rows = Math.Max(1, img.Height / Math.Max(1, frameSize.Height));
+        return rows >= 4;
     }
 
     #endregion
@@ -620,6 +654,7 @@ public class Renderer
                     }
 
                     texture = Image.FromFile(texturePath);
+                    _protoTextureDirCache[protoId] = Path.GetDirectoryName(texturePath) ?? "";
                 }
                 catch { }
             }
@@ -629,23 +664,59 @@ public class Renderer
         return texture;
     }
 
-    private Rectangle GetSourceRect(string protoId, Image img)
+    private Size GetRsiFrameSize(string protoId, Image fallbackImage)
+    {
+        string dir = _protoTextureDirCache.TryGetValue(protoId, out var d) ? d : "";
+        if (_rsiFrameSizeCache.TryGetValue(dir, out var cached)) return cached;
+
+        Size result = new Size(Math.Min(32, fallbackImage.Width), Math.Min(32, fallbackImage.Height));
+        try
+        {
+            string metaPath = Path.Combine(dir, "meta.json");
+            if (!string.IsNullOrEmpty(dir) && File.Exists(metaPath))
+            {
+                var json = File.ReadAllText(metaPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("size", out var sizeElem) &&
+                    sizeElem.TryGetProperty("x", out var xEl) &&
+                    sizeElem.TryGetProperty("y", out var yEl))
+                {
+                    result = new Size(xEl.GetInt32(), yEl.GetInt32());
+                }
+            }
+        }
+        catch { }
+
+        _rsiFrameSizeCache[dir] = result;
+        return result;
+    }
+
+    private Rectangle GetSourceRect(string protoId, Image img, float rotation = 0f)
     {
         if (img == null) return Rectangle.Empty;
 
-        string key = $"{protoId}_{img.Width}_{img.Height}";
+        string key = $"{protoId}_{img.Width}_{img.Height}_{rotation:F2}";
         if (_sourceRectCache.TryGetValue(key, out var cached))
             return cached;
 
-        int w = img.Width, h = img.Height;
-        Rectangle rect;
+        var frameSize = GetRsiFrameSize(protoId, img);
+        int rows = Math.Max(1, img.Height / Math.Max(1, frameSize.Height));
 
-        if (w == 32 && h == 32) rect = new Rectangle(0, 0, 32, 32);
-        else if (w == 32 && h >= 32) rect = new Rectangle(0, 0, 32, 32);
-        else if (w >= 32 && h == 32) rect = new Rectangle(0, 0, 32, 32);
-        else if (w > 32 || h > 32) rect = new Rectangle(0, 0, Math.Min(32, w), Math.Min(32, h));
-        else rect = new Rectangle(0, 0, w, h);
+        int rowIndex = 0;
+        if (rows >= 4)
+        {
+            // Конвенция направлений SS14 (как в AlarmNetworkBuilder):
+            // 0° = юг (строка 0), 90° = запад (строка 3), 180° = север (строка 1), 270° = восток (строка 2)
+            float normalized = rotation % (float)(2 * Math.PI);
+            if (normalized < 0) normalized += (float)(2 * Math.PI);
 
+            if (Math.Abs(normalized - (float)(Math.PI / 2)) < 0.1f) rowIndex = 3;      // запад
+            else if (Math.Abs(normalized - (float)Math.PI) < 0.1f) rowIndex = 1;       // север
+            else if (Math.Abs(normalized - (float)(3 * Math.PI / 2)) < 0.1f) rowIndex = 2; // восток
+            else rowIndex = 0; // юг (0° и остальное по умолчанию)
+        }
+
+        var rect = new Rectangle(0, rowIndex * frameSize.Height, frameSize.Width, frameSize.Height);
         _sourceRectCache[key] = rect;
         return rect;
     }
@@ -1181,23 +1252,20 @@ public class Renderer
         float cx = rect.X + tileSize / 2f;
         float cy = rect.Y + tileSize / 2f;
 
-        WithRotation(g, cx, cy, _previewEntityRotation, () =>
-        {
-            ImageAttributes? tint = !string.IsNullOrEmpty(_previewDecalColor)
-                ? GetDecalTintAttributes(_previewDecalColor)
-                : null;
+        ImageAttributes? tint = !string.IsNullOrEmpty(_previewDecalColor)
+        ? GetDecalTintAttributes(_previewDecalColor)
+        : null;
 
-            DrawTexturedRect(g, _previewEntityProto, rect, tint, (gg, r) =>
-            {
-                Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
-                    ? ParseDecalColor(_previewDecalColor)
-                    : Color.FromArgb(255, 0, 255);
-                using var brush = new SolidBrush(Color.FromArgb(120, fallback.R, fallback.G, fallback.B));
-                gg.FillRectangle(brush, r);
-                using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
-                gg.DrawRectangle(pen, r);
-            });
-        });
+        DrawTexturedRect(g, _previewEntityProto, rect, tint, (gg, r) =>
+        {
+            Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
+                ? ParseDecalColor(_previewDecalColor)
+                : Color.FromArgb(255, 0, 255);
+            using var brush = new SolidBrush(Color.FromArgb(120, fallback.R, fallback.G, fallback.B));
+            gg.FillRectangle(brush, r);
+            using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
+            gg.DrawRectangle(pen, r);
+        }, _previewEntityRotation);
     }
 
     private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
@@ -1251,27 +1319,22 @@ public class Renderer
             foreach (var entity in group)
             {
                 var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-                float cx = rect.X + tileSize / 2f;
-                float cy = rect.Y + tileSize / 2f;
 
-                WithRotation(g, cx, cy, entity.Rotation, () =>
+                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
                 {
-                    DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
-                    {
-                        using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
-                        gg.FillRectangle(brush, r);
-                        using var pen = new Pen(Color.Black, 1);
-                        gg.DrawRectangle(pen, r);
+                    using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+                    gg.FillRectangle(brush, r);
+                    using var pen = new Pen(Color.Black, 1);
+                    gg.DrawRectangle(pen, r);
 
-                        if (tileSize > 16)
-                        {
-                            using var font = new Font("Segoe UI", 6);
-                            using var textBrush = new SolidBrush(Color.White);
-                            string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
-                            gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
-                        }
-                    });
-                });
+                    if (tileSize > 16)
+                    {
+                        using var font = new Font("Segoe UI", 6);
+                        using var textBrush = new SolidBrush(Color.White);
+                        string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                        gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
+                    }
+                }, entity.Rotation);
             }
         }
     }
