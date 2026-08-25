@@ -18,10 +18,13 @@ public class Renderer
     public bool ShowPipeOverlay { get; set; } = true;
 
     // Кэш текстур для ускорения рендеринга
+    // Кэш текстур для ускорения рендеринга
     private readonly Dictionary<string, Image?> _textureCache = new();
     private readonly Dictionary<string, Rectangle> _sourceRectCache = new();
     private readonly Dictionary<string, string> _protoTextureDirCache = new();
     private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
+    private readonly Dictionary<string, string> _protoStateNameCache = new();
+    private readonly Dictionary<string, Dictionary<string, (int directions, int framesPerDirection)>> _rsiStateDirectionsCache = new();
     private readonly HashSet<int> _dirtyTileGrids = new();
     private readonly Dictionary<int, TileGrid> _tileGridCache = new();
 
@@ -309,7 +312,7 @@ public class Renderer
             // прототипов (без направленных состояний) строка всегда одна и та же,
             // и без явного WithRotation колесо мыши визуально ничего не поворачивало —
             // отсюда и была "сломана" видимая ротация в редакторе.
-            if (HasDirectionalFrames(protoId!, texture))
+            if (GetStateDirections(protoId!) >= 4)
             {
                 DoDraw();
             }
@@ -324,17 +327,6 @@ public class Renderer
         {
             fallback?.Invoke(g, rect);
         }
-    }
-
-    /// <summary>
-    /// true, если RSI-спрайтшит прототипа содержит ≥4 строк (юг/север/восток/запад) —
-    /// т.е. поворот у него выражается сменой кадра, а не наклоном текстуры.
-    /// </summary>
-    private bool HasDirectionalFrames(string protoId, Image img)
-    {
-        var frameSize = GetRsiFrameSize(protoId, img);
-        int rows = Math.Max(1, img.Height / Math.Max(1, frameSize.Height));
-        return rows >= 4;
     }
 
     #endregion
@@ -655,6 +647,7 @@ public class Renderer
 
                     texture = Image.FromFile(texturePath);
                     _protoTextureDirCache[protoId] = Path.GetDirectoryName(texturePath) ?? "";
+                    _protoStateNameCache[protoId] = Path.GetFileNameWithoutExtension(texturePath);
                 }
                 catch { }
             }
@@ -700,27 +693,99 @@ public class Renderer
             return cached;
 
         var frameSize = GetRsiFrameSize(protoId, img);
-        int rows = Math.Max(1, img.Height / Math.Max(1, frameSize.Height));
+        var (directions, framesPerDirection) = GetStateDirectionInfo(protoId);
 
-        int rowIndex = 0;
-        if (rows >= 4)
+        int col = 0, row = 0;
+        if (directions >= 4)
         {
-            // Конвенция направлений SS14 (как в AlarmNetworkBuilder):
-            // 0° = юг (строка 0), 90° = запад (строка 3), 180° = север (строка 1), 270° = восток (строка 2)
+            // Порядок направлений, зашитый в сам движок Robust Toolbox: 0=юг, 1=север,
+            // 2=восток, 3=запад (это порядок, в котором кадры направлений идут ПОДРЯД
+            // в общей последовательности кадров стейта — а не "направление = своя строка").
             float normalized = rotation % (float)(2 * Math.PI);
             if (normalized < 0) normalized += (float)(2 * Math.PI);
+            int quarter = (int)Math.Round(normalized / (Math.PI / 2)) % 4;
+            int dirIndex = _quarterToDirOrder[quarter];
 
-            if (Math.Abs(normalized - (float)(Math.PI / 2)) < 0.1f) rowIndex = 3;      // запад
-            else if (Math.Abs(normalized - (float)Math.PI) < 0.1f) rowIndex = 1;       // север
-            else if (Math.Abs(normalized - (float)(3 * Math.PI / 2)) < 0.1f) rowIndex = 2; // восток
-            else rowIndex = 0; // юг (0° и остальное по умолчанию)
+            // Реальная упаковка PNG у RSI — ПОСЛЕДОВАТЕЛЬНАЯ: все кадры стейта (направление
+            // за направлением, внутри направления — кадр за кадром анимации) кладутся
+            // подряд слева направо, с переносом на следующую строку по достижении правого
+            // края изображения. Поэтому нельзя просто взять "номер направления = номер
+          // строки" — нужно вычислить последовательный индекс кадра и разложить его
+            // по СТОЛБЦАМ реального изображения (cols = реальная ширина / ширина кадра),
+            // а не предполагать раскладку заранее. Берём всегда кадр анимации 0 —
+            // проигрывание анимации во времени этот рендерер не поддерживает.
+            int frameIndex = dirIndex * framesPerDirection;
+
+            int cols = Math.Max(1, img.Width / Math.Max(1, frameSize.Width));
+            col = frameIndex % cols;
+            row = frameIndex / cols;
         }
 
-        var rect = new Rectangle(0, rowIndex * frameSize.Height, frameSize.Width, frameSize.Height);
+        var rect = new Rectangle(col * frameSize.Width, row * frameSize.Height, frameSize.Width, frameSize.Height);
         _sourceRectCache[key] = rect;
         return rect;
     }
 
+    // Порядок направлений в общей последовательности кадров RSI-стейта (0=юг,1=север,
+    // 2=восток,3=запад — порядок enum Direction в Robust Toolbox). Индекс массива —
+    // "четверть оборота" от нашего rotation (0=0°,1=90°,2=180°,3=270°), значение —
+    // позиция этого направления в последовательности кадров стейта.
+    private static readonly int[] _quarterToDirOrder = { 0, 3, 1, 2 };
+
+       /// <summary>
+    /// Читает у стейта и "directions", и число кадров анимации на направление
+    /// (длину под-массива "delays") — оба нужны, чтобы вычислить ПОСЛЕДОВАТЕЛЬНЫЙ
+    /// индекс кадра (направление*framesPerDirection + кадрАнимации), который потом
+    /// раскладывается по строкам/столбцам реальной сетки PNG (см. GetSourceRect).
+    /// БЕЗ framesPerDirection нельзя правильно посчитать смещение — движок паковал
+    /// кадры не "один ряд на направление", а подряд, оборачивая по мере заполнения
+    /// строки нужным количеством столбцов (получается почти квадратная сетка).
+    /// </summary>
+    private (int directions, int framesPerDirection) GetStateDirectionInfo(string protoId)
+    {
+        string dir = _protoTextureDirCache.TryGetValue(protoId, out var d) ? d : "";
+        string state = _protoStateNameCache.TryGetValue(protoId, out var s) ? s : "";
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(state)) return (1, 1);
+
+        if (!_rsiStateDirectionsCache.TryGetValue(dir, out var stateMap))
+        {
+            stateMap = new Dictionary<string, (int, int)>();
+            try
+            {
+                string metaPath = Path.Combine(dir, "meta.json");
+                if (File.Exists(metaPath))
+                {
+                    var json = File.ReadAllText(metaPath);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("states", out var statesArr))
+                    {
+                        foreach (var stateElem in statesArr.EnumerateArray())
+                        {
+                            if (!stateElem.TryGetProperty("name", out var nameEl)) continue;
+                            string name = nameEl.GetString() ?? "";
+                            int dirs = stateElem.TryGetProperty("directions", out var dirEl) ? dirEl.GetInt32() : 1;
+
+                            int framesPerDir = 1;
+                            if (stateElem.TryGetProperty("delays", out var delaysEl) && delaysEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                            {
+                                var firstSub = delaysEl.EnumerateArray().FirstOrDefault();
+                                if (firstSub.ValueKind == System.Text.Json.JsonValueKind.Array)
+                                    framesPerDir = Math.Max(1, firstSub.GetArrayLength());
+                            }
+
+                            stateMap[name] = (dirs, framesPerDir);
+                        }
+                    }
+                }
+            }
+            catch { }
+            _rsiStateDirectionsCache[dir] = stateMap;
+        }
+
+        return stateMap.TryGetValue(state, out var found) ? found : (1, 1);
+    }
+
+    private int GetStateDirections(string protoId) => GetStateDirectionInfo(protoId).directions;
     // Кэш ImageAttributes по цвету декали — пересоздавать ColorMatrix на каждый DrawImage
     // накладно, а цветов у декалей на карте обычно немного (одни и те же несколько цветов
     // из палитры повторяются на десятках декалей)
