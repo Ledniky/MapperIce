@@ -12,7 +12,34 @@ public partial class MainForm
     // === ФАЙЛОВЫЕ ОПЕРАЦИИ ===
     private void LoadMapFromYAML()
     {
-        MessageBox.Show("Загрузка карт из YAML пока не реализована");
+        using var dialog = new OpenFileDialog();
+        dialog.Filter = "YAML files (*.yml;*.yaml)|*.yml;*.yaml";
+        
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var loader = new YAMLLoader();
+            _map = loader.LoadFromFile(dialog.FileName);
+            
+            // Обновляем UI
+            UpdateGridSelector();
+            UpdateTileGrid();
+            
+            // Если есть активный грид, пересчитываем паттерны
+            if (_map.ActiveGrid != null)
+            {
+                RecalculateDecalPatterns();
+                SaveState();
+            }
+            
+            Render();
+            MessageBox.Show($"Карта загружена!\nГридов: {_map.Grids.Count}\nТайлов: {_map.ActiveGrid?.Tiles.Count ?? 0}\nСущностей: {_map.ActiveGrid?.Entities.Count ?? 0}\nДекалей: {_map.ActiveGrid?.Decals.Count ?? 0}");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка загрузки карты: {ex.Message}");
+        }
     }
 
 

@@ -178,6 +178,47 @@ foreach (var room in allRooms)
         }
 
 
+
+        // 2в. РАЗРЕШЕНИЕ ЛУЧШЕЙ СТЕНЫ НА СТЫКЕ КОМНАТ (когда стены двух разных комнат
+        // физически соприкасаются друг с другом, а не через клетку пола) — раньше это
+        // пересчитывалось Renderer'ом и YAMLGenerator'ом заново на КАЖДЫЙ кадр рендера
+        // (4 соседских Dictionary-просмотра на каждую стеновую клетку), хотя результат
+        // зависит только от геометрии комнат и не меняется между кадрами. Считаем один раз
+        // здесь при пересборке TileGrid и сразу перезаписываем ProtoId — рендер и экспорт
+        // просто читают готовое значение.
+        var wallTilesSnapshot = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
+        var originalWallProto = wallTilesSnapshot.ToDictionary(t => (t.X, t.Y), t => t.ProtoId ?? "WallSolid");
+
+        foreach (var tile in wallTilesSnapshot)
+        {
+            string currentWall = originalWallProto[(tile.X, tile.Y)];
+            string bestWall = currentWall;
+            int bestPriority = GetPriority(currentWall);
+
+            var neighborOffsets = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+            foreach (var (dx, dy) in neighborOffsets)
+            {
+                var neighborTile = tileGrid.GetTile(tile.X + dx, tile.Y + dy);
+                if (neighborTile == null || neighborTile.Content != TileContent.Wall) continue;
+                if (neighborTile.RoomUid == tile.RoomUid || neighborTile.RoomUid == -1) continue;
+
+                if (!originalWallProto.TryGetValue((neighborTile.X, neighborTile.Y), out var neighborWall))
+                    neighborWall = neighborTile.ProtoId ?? "WallSolid";
+
+                int neighborPriority = GetPriority(neighborWall);
+                if (neighborPriority > bestPriority)
+                {
+                    bestPriority = neighborPriority;
+                    bestWall = neighborWall;
+                }
+            }
+
+            if (bestWall != currentWall)
+                tile.ProtoId = bestWall;
+        }
+
+
+
         // 3. ДВЕРИ (привязанные к комнатам)
         foreach (var room in allRooms)
         {
@@ -276,7 +317,9 @@ foreach (var room in allRooms)
         if (tile == null || tile.Content != TileContent.Wall)
             return "WallSolid";
 
-        return GetBestWallForExistingTile(tileGrid, x, y);
+        // ProtoId уже содержит полностью разрешённую (с учётом соседних комнат/стен)
+        // стену — она вычисляется один раз в BuildFromRooms, см. блок "2в"
+        return tile.ProtoId ?? "WallSolid";
     }
 
     public void UpdateTileGrid(Grid grid, TileGrid tileGrid)

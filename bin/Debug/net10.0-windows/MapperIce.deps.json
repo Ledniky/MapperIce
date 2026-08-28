@@ -9,7 +9,7 @@
       "MapperIce/1.0.0": {
         "dependencies": {
           "Newtonsoft.Json": "13.0.4",
-          "YamlDotNet": "18.0.0"
+          "YamlDotNet": "18.1.0"
         },
         "runtime": {
           "MapperIce.dll": {}
@@ -23,11 +23,11 @@
           }
         }
       },
-      "YamlDotNet/18.0.0": {
+      "YamlDotNet/18.1.0": {
         "runtime": {
           "lib/net10.0/YamlDotNet.dll": {
             "assemblyVersion": "18.0.0.0",
-            "fileVersion": "18.0.0.0"
+            "fileVersion": "18.1.0.0"
           }
         }
       }
@@ -46,12 +46,12 @@
       "path": "newtonsoft.json/13.0.4",
       "hashPath": "newtonsoft.json.13.0.4.nupkg.sha512"
     },
-    "YamlDotNet/18.0.0": {
+    "YamlDotNet/18.1.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-ptHVgcYmLejGuWXV7RMFoEqFKYMXnieOlWLPzEslfDtzZ9ngMhjYwykfqjBN2+fMEAEyobozkj07lKEpR4dssA==",
-      "path": "yamldotnet/18.0.0",
-      "hashPath": "yamldotnet.18.0.0.nupkg.sha512"
+      "sha512": "sha512-5K+9KFg2TdTl7VXv88Qzi/0lqK6JFoNP3lRuImPYGRV7K/QYklDyTrj4+A+KAki1JsQi6qKY+hDyY7d6WRqjrw==",
+      "path": "yamldotnet/18.1.0",
+      "hashPath": "yamldotnet.18.1.0.nupkg.sha512"
     }
   }
 }

@@ -143,9 +143,19 @@ public class Renderer
                     _dirtyTileGrids.Remove(grid.Uid);
                 }
 
-                var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor).ToList();
-                var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-                var doorTiles = tileGrid.GetTilesByContent(TileContent.Door).ToList();
+                // Видимая на экране область в мировых координатах — режем работу до того,
+                // что реально видно, вместо полного прогона по всей карте на каждый кадр
+                var visibleRect = GetVisibleWorldRect(tileSize, viewOffset, grid.Position);
+
+                var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor)
+                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
+                    .ToList();
+                var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall)
+                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
+                    .ToList();
+                var doorTiles = tileGrid.GetTilesByContent(TileContent.Door)
+                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
+                    .ToList();
 
                 DrawGrid(g, tileSize, viewOffset, grid.Position, opacity);
 
@@ -163,25 +173,33 @@ public class Renderer
                     .ToList();
                 DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, grid.Position, opacity);
 
-                DrawDecalsBatch(g, grid.Decals, tileSize, viewOffset, grid.Position, opacity);
+                var visibleDecals = grid.Decals
+                    .Where(d => IsPointVisible(d.X, d.Y, visibleRect))
+                    .ToList();
+                DrawDecalsBatch(g, visibleDecals, tileSize, viewOffset, grid.Position, opacity);
 
                 DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, grid.Position, opacity);
 
                 DrawDoorTilesBatch(g, doorTiles, tileSize, viewOffset, grid.Position);
 
-                var firelocks = grid.Entities.OfType<FirelockEntity>().ToList();
+                var firelocks = grid.Entities.OfType<FirelockEntity>()
+                    .Where(f => IsPointVisible(f.X, f.Y, visibleRect))
+                    .ToList();
                 DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, grid.Position);
 
                 var genericEntities = grid.Entities
                     .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                                 e is not AirAlarmEntity && e is not FireAlarmEntity)
+                    .Where(e => IsPointVisible(e.X, e.Y, visibleRect))
                     .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
                     .ToList();
                 DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, grid.Position);
 
                 if (!HideRoomOverlay)
                 {
-                    var rooms = grid.Rooms.ToList();
+                    var rooms = grid.Rooms
+                        .Where(r => RoomOverlapsRect(r, visibleRect))
+                        .ToList();
                     DrawRoomFillsBatch(g, rooms, tileSize, viewOffset, grid.Position, opacity);
 
                     if (currentRoom != null && isActive)
@@ -204,7 +222,9 @@ public class Renderer
 
                 if (ShowPipeOverlay)
                 {
-                    var allPipes = _pipeBuilder.GetPipes(grid);
+                    var allPipes = _pipeBuilder.GetPipes(grid)
+                        .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
+                        .ToList();
                     DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, grid.Position);
 
                     if (allPipes.Count > 0)
@@ -221,8 +241,12 @@ public class Renderer
                     }
                 }
 
-                var airAlarms = grid.Entities.OfType<AirAlarmEntity>().ToList();
-                var fireAlarms = grid.Entities.OfType<FireAlarmEntity>().ToList();
+                var airAlarms = grid.Entities.OfType<AirAlarmEntity>()
+                    .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
+                    .ToList();
+                var fireAlarms = grid.Entities.OfType<FireAlarmEntity>()
+                    .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
+                    .ToList();
 
                 DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
                 DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
@@ -235,6 +259,7 @@ public class Renderer
                 // Рисуем стрелки направления у существующих сигнализаций
                 DrawAlarmDirectionArrows(g, grid, scale, viewOffset);
             }
+
 
             DrawInfo(g, scale, toolName, map);
 
@@ -265,6 +290,48 @@ public class Renderer
         float sy = (worldY + offsetTilesY + gridOffset.Y) * tileSize - viewOffset.Y;
         return new Rectangle((int)sx, (int)sy, tileSize, tileSize);
     }
+
+
+    /// <summary>
+    /// Видимая на экране область в МИРОВЫХ координатах текущего грида (тайлы), с запасом
+    /// в 2 тайла за краями экрана (чтобы объекты не "выскакивали" резко при малейшей
+    /// прокрутке). Используется, чтобы не гонять полный цикл отрисовки (текстура,
+    /// поворот, тонирование) по объектам, которых всё равно не видно — критично для
+    /// карт с десятками тысяч тайлов/сущностей/декалей.
+    /// </summary>
+    private RectangleF GetVisibleWorldRect(int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        const float marginTiles = 2f;
+
+        float left = viewOffset.X / tileSize - gridOffset.X - marginTiles;
+        float top = viewOffset.Y / tileSize - gridOffset.Y - marginTiles;
+        float right = (viewOffset.X + _buffer.Width) / tileSize - gridOffset.X + marginTiles;
+        float bottom = (viewOffset.Y + _buffer.Height) / tileSize - gridOffset.Y + marginTiles;
+
+        return RectangleF.FromLTRB(left, top, right, bottom);
+    }
+
+    // Тайл (целые X,Y, занимает клетку [x, x+1) x [y, y+1)) пересекается с видимой областью
+    private static bool IsTileVisible(int x, int y, RectangleF visibleRect)
+    {
+        return x + 1 >= visibleRect.Left && x <= visibleRect.Right &&
+               y + 1 >= visibleRect.Top && y <= visibleRect.Bottom;
+    }
+
+    // Точечный объект (декаль/сущность/труба/сигнализация — дробные мировые координаты центра)
+    private static bool IsPointVisible(float x, float y, RectangleF visibleRect)
+    {
+        return x >= visibleRect.Left && x <= visibleRect.Right &&
+               y >= visibleRect.Top && y <= visibleRect.Bottom;
+    }
+
+    // Прямоугольник комнаты пересекается с видимой областью (для заливки/обводки комнат)
+    private static bool RoomOverlapsRect(Room room, RectangleF visibleRect)
+    {
+        return room.X < visibleRect.Right && room.X + room.Width > visibleRect.Left &&
+               room.Y < visibleRect.Bottom && room.Y + room.Height > visibleRect.Top;
+    }
+
 
     /// <summary>
     /// Выполняет draw() с временным поворотом g.Transform вокруг точки (cx, cy) на rotation радиан,
@@ -338,19 +405,26 @@ public class Renderer
         if (tiles.Count == 0) return;
 
         var fallbackColor = Color.FromArgb((int)(150 * opacity), 200, 200, 200);
+        using var fallbackBrush = new SolidBrush(fallbackColor);
 
         foreach (var group in tiles.GroupBy(t => t.ProtoId ?? "Plating"))
         {
             string protoId = group.Key;
 
+            // Текстура и srcRect одинаковы для ВСЕХ тайлов группы (один proto, поворота
+            // у пола нет) — считаем один раз на группу, а не заново на каждый из тысяч
+            // тайлов одного и того же типа пола (раньше DrawTexturedRect на каждый тайл
+            // заново собирал строку ключа кэша и лез в словарь текстур/srcRect).
+            Image? texture = GetOrLoadTexture(protoId);
+            Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+
             foreach (var tile in group)
             {
                 var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
-                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
-                {
-                    using var brush = new SolidBrush(fallbackColor);
-                    gg.FillRectangle(brush, r);
-                });
+                if (texture != null)
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                else
+                    g.FillRectangle(fallbackBrush, rect);
             }
         }
     }
@@ -397,24 +471,33 @@ public class Renderer
 
         foreach (var tile in tiles)
         {
-            string wallProto = _tileBuilder.GetBestWallAt(tileGrid, tile.X, tile.Y);
-            if (!grouped.ContainsKey(wallProto))
-                grouped[wallProto] = new List<TileData>();
-            grouped[wallProto].Add(tile);
+            string wallProto = tile.ProtoId ?? "WallSolid";
+            if (!grouped.TryGetValue(wallProto, out var list))
+            {
+                list = new List<TileData>();
+                grouped[wallProto] = list;
+            }
+            list.Add(tile);
         }
+
+        using var fallbackPen = new Pen(Color.Gray, 1);
 
         foreach (var group in grouped)
         {
             string wallProto = group.Key;
 
+            // Как и с полом — текстура и srcRect одни на всю группу (стены не повёрнуты),
+            // считаем один раз, а не на каждую из тысяч клеток одной и той же стены.
+            Image? texture = GetOrLoadTexture(wallProto);
+            Rectangle srcRect = texture != null ? GetSourceRect(wallProto, texture, 0f) : Rectangle.Empty;
+
             foreach (var tile in group.Value)
             {
                 var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
-                DrawTexturedRect(g, wallProto, rect, null, (gg, r) =>
-                {
-                    using var pen = new Pen(Color.Gray, 1);
-                    gg.DrawRectangle(pen, r);
-                });
+                if (texture != null)
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                else
+                    g.DrawRectangle(fallbackPen, rect);
             }
         }
     }
@@ -429,24 +512,32 @@ public class Renderer
         {
             string protoId = group.Key;
 
+            // Текстура и srcRect одни на всю группу дверей одного прототипа (без поворота)
+            Image? texture = GetOrLoadTexture(protoId);
+            Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+
             foreach (var tile in group)
             {
                 // (x + 0.5 - 0.5) эквивалентно углу клетки — та же формула, что у пола
                 var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
-                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
+
+                if (texture != null)
+                {
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                }
+                else
                 {
                     using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
-                    gg.FillRectangle(brush, r);
+                    g.FillRectangle(brush, rect);
                     using var pen = new Pen(Color.DarkBlue, 2);
-                    gg.DrawRectangle(pen, r);
+                    g.DrawRectangle(pen, rect);
                     using var font = new Font("Segoe UI", 14);
                     using var textBrush = new SolidBrush(Color.White);
-                    gg.DrawString("🚪", font, textBrush, r.X + 4, r.Y + 2);
-                });
+                    g.DrawString("🚪", font, textBrush, rect.X + 4, rect.Y + 2);
+                }
             }
         }
     }
-
     private void DrawFirelocksBatch(Graphics g, List<FirelockEntity> firelocks, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (firelocks.Count == 0) return;
@@ -474,12 +565,25 @@ public class Renderer
         if (pipes.Count == 0) return;
 
         var grouped = pipes.GroupBy(p => p.PipeType);
-        var pipeDict = pipes.ToDictionary(p => (p.X, p.Y), p => p);
 
         foreach (var group in grouped)
         {
             Color color = GetPipeColor(group.Key);
             using var pen = new Pen(color, Math.Max(2, tileSize / 10));
+
+            // Словарь строится ОТДЕЛЬНО для каждого типа трубы (Distra/Waste/Normal), а не
+            // один общий на все pipes сразу — разные слои труб МОГУТ лежать в одной и той
+            // же клетке (это нормально для реальных карт), и общий ToDictionary() падал
+            // с "An item with the same key has already been added" при двух трубах
+            // разных типов в одной клетке. Заодно это чинит и логическую ошибку: раньше
+            // сюда же могла попасть труба ДРУГОГО типа из соседней клетки, и линия
+            // соединения рисовалась между двумя разными сетями труб.
+            // Индексатор вместо ToDictionary — если в данных всё-таки окажется буквальный
+            // дубль (труба дважды в одной клетке ОДНОГО типа), он просто тихо
+            // перезапишется, а не уронит рендер.
+            var pipeDict = new Dictionary<(float x, float y), PipeEntity>();
+            foreach (var p in group)
+                pipeDict[(p.X, p.Y)] = p;
 
             foreach (var pipe in group)
             {
@@ -688,12 +792,23 @@ public class Renderer
     {
         if (img == null) return Rectangle.Empty;
 
-        string key = $"{protoId}_{img.Width}_{img.Height}_{rotation:F2}";
+        var (directions, framesPerDirection) = GetStateDirectionInfo(protoId);
+
+        // Без раздельных кадров по направлению (обычный случай — полы, стены, двери,
+        // подавляющее большинство декалей и сущностей) результат НЕ зависит от rotation:
+        // кадр всегда один и тот же, поворот — чисто визуальная трансформация в
+        // DrawTexturedRect, а не выбор другого кадра. Раньше rotation безусловно входил
+        // в ключ кэша — на картах с тысячами декалей/сущностей под разными углами это
+        // плодило кучу почти-дублирующихся записей в кэше и лишние строковые аллокации
+        // на каждый кадр рендера.
+        string key = directions >= 4
+            ? $"{protoId}_{img.Width}_{img.Height}_{rotation:F2}"
+            : $"{protoId}_{img.Width}_{img.Height}";
+
         if (_sourceRectCache.TryGetValue(key, out var cached))
             return cached;
 
         var frameSize = GetRsiFrameSize(protoId, img);
-        var (directions, framesPerDirection) = GetStateDirectionInfo(protoId);
 
         int col = 0, row = 0;
         if (directions >= 4)
@@ -710,7 +825,7 @@ public class Renderer
             // за направлением, внутри направления — кадр за кадром анимации) кладутся
             // подряд слева направо, с переносом на следующую строку по достижении правого
             // края изображения. Поэтому нельзя просто взять "номер направления = номер
-          // строки" — нужно вычислить последовательный индекс кадра и разложить его
+            // строки" — нужно вычислить последовательный индекс кадра и разложить его
             // по СТОЛБЦАМ реального изображения (cols = реальная ширина / ширина кадра),
             // а не предполагать раскладку заранее. Берём всегда кадр анимации 0 —
             // проигрывание анимации во времени этот рендерер не поддерживает.
@@ -732,7 +847,7 @@ public class Renderer
     // позиция этого направления в последовательности кадров стейта.
     private static readonly int[] _quarterToDirOrder = { 0, 3, 1, 2 };
 
-       /// <summary>
+    /// <summary>
     /// Читает у стейта и "directions", и число кадров анимации на направление
     /// (длину под-массива "delays") — оба нужны, чтобы вычислить ПОСЛЕДОВАТЕЛЬНЫЙ
     /// индекс кадра (направление*framesPerDirection + кадрАнимации), который потом
