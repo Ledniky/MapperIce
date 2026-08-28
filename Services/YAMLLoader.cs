@@ -197,29 +197,40 @@ public MapData LoadFromFile(string path)
                     }
                 }
 
-                // Конвертируем координаты (игровые → редакторские)
-                float gridX = posX;
-                float gridY = -posY;
+                // Конвертируем координаты (игровые → редакторские). ВАЖНО: у разных типов
+                // сущностей РАЗНАЯ внутренняя система координат (см. YAMLGenerator), поэтому
+                // и обратное преобразование должно быть разным — единая формула
+                // "gridY = -posY" (как было раньше) не была верной инверсией НИ для одного
+                // из типов и давала системный сдвиг ровно на 1 тайл.
 
-                // Определяем тип сущности по прототипу
-                if (proto.Contains("Pipe"))
-                {
-                    string pipeType = proto.Contains("Alt2") ? "Distra" :
-                                     proto.Contains("Alt1") ? "Waste" : "Normal";
-                    grid.Entities.Add(new PipeEntity
-                    {
-                        X = gridX,
-                        Y = gridY,
-                        PipeType = pipeType,
-                        IsEndpoint = false
-                    });
-                }
-                else if (proto.Contains("Firelock"))
+                // Труба/ферлок/сигнализация хранят X,Y как ЦЕЛЫЙ индекс тайла (левый
+                // верхний угол клетки) — при экспорте к ним прибавляется +0.5
+                // (GeneratePipesGrouped/GenerateFirelocksGrouped/GenerateAlarmsGrouped),
+                // здесь эту половину тайла вычитаем обратно.
+                float structuralX = posX - 0.5f;
+                float structuralY = -posY + 0.5f;
+
+                // Обычные ("generic") размещённые сущности хранят X,Y как ДРОБНЫЙ центр
+                // тайла — при экспорте используется формула "posY = -entity.Y + 1.0f"
+                // (GenerateGenericEntitiesGrouped), которая самообратна (f(f(v)) == v),
+                // поэтому обратное преобразование — та же самая формула.
+                float genericX = posX;
+                float genericY = -posY + 1.0f;
+
+                // Определяем тип сущности по прототипу.
+                // Трубы (Pipe) и вентиляции (GasVent) больше НЕ превращаются во внутреннюю
+                // абстракцию PipeEntity (точки/линии сети без реальной текстуры) — они
+                // проваливаются в общую ветку ниже и появляются как обычные сущности из
+                // репозитория, с настоящим прототипом и спрайтом, как и любой другой
+                // размещённый объект. PipeBuilder/сеть труб остаётся рабочей для того, что
+                // пользователь рисует инструментом "Труба" внутри самого редактора — сюда
+                // это не относится, тут только импорт готовой игровой карты.
+                if (proto.Contains("Firelock"))
                 {
                     grid.Entities.Add(new FirelockEntity
                     {
-                        X = gridX,
-                        Y = gridY,
+                        X = structuralX,
+                        Y = structuralY,
                         Proto = proto,
                         IsGlass = proto.Contains("Glass")
                     });
@@ -228,8 +239,8 @@ public MapData LoadFromFile(string path)
                 {
                     grid.Entities.Add(new AirAlarmEntity
                     {
-                        X = gridX,
-                        Y = gridY,
+                        X = structuralX,
+                        Y = structuralY,
                         Rotation = rotation
                     });
                 }
@@ -237,34 +248,9 @@ public MapData LoadFromFile(string path)
                 {
                     grid.Entities.Add(new FireAlarmEntity
                     {
-                        X = gridX,
-                        Y = gridY,
+                        X = structuralX,
+                        Y = structuralY,
                         Rotation = rotation
-                    });
-                }
-                else if (proto.Contains("GasVent"))
-                {
-                    string pipeType = "Normal";
-                    foreach (var compObj in components)
-                    {
-                        var comp = (Dictionary<object, object>)compObj;
-                        if (comp.TryGetValue("type", out var typeObj) && typeObj.ToString() == "AtmosPipeLayers")
-                        {
-                            if (comp.TryGetValue("pipeLayer", out var layerObj))
-                            {
-                                string layer = layerObj.ToString()!;
-                                pipeType = layer == "Tertiary" ? "Distra" :
-                                          layer == "Secondary" ? "Waste" : "Normal";
-                            }
-                        }
-                    }
-
-                    grid.Entities.Add(new PipeEntity
-                    {
-                        X = gridX,
-                        Y = gridY,
-                        PipeType = pipeType,
-                        IsEndpoint = true
                     });
                 }
                 else
@@ -272,8 +258,8 @@ public MapData LoadFromFile(string path)
                     grid.Entities.Add(new MapEntity
                     {
                         Proto = proto,
-                        X = gridX,
-                        Y = gridY,
+                        X = genericX,
+                        Y = genericY,
                         Rotation = rotation,
                         ParentGridUid = parent
                     });

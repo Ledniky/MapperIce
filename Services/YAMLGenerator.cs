@@ -792,34 +792,41 @@ public static class YAMLGenerator
             }
             else
             {
+                // Угловая труба (GasPipeBend) — форма несимметрична относительно поворота
+                // на 180°, поэтому ошибка тут (в отличие от прямой/четырёхсторонней трубы)
+                // сразу заметна. Добавляем +π к каждому из 4 случаев, разворачивая спрайт
+                // на нужную сторону.
                 bool hasUp = neighbors.Any(n => n.dy == -1);
                 bool hasDown = neighbors.Any(n => n.dy == 1);
                 bool hasLeft = neighbors.Any(n => n.dx == -1);
                 bool hasRight = neighbors.Any(n => n.dx == 1);
 
-                if (hasRight && hasUp) return (float)Math.PI;
-                if (hasRight && hasDown) return (float)(Math.PI / 2);
-                if (hasLeft && hasUp) return (float)(-Math.PI / 2);
-                if (hasLeft && hasDown) return 0;
+                if (hasRight && hasUp) return (float)Math.PI + (float)Math.PI;
+                if (hasRight && hasDown) return (float)(Math.PI / 2) + (float)Math.PI;
+                if (hasLeft && hasUp) return (float)(-Math.PI / 2) + (float)Math.PI;
+                if (hasLeft && hasDown) return 0 + (float)Math.PI;
             }
         }
 
         if (neighbors.Count == 3)
         {
+            // Тройник (GasPipeTJunction) — тоже несимметричен относительно 180°, тот же фикс
             bool hasUp = neighbors.Any(n => n.dy == -1);
             bool hasDown = neighbors.Any(n => n.dy == 1);
             bool hasLeft = neighbors.Any(n => n.dx == -1);
             bool hasRight = neighbors.Any(n => n.dx == 1);
 
-            if (!hasUp) return 0;
-            if (!hasDown) return (float)Math.PI;
-            if (!hasLeft) return (float)(Math.PI / 2);
-            if (!hasRight) return (float)(-Math.PI / 2);
+            if (!hasUp) return 0 + (float)Math.PI;
+            if (!hasDown) return (float)Math.PI + (float)Math.PI;
+            if (!hasLeft) return (float)(Math.PI / 2) + (float)Math.PI;
+            if (!hasRight) return (float)(-Math.PI / 2) + (float)Math.PI;
         }
 
         return 0;
     }
 
+
+    
     private static void GenerateDecalsGrid(StringBuilder sb, Grid grid)
     {
         sb.AppendLine("    - type: DecalGrid");

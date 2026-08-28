@@ -253,11 +253,14 @@ public class Renderer
 
                 if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
                 {
-                    DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, grid.Position);
+                    DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, grid.Position, visibleRect);
                 }
 
-                // Рисуем стрелки направления у существующих сигнализаций
-                DrawAlarmDirectionArrows(g, grid, scale, viewOffset);
+                // Рисуем стрелки направления у существующих сигнализаций — переиспользуем
+                // уже отфильтрованные по видимой области airAlarms/fireAlarms (см. выше),
+                // а не сканируем весь grid.Entities заново
+                var visibleAlarmsForArrows = airAlarms.Cast<MapEntity>().Concat(fireAlarms).ToList();
+                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, grid.Position);
             }
 
 
@@ -1291,14 +1294,20 @@ public class Renderer
         return positions;
     }
 
-    private void DrawAlarmConnections(Graphics g, AlarmNetwork network, int tileSize, PointF viewOffset, PointF gridOffset)
+    private void DrawAlarmConnections(Graphics g, AlarmNetwork network, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
         if (network == null || network.Connections.Count == 0) return;
 
         foreach (var connection in network.Connections)
         {
-            float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            // Пропускаем связь, если ОБА её конца (сигнализация и устройство) вне видимой
+            // области — раньше рисовались все связи по всей карте на каждый кадр,
+            // независимо от того, что реально на экране.
+            bool sourceVisible = IsPointVisible(connection.Source.X, connection.Source.Y, visibleRect);
+            bool targetVisible = IsPointVisible(connection.Target.X, connection.Target.Y, visibleRect);
+            if (!sourceVisible && !targetVisible) continue;
+
+            float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;            float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
             float tx = (connection.Target.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float ty = (connection.Target.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
@@ -1448,20 +1457,18 @@ public class Renderer
         }, _previewEntityRotation);
     }
 
-    private void DrawAlarmDirectionArrows(Graphics g, Grid grid, float scale, PointF viewOffset)
+        private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
     {
         if (!ShowAlarmConnections) return;
+        if (alarms.Count == 0) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = grid.Position.X * tileSize;
-        float gridOffsetY = grid.Position.Y * tileSize;
+        float gridOffsetX = gridPosition.X * tileSize;
+        float gridOffsetY = gridPosition.Y * tileSize;
 
-        var alarms = grid.Entities
-            .OfType<AirAlarmEntity>()
-            .Cast<MapEntity>()
-            .Concat(grid.Entities.OfType<FireAlarmEntity>())
-            .ToList();
-
+        // Список сигнализаций приходит уже отфильтрованным по видимой области вызывающим
+        // кодом (Render()) — раньше тут заново сканировались ВСЕ сигнализации грида через
+        // grid.Entities, включая те, что далеко за пределами экрана.
         foreach (var alarm in alarms)
         {
             float screenX = (float)alarm.X * tileSize + gridOffsetX - viewOffset.X;
@@ -1488,6 +1495,17 @@ public class Renderer
         }
     }
 
+    // Спрайты этих труб несимметричны относительно поворота на 180° (в отличие от
+    // GasPipeStraight/GasPipeFourway, где ошибка в повороте попросту незаметна) — при
+    // отображении сущностей, пришедших готовыми из игрового .yml (с уже сохранённым там
+    // rot), их нужно довернуть на π, чтобы совпадало с тем, как труба реально стоит.
+    // Contains, а не точное сравнение — так же ловятся варианты с суффиксом слоя
+    // (GasPipeBendAlt1/Alt2 у Waste/Distra).
+    private static bool NeedsPipeRotationCorrection(string protoId)
+    {
+        return protoId.Contains("GasPipeBend") || protoId.Contains("GasPipeTJunction");
+    }
+
     private void DrawGenericEntitiesBatch(Graphics g, List<MapEntity> entities, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (entities.Count == 0) return;
@@ -1495,6 +1513,7 @@ public class Renderer
         foreach (var group in entities.GroupBy(e => e.Proto))
         {
             string protoId = group.Key;
+            float rotationCorrection = NeedsPipeRotationCorrection(protoId) ? (float)Math.PI : 0f;
 
             foreach (var entity in group)
             {
@@ -1514,7 +1533,7 @@ public class Renderer
                         string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                         gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                     }
-                }, entity.Rotation);
+                }, entity.Rotation + rotationCorrection);
             }
         }
     }
