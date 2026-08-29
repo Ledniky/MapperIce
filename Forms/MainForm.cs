@@ -511,8 +511,10 @@ public partial class MainForm : Form
         if (_map.ActiveGrid == null) return (0, 0);
 
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        int activeIndex = _map.Grids.IndexOf(_map.ActiveGrid);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
         float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float gridOffsetY = (_map.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
         float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
         float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
 
@@ -525,8 +527,10 @@ public partial class MainForm : Form
         if (_map.ActiveGrid == null) return (0f, 0f);
 
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        int activeIndex = _map.Grids.IndexOf(_map.ActiveGrid);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
         float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float gridOffsetY = (_map.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
         float worldX = (mouseLocation.X + _viewOffset.X - gridOffsetX) / tileSize;
         float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
 

@@ -394,10 +394,24 @@ public partial class MainForm
 
         btnAddLayer.Click += (s, e) =>
         {
-            room.AutoDecalRule.Layers.Add(new DecalLayer { Name = $"Слой {room.AutoDecalRule.Layers.Count + 1}" });
+            int maxNum = 0;
+            foreach (var l in room.AutoDecalRule.Layers)
+            {
+                int num = ExtractLayerNumber(l.Name);
+                if (num > maxNum) maxNum = num;
+            }
+            room.AutoDecalRule.Layers.Add(new DecalLayer { Name = $"Слой {maxNum + 1}" });
             RebuildList();
             ApplyLiveChanges();
         };
+
+        int ExtractLayerNumber(string name)
+        {
+            int start = name.LastIndexOf(' ');
+            if (start < 0) return 0;
+            int.TryParse(name.Substring(start + 1), out int num);
+            return num;
+        }
 
         btnInherit.Click += (s, e) =>
         {
@@ -519,8 +533,10 @@ public partial class MainForm
     private (float x, float y) TileToScreen(int tileX, int tileY)
     {
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        int activeIndex = _map.Grids.IndexOf(_map.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
         float gridOffsetX = _map.ActiveGrid!.Position.X * tileSize;
-        float gridOffsetY = _map.ActiveGrid!.Position.Y * tileSize;
+        float gridOffsetY = (_map.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
         return (tileX * tileSize + gridOffsetX - _viewOffset.X, tileY * tileSize + gridOffsetY - _viewOffset.Y);
     }
 

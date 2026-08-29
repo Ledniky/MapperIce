@@ -139,13 +139,29 @@ public class Renderer
 
             var visibleGrids = map.Grids.Where(g => g.IsVisible).ToList();
 
+            // Индекс активного слоя для скрытия слоёв выше него
+            int activeGridIndex = -1;
+            if (map.ActiveGrid != null)
+            {
+                activeGridIndex = visibleGrids.FindIndex(g => g.Uid == map.ActiveGrid.Uid);
+            }
+
             foreach (var grid in visibleGrids)
             {
+                // Скрываем слои, идущие выше активного
+                int gridIndex = visibleGrids.IndexOf(grid);
+                if (gridIndex > activeGridIndex)
+                    continue;
+
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
+                // Смещение грида: Position + автоматическое смещение слоя по Y
+                float layerOffsetY = Grid.GetLayerOffsetY(gridIndex);
+                var gridOffset = new PointF(grid.Position.X, grid.Position.Y + layerOffsetY);
+
                 bool needsRebuild = !_tileGridCache.TryGetValue(grid.Uid, out var tileGrid) ||
-                                     _dirtyTileGrids.Contains(grid.Uid);
+                                      _dirtyTileGrids.Contains(grid.Uid);
                 if (needsRebuild)
                 {
                     tileGrid = _tileBuilder.BuildFromRooms(grid, tileGrid);
@@ -155,7 +171,7 @@ public class Renderer
 
                 // Видимая на экране область в мировых координатах — режем работу до того,
                 // что реально видно, вместо полного прогона по всей карте на каждый кадр
-                var visibleRect = GetVisibleWorldRect(tileSize, viewOffset, grid.Position);
+                var visibleRect = GetVisibleWorldRect(tileSize, viewOffset, gridOffset);
 
                 var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor)
                     .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
@@ -167,9 +183,9 @@ public class Renderer
                     .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
                     .ToList();
 
-                DrawGrid(g, tileSize, viewOffset, grid.Position, opacity);
+                DrawGrid(g, tileSize, viewOffset, gridOffset, opacity);
 
-                DrawFloorTilesBatch(g, floorTiles, tileSize, viewOffset, grid.Position, opacity);
+                DrawFloorTilesBatch(g, floorTiles, tileSize, viewOffset, gridOffset, opacity);
 
                 var floorUnderDoors = doorTiles
                     .Where(t => t.HasFloorUnder && !string.IsNullOrEmpty(t.FloorProtoUnder))
@@ -181,23 +197,23 @@ public class Renderer
                         ProtoId = t.FloorProtoUnder ?? "Plating"
                     })
                     .ToList();
-                DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, grid.Position, opacity);
+                DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, gridOffset, opacity);
 
                 var visibleDecals = grid.Decals
                     .Where(d => IsPointVisible(d.X, d.Y, visibleRect))
                     .OrderBy(d => d.Y)
                     .ToList();
-                DrawDecalsBatch(g, visibleDecals, tileSize, viewOffset, grid.Position, opacity);
+                DrawDecalsBatch(g, visibleDecals, tileSize, viewOffset, gridOffset, opacity);
 
-                DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, grid.Position, opacity);
+                DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, gridOffset, opacity);
 
-                DrawDoorTilesBatch(g, doorTiles, tileSize, viewOffset, grid.Position);
+                DrawDoorTilesBatch(g, doorTiles, tileSize, viewOffset, gridOffset);
 
                 var firelocks = grid.Entities.OfType<FirelockEntity>()
                     .Where(f => IsPointVisible(f.X, f.Y, visibleRect))
                     .OrderBy(f => f.Y)
                     .ToList();
-                DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, grid.Position);
+                DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, gridOffset);
 
                 var genericEntities = grid.Entities
                     .Where(e => e is not PipeEntity && e is not FirelockEntity &&
@@ -206,34 +222,34 @@ public class Renderer
                     .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
                     .OrderBy(e => e.Y)
                     .ToList();
-                DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, grid.Position);
+                DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, gridOffset);
 
                 if (!HideRoomOverlay)
                 {
                     var rooms = grid.Rooms
                         .Where(r => RoomOverlapsRect(r, visibleRect))
                         .ToList();
-                    DrawRoomFillsBatch(g, rooms, tileSize, viewOffset, grid.Position, opacity);
+                    DrawRoomFillsBatch(g, rooms, tileSize, viewOffset, gridOffset, opacity);
 
                     if (currentRoom != null && isActive)
                     {
                         if (toolName == "SubtractRoom")
                         {
-                            DrawSubtractPreview(g, currentRoom, tileSize, viewOffset, grid.Position);
+                            DrawSubtractPreview(g, currentRoom, tileSize, viewOffset, gridOffset);
                         }
                         else if (toolName == "RestoreRoom")
                         {
-                            DrawRestorePreview(g, currentRoom, tileSize, viewOffset, grid.Position);
+                            DrawRestorePreview(g, currentRoom, tileSize, viewOffset, gridOffset);
                         }
                         else
                         {
-                            DrawRoomFill(g, currentRoom, tileSize, viewOffset, grid.Position, 1.0f);
-                            DrawRoomLine(g, currentRoom, tileSize, viewOffset, grid.Position, true, 1.0f);
+                            DrawRoomFill(g, currentRoom, tileSize, viewOffset, gridOffset, 1.0f);
+                            DrawRoomLine(g, currentRoom, tileSize, viewOffset, gridOffset, true, 1.0f);
                         }
                     }
                     else
                     {
-                        DrawRoomLinesBatch(g, rooms, tileSize, viewOffset, grid.Position, false, opacity);
+                        DrawRoomLinesBatch(g, rooms, tileSize, viewOffset, gridOffset, false, opacity);
                     }
                 }
 
@@ -243,11 +259,11 @@ public class Renderer
                         .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
                         .OrderBy(p => p.Y)
                         .ToList();
-                    DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, grid.Position);
+                    DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     if (allPipes.Count > 0)
                     {
-                        DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, grid.Position);
+                        DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
                     }
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
@@ -255,7 +271,7 @@ public class Renderer
                         var start = _pipeBuilder.StartPoint.Value;
                         var end = _pipeBuilder.EndPoint ?? start;
                         var path = CalculatePipePath(start, end);
-                        DrawTempPipePath(g, path, tileSize, viewOffset, grid.Position);
+                        DrawTempPipePath(g, path, tileSize, viewOffset, gridOffset);
                     }
                 }
 
@@ -268,19 +284,19 @@ public class Renderer
                     .OrderBy(a => a.Y)
                     .ToList();
 
-                DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
-                DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
+                DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
+                DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
 
                 if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
                 {
-                    DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, grid.Position, visibleRect);
+                    DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, gridOffset, visibleRect);
                 }
 
                 // Рисуем стрелки направления у существующих сигнализаций — переиспользуем
                 // уже отфильтрованные по видимой области airAlarms/fireAlarms (см. выше),
                 // а не сканируем весь grid.Entities заново
                 var visibleAlarmsForArrows = airAlarms.Cast<MapEntity>().Concat(fireAlarms).ToList();
-                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, grid.Position);
+                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, gridOffset);
             }
 
 
@@ -1484,8 +1500,10 @@ public class Renderer
         if (_currentMap?.ActiveGrid == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
+        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
 
         float screenX = _previewX * tileSize + gridOffsetX - viewOffset.X;
         float screenY = _previewY * tileSize + gridOffsetY - viewOffset.Y;
@@ -1558,7 +1576,9 @@ public class Renderer
         if (_currentMap?.ActiveGrid == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y);
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
 
         var rect = ToRect(_previewEntityX, _previewEntityY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
         float cx = rect.X + tileSize / 2f;
@@ -1685,8 +1705,10 @@ public class Renderer
 
         var (ax, ay, aw, ah) = _decalAreaEditRect.Value;
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
+        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
 
         float left = ax * tileSize + gridOffsetX - viewOffset.X;
         float top = ay * tileSize + gridOffsetY - viewOffset.Y;
@@ -1728,8 +1750,10 @@ public class Renderer
         if (_currentMap?.ActiveGrid == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = _currentMap.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _currentMap.ActiveGrid.Position.Y * tileSize;
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
+        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
 
         // Контрастная "обводка": тёмная подложка + яркий пунктир поверх —
         // читается и на белом, и на тёмном фоне

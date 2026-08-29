@@ -20,7 +20,28 @@ public partial class MainForm
         try
         {
             var loader = new YAMLLoader(_indexer);
-            _map = loader.LoadFromFile(dialog.FileName);
+            var loadedMap = loader.LoadFromFile(dialog.FileName);
+            
+            // Определяем смещение UID — все загруженные слои получат новые UID
+            // чтобы не конфликтовать с существующими
+            int existingMaxUid = _map.Grids.Any() ? _map.Grids.Max(g => g.Uid) : 0;
+            int uidOffset = existingMaxUid + 1;
+
+            for (int i = 0; i < loadedMap.Grids.Count; i++)
+            {
+                var grid = loadedMap.Grids[i].Clone();
+                grid.Uid = uidOffset + i;
+                grid.Name = $"Слой {grid.Uid}";
+                // Смещение слоя рассчитывается автоматически через Grid.GetLayerOffsetY
+                grid.Position = PointF.Empty;
+                _map.Grids.Add(grid);
+            }
+
+            // Активируем первый загруженный слой
+            if (loadedMap.Grids.Any())
+            {
+                _map.ActiveGridUid = loadedMap.Grids.First().Uid;
+            }
             
             // Обновляем UI
             InitGridTabs();

@@ -605,8 +605,10 @@ public partial class MainForm
         if (!_isDrawing || _currentRoom == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * _scale);
+        int activeIndex = _map.Grids.IndexOf(_map.ActiveGrid);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
         float gridOffsetX = _map.ActiveGrid.Position.X * tileSize;
-        float gridOffsetY = _map.ActiveGrid.Position.Y * tileSize;
+        float gridOffsetY = (_map.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
 
         float endWorldX = (e.Location.X + _viewOffset.X - gridOffsetX) / tileSize;
         float endWorldY = (e.Location.Y + _viewOffset.Y - gridOffsetY) / tileSize;
