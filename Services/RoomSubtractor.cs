@@ -156,7 +156,19 @@ public static class RoomSubtractor
             }
         }
 
-        grid.Rooms.RemoveAll(r => r.Width <= 0 || r.Height <= 0);
+        // Удаляем полностью "съеденные" комнаты вместе с их декалями
+        var roomsToPurge = grid.Rooms.Where(r => r.Width <= 0 || r.Height <= 0).ToList();
+        foreach (var room in roomsToPurge)
+        {
+            var decalsToRemove = grid.Decals
+                .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
+                            d.Y >= room.Y && d.Y < room.Y + room.Height)
+                .ToList();
+            foreach (var decal in decalsToRemove)
+                grid.Decals.Remove(decal);
+
+            grid.Rooms.Remove(room);
+        }
 
         return anyChanged;
     }

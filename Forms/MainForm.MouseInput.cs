@@ -103,6 +103,14 @@ public partial class MainForm
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
                 if (room != null && canDeleteRooms)
                 {
+                    // Удаляем декали, принадлежащие удаляемой комнате
+                    var roomDecals = grid.Decals
+                        .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
+                                    d.Y >= room.Y && d.Y < room.Y + room.Height)
+                        .ToList();
+                    foreach (var rd in roomDecals)
+                        grid.Decals.Remove(rd);
+
                     grid.Rooms.Remove(room);
                     _doorUpdater.RecalculateAllDoors(grid);
                     SaveState(); UpdateTileGrid(); Render(); return;
@@ -733,7 +741,18 @@ public partial class MainForm
                     var roomsToRemove = grid.Rooms
                         .Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY))
                         .ToList();
-                    foreach (var room in roomsToRemove) grid.Rooms.Remove(room);
+                    foreach (var room in roomsToRemove)
+                    {
+                        // Удаляем декали, принадлежащие удаляемой комнате
+                        var roomDecals = grid.Decals
+                            .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
+                                        d.Y >= room.Y && d.Y < room.Y + room.Height)
+                            .ToList();
+                        foreach (var rd in roomDecals)
+                            grid.Decals.Remove(rd);
+
+                        grid.Rooms.Remove(room);
+                    }
 
                     if (roomsToRemove.Count > 0)
                         _doorUpdater.RecalculateAllDoors(grid);
