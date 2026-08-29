@@ -258,6 +258,11 @@ public partial class MainForm
 
                     else
                     {
+                        // Если noRot: true (или у родителя) — сбрасываем вращение
+                        float entityRotation = _currentEntityRotation;
+                        if (_indexer?.FindPrototypeNoRotate(_protoToPlace) == true)
+                            entityRotation = 0f;
+
                         float finalX, finalY;
                         if (_snapEntityToCenter)
                         {
@@ -272,7 +277,7 @@ public partial class MainForm
                             finalY = precise.y;
                         }
 
-                        grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation });
+                        grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = entityRotation });
                     }
 
                     SaveState();

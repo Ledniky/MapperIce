@@ -10,4 +10,5 @@ public class Prototype
     public string FilePath { get; set; } = "";
     public string? Parent { get; set; }
     public List<string> Components { get; set; } = new();
+    public bool NoRotate { get; set; } = false;
 }

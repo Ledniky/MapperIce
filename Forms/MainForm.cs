@@ -48,7 +48,6 @@ public partial class MainForm : Form
     private Button _btnPipeDistra = null!;
     private Button _btnPipeWaste = null!;
     private Button _btnPipeNormal = null!;
-    private ComboBox _gridSelector = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -182,12 +181,12 @@ public partial class MainForm : Form
         var defaultGrid = new Grid
         {
             Uid = 2,
-            Name = "Грид 2",
+            Name = "Слой 2",
             Position = new PointF(0, 0),
             Color = Color.Blue
         };
         _map.AddGrid(defaultGrid);
-        UpdateGridSelector();
+        InitGridTabs();
 
         _repoManager.OnRepositoriesChanged += () => { UpdateRepoSelector(); };
         _indexer.OnIndexingComplete += () =>
@@ -240,11 +239,15 @@ public partial class MainForm : Form
             return true;
         }
 
+        if (_map.ActiveGrid == null) return base.ProcessCmdKey(ref msg, keyData);
+
+        int uid = _map.ActiveGrid.Uid;
+
         if (keyData == (Keys.Control | Keys.Z))
         {
-            if (_undo.CanUndo)
+            if (_undo.CanUndo(uid))
             {
-                var snapshot = _undo.Undo();
+                var snapshot = _undo.Undo(uid);
                 RestoreState(snapshot);
             }
             return true;
@@ -252,9 +255,9 @@ public partial class MainForm : Form
 
         if (keyData == (Keys.Control | Keys.Y))
         {
-            if (_undo.CanRedo)
+            if (_undo.CanRedo(uid))
             {
-                var snapshot = _undo.Redo();
+                var snapshot = _undo.Redo(uid);
                 RestoreState(snapshot);
             }
             return true;
@@ -305,6 +308,7 @@ public partial class MainForm : Form
     private void CreateMenu()
     {
         var menu = new MenuStrip();
+
         var fileMenu = new ToolStripMenuItem("Файл");
         fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
@@ -312,17 +316,17 @@ public partial class MainForm : Form
         fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
-        Controls.Add(menu);
-        MainMenuStrip = menu;
-
-        var toolStrip = new ToolStrip();
-        toolStrip.Items.Add(new ToolStripButton("Сбросить вид", null, (s, e) =>
+        // Кнопка "Сбросить вид" справа от "Файл"
+        var resetBtn = new ToolStripMenuItem("↺ Сбросить вид", null, (s, e) =>
         {
             _scale = 1.0f;
             _viewOffset = new PointF(0, 0);
             Render();
-        }));
-        Controls.Add(toolStrip);
+        });
+        menu.Items.Add(resetBtn);
+
+        Controls.Add(menu);
+        MainMenuStrip = menu;
     }
 
 

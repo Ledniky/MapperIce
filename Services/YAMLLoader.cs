@@ -9,68 +9,68 @@ namespace MapperIce.Services;
 
 public class YAMLLoader
 {
-public MapData LoadFromFile(string path)
-{
-    var yaml = File.ReadAllText(path);
-    
-    // Удаляем все !type: теги (они не нужны для парсинга структуры)
-    yaml = System.Text.RegularExpressions.Regex.Replace(
-        yaml, 
-        @"!type:\S+", 
-        "");
+    private readonly PrototypeIndexer? _indexer;
 
-    var deserializer = new DeserializerBuilder()
-        .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .IgnoreUnmatchedProperties()
-        .Build();
+    public YAMLLoader() { }
+    public YAMLLoader(PrototypeIndexer indexer) => _indexer = indexer;
 
-    var doc = deserializer.Deserialize<Dictionary<object, object>>(yaml);
-    var map = new MapData();
-
-    if (doc.TryGetValue("grids", out var gridsObj))
+    public MapData LoadFromFile(string path)
     {
-        var gridIds = ((List<object>)gridsObj).Select(Convert.ToInt32).ToList();
+        var yaml = File.ReadAllText(path);
+        
+        // Удаляем все !type: теги (они не нужны для парсинга структуры)
+        yaml = System.Text.RegularExpressions.Regex.Replace(
+            yaml, 
+            @"!type:\S+", 
+            "");
 
-        foreach (var gridId in gridIds)
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+
+        var doc = deserializer.Deserialize<Dictionary<object, object>>(yaml);
+        var map = new MapData();
+
+        if (doc.TryGetValue("grids", out var gridsObj))
         {
-            var grid = new Grid { Uid = gridId, Name = $"Грид {gridId}" };
-            map.AddGrid(grid);
+            var gridIds = ((List<object>)gridsObj).Select(Convert.ToInt32).ToList();
 
-            ParseTilemap(doc, grid);
-            ParseEntities(doc, grid);
-            ParseDecals(doc, grid);
+            foreach (var gridId in gridIds)
+            {
+                var grid = new Grid { Uid = gridId, Name = $"Слой {gridId}" };
+                map.AddGrid(grid);
+
+                ParseTilemap(doc, grid);
+                ParseEntities(doc, grid);
+                ParseDecals(doc, grid);
+            }
         }
+
+        return map;
     }
-
-    return map;
-}
-
-
-
-
 
     private void ParseTilemap(Dictionary<object, object> doc, Grid grid)
     {
         if (!doc.TryGetValue("tilemap", out var tilemapObj)) return;
 
-    var tilemap = (Dictionary<object, object>)tilemapObj;
-    var tileIdMap = new Dictionary<int, string>();
+        var tilemap = (Dictionary<object, object>)tilemapObj;
+        var tileIdMap = new Dictionary<int, string>();
 
-    foreach (var kvp in tilemap)
-    {
-        int id = Convert.ToInt32(kvp.Key);
-        string proto = kvp.Value.ToString()!;
-        tileIdMap[id] = proto;
-    }
+        foreach (var kvp in tilemap)
+        {
+            int id = Convert.ToInt32(kvp.Key);
+            string proto = kvp.Value.ToString()!;
+            tileIdMap[id] = proto;
+        }
 
-    // ID "пустоты" НЕ гарантированно равен 0 — в реальных игровых картах tilemap
-    // собирается динамически (каждый использованный тип пола получает свой ID
-    // по мере встречи), поэтому Space может оказаться под любым номером.
-    // Ищем реальный ID по имени прототипа, а не полагаемся на то, что это всегда 0.
-    int spaceId = tileIdMap.FirstOrDefault(kvp => kvp.Value == "Space").Key;
-    bool hasSpace = tileIdMap.ContainsValue("Space");
+        // ID "пустоты" НЕ гарантированно равен 0 — в реальных игровых картах tilemap
+        // собирается динамически (каждый использованный тип пола получает свой ID
+        // по мере встречи), поэтому Space может оказаться под любым номером.
+        // Ищем реальный ID по имени прототипа, а не полагаемся на то, что это всегда 0.
+        int spaceId = tileIdMap.FirstOrDefault(kvp => kvp.Value == "Space").Key;
+        bool hasSpace = tileIdMap.ContainsValue("Space");
 
-        // Ищем Grid entity (uid: 2) и парсим chunks
         if (!doc.TryGetValue("entities", out var entitiesObj)) return;
         var entitiesList = (List<object>)entitiesObj;
 
@@ -83,12 +83,9 @@ public MapData LoadFromFile(string path)
             foreach (var entityObj in entities)
             {
                 var entity = (Dictionary<object, object>)entityObj;
-                if (!entity.TryGetValue("uid", out var uidObj)) continue;
-                int uid = Convert.ToInt32(uidObj);
 
-                if (uid != 2) continue; // Только Grid entity
-
-                // Ищем MapGrid компонент
+                // Grid entity определяется по наличию компонента MapGrid, а не по uid
+                // (uid может быть 1, 2 или другим в зависимости от экспорта)
                 if (!entity.TryGetValue("components", out var compsObj)) continue;
                 var components = (List<object>)compsObj;
 
@@ -98,7 +95,7 @@ public MapData LoadFromFile(string path)
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
                     if (typeObj.ToString() != "MapGrid") continue;
 
-                    // Парсим chunks
+                    // Парсим чанки
                     if (!comp.TryGetValue("chunks", out var chunksObj)) continue;
                     var chunks = (Dictionary<object, object>)chunksObj;
 
@@ -158,22 +155,38 @@ public MapData LoadFromFile(string path)
             {
                 var entity = (Dictionary<object, object>)entityObj;
 
-                // Пропускаем Map Entity (uid: 1) и Grid (uid: 2)
-                if (entity.TryGetValue("uid", out var uidObj))
+                // Пропускаем Map Entity и Grid entity — они не являются игровыми сущностями
+                // Map entity определяется по наличию компонента Map (или BecomesStation в
+                // некоторых экспортах), Grid entity — по наличию MapGrid компонента.
+                // UID не надёжен: в map.yml Grid entity имеет uid=2, в Zmap.yml — uid=1.
+                bool isMapOrGridEntity = false;
+                if (entity.TryGetValue("components", out var compsObj))
                 {
-                    int uid = Convert.ToInt32(uidObj);
-                    if (uid == 1 || uid == 2) continue;
+                    var components = (List<object>)compsObj;
+                    foreach (var compObj in components)
+                    {
+                        var comp = (Dictionary<object, object>)compObj;
+                        if (!comp.TryGetValue("type", out var typeObj)) continue;
+                        var typeStr = typeObj.ToString();
+                        // Grid entity
+                        if (typeStr == "MapGrid") { isMapOrGridEntity = true; break; }
+                        // Map entity (стандартный формат)
+                        if (typeStr == "Map") { isMapOrGridEntity = true; break; }
+                        // Map entity в некоторых экспортах (Zmap.yml)
+                        if (typeStr == "BecomesStation") { isMapOrGridEntity = true; break; }
+                    }
                 }
+                if (isMapOrGridEntity) continue;
 
                 // Парсим Transform
-                if (!entity.TryGetValue("components", out var compsObj)) continue;
-                var components = (List<object>)compsObj;
+                if (!entity.TryGetValue("components", out compsObj)) continue;
+                var transformComponents = (List<object>)compsObj;
 
                 float posX = 0, posY = 0;
                 float rotation = 0;
                 int parent = 2;
 
-                foreach (var compObj in components)
+                foreach (var compObj in transformComponents)
                 {
                     var comp = (Dictionary<object, object>)compObj;
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
@@ -196,6 +209,9 @@ public MapData LoadFromFile(string path)
                         }
                     }
                 }
+
+                // Если noRot: true — сбрасываем вращение
+                rotation = ResolveRotation(proto, rotation);
 
                 // Конвертируем координаты (игровые → редакторские). ВАЖНО: у разных типов
                 // сущностей РАЗНАЯ внутренняя система координат (см. YAMLGenerator), поэтому
@@ -265,9 +281,17 @@ public MapData LoadFromFile(string path)
                     });
                 }
             }
-
-            
         }
+    }
+
+    /// <summary>
+    /// Проверяет, запрещён ли поворот для данного прототипа (noRot: true)
+    /// или любого из его родителей.
+    /// </summary>
+    private float ResolveRotation(string protoId, float rotation)
+    {
+        if (_indexer == null) return rotation;
+        return _indexer.FindPrototypeNoRotate(protoId) ? 0f : rotation;
     }
 
     private void ParseDecals(Dictionary<object, object> doc, Grid grid)
@@ -284,13 +308,24 @@ public MapData LoadFromFile(string path)
             foreach (var entityObj in entities)
             {
                 var entity = (Dictionary<object, object>)entityObj;
-                if (!entity.TryGetValue("uid", out var uidObj)) continue;
-                int uid = Convert.ToInt32(uidObj);
-                if (uid != 2) continue;
 
+                // Grid entity определяется по наличию компонента DecalGrid, а не по uid
                 if (!entity.TryGetValue("components", out var compsObj)) continue;
                 var components = (List<object>)compsObj;
 
+                bool hasDecalGrid = false;
+                foreach (var compObj in components)
+                {
+                    var comp = (Dictionary<object, object>)compObj;
+                    if (comp.TryGetValue("type", out var typeObj) && typeObj.ToString() == "DecalGrid")
+                    {
+                        hasDecalGrid = true;
+                        break;
+                    }
+                }
+                if (!hasDecalGrid) continue;
+
+                // Перебираем компоненты снова для парсинга
                 foreach (var compObj in components)
                 {
                     var comp = (Dictionary<object, object>)compObj;
@@ -343,7 +378,7 @@ public MapData LoadFromFile(string path)
         }
     }
 
-        // Реальный формат тайла в чанке — 7 байт: 4 байта TypeId (int32) + 3 служебных
+    // Реальный формат тайла в чанке — 7 байт: 4 байта TypeId (int32) + 3 служебных
     // байта (flags/variant/padding). Это тот же формат, что пишет YAMLGenerator.EncodeTiles —
     // раньше тут ошибочно читали с шагом 4 байта, из-за чего после первого же тайла
     // чтение расходилось с реальными границами тайлов и на карте вместо сплошного

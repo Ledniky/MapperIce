@@ -27,7 +27,7 @@ public static class YAMLGenerator
         sb.AppendLine("meta:");
         sb.AppendLine("  format: 7");
         sb.AppendLine("  category: Map");
-        sb.AppendLine("  engineVersion: 266.0.0");
+        sb.AppendLine("  engineVersion: 282.0.0");
         sb.AppendLine("  forkId: \"\"");
         sb.AppendLine("  forkVersion: \"\"");
         sb.AppendLine($"  time: {DateTime.Now:MM.dd.yyyy HH:mm:ss}");

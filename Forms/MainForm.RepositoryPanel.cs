@@ -561,12 +561,26 @@ public partial class MainForm
                 using var original = Image.FromFile(path);
                 var frameSize = GetRsiFrameSize(path, original);
 
-                var icon = new Bitmap(32, 32);
+                // Scale to fit within 32x32 while preserving aspect ratio
+                float ratio = (float)frameSize.Width / frameSize.Height;
+                int iconW, iconH;
+                if (ratio >= 1.0f)
+                {
+                    iconW = 32;
+                    iconH = Math.Max(1, (int)(32f / ratio));
+                }
+                else
+                {
+                    iconH = 32;
+                    iconW = Math.Max(1, (int)(32f * ratio));
+                }
+
+                var icon = new Bitmap(iconW, iconH);
                 using (var g = Graphics.FromImage(icon))
                 {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
                     var srcRect = new Rectangle(0, 0, frameSize.Width, frameSize.Height);
-                    g.DrawImage(original, new Rectangle(0, 0, 32, 32), srcRect, GraphicsUnit.Pixel);
+                    g.DrawImage(original, new Rectangle(0, 0, iconW, iconH), srcRect, GraphicsUnit.Pixel);
                 }
                 return icon;
             }
@@ -614,6 +628,7 @@ public partial class MainForm
             kvp.Value?.Dispose();
         _protoIconCache.Clear();
         _iconLoadInFlight.Clear();
+        _rsiFrameSizeCache.Clear();
     }
     private void ProtoList_DrawItem(object? sender, DrawItemEventArgs e)
     {
@@ -634,14 +649,17 @@ public partial class MainForm
         if (isRealProto)
         {
             var icon = GetCachedProtoIcon(id!);
-            int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
             if (icon != null)
             {
-                e.Graphics.DrawImage(icon, e.Bounds.Left + padding, iconY, iconSize, iconSize);
+                // Icon already has correct aspect ratio from loading, just draw it centered
+                int drawX = e.Bounds.Left + padding + (iconSize - icon.Width) / 2;
+                int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
+                e.Graphics.DrawImage(icon, drawX, drawY, icon.Width, icon.Height);
             }
             else
             {
                 using var placeholderBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0));
+                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
                 e.Graphics.FillRectangle(placeholderBrush, e.Bounds.Left + padding, iconY, iconSize, iconSize);
             }
         }

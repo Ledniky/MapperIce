@@ -5,49 +5,78 @@ namespace MapperIce.Services;
 
 public class UndoManager
 {
-    private List<GridSnapshot> _history = new();
-    private int _currentIndex = -1;
-    public List<MapEntity> GenericEntities { get; set; } = new();
+    private Dictionary<int, List<GridSnapshot>> _histories = new();
+    private Dictionary<int, int> _currentIndices = new();
 
-    public UndoManager()
+    private List<GridSnapshot> GetCurrentHistory(int gridUid)
     {
+        if (!_histories.TryGetValue(gridUid, out var history))
+        {
+            history = new List<GridSnapshot>();
+            _histories[gridUid] = history;
+            _currentIndices[gridUid] = -1;
+        }
+        return history;
+    }
+
+    private int GetCurrentIndex(int gridUid)
+    {
+        return _currentIndices.TryGetValue(gridUid, out var idx) ? idx : -1;
     }
 
     public void AddState(Grid grid)
     {
         if (grid == null) return;
 
-        if (_currentIndex < _history.Count - 1)
+        var history = GetCurrentHistory(grid.Uid);
+        var currentIndex = GetCurrentIndex(grid.Uid);
+
+        if (currentIndex < history.Count - 1)
         {
-            _history.RemoveRange(_currentIndex + 1, _history.Count - _currentIndex - 1);
+            history.RemoveRange(currentIndex + 1, history.Count - currentIndex - 1);
         }
 
         var snapshot = new GridSnapshot(grid);
-        _history.Add(snapshot);
-        _currentIndex = _history.Count - 1;
+        history.Add(snapshot);
+        _currentIndices[grid.Uid] = history.Count - 1;
     }
 
-    public bool CanUndo => _currentIndex > 0;
-    public bool CanRedo => _currentIndex < _history.Count - 1;
-
-    public GridSnapshot Undo()
+    public bool CanUndo(int gridUid)
     {
-        if (!CanUndo) return _history[_currentIndex];
-        _currentIndex--;
-        return _history[_currentIndex];
+        var history = GetCurrentHistory(gridUid);
+        var currentIndex = GetCurrentIndex(gridUid);
+        return currentIndex > 0;
     }
 
-    public GridSnapshot Redo()
+    public bool CanRedo(int gridUid)
     {
-        if (!CanRedo) return _history[_currentIndex];
-        _currentIndex++;
-        return _history[_currentIndex];
+        var history = GetCurrentHistory(gridUid);
+        var currentIndex = GetCurrentIndex(gridUid);
+        return currentIndex < history.Count - 1;
+    }
+
+    public GridSnapshot Undo(int gridUid)
+    {
+        var history = GetCurrentHistory(gridUid);
+        var currentIndex = GetCurrentIndex(gridUid);
+        if (currentIndex <= 0) return history[currentIndex];
+        _currentIndices[gridUid] = currentIndex - 1;
+        return history[_currentIndices[gridUid]];
+    }
+
+    public GridSnapshot Redo(int gridUid)
+    {
+        var history = GetCurrentHistory(gridUid);
+        var currentIndex = GetCurrentIndex(gridUid);
+        if (currentIndex >= history.Count - 1) return history[currentIndex];
+        _currentIndices[gridUid] = currentIndex + 1;
+        return history[_currentIndices[gridUid]];
     }
 
     public void Clear()
     {
-        _history.Clear();
-        _currentIndex = -1;
+        _histories.Clear();
+        _currentIndices.Clear();
     }
 }
 

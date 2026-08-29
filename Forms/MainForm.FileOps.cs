@@ -19,11 +19,11 @@ public partial class MainForm
 
         try
         {
-            var loader = new YAMLLoader();
+            var loader = new YAMLLoader(_indexer);
             _map = loader.LoadFromFile(dialog.FileName);
             
             // Обновляем UI
-            UpdateGridSelector();
+            InitGridTabs();
             UpdateTileGrid();
             
             // Если есть активный грид, пересчитываем паттерны
@@ -34,7 +34,7 @@ public partial class MainForm
             }
             
             Render();
-            MessageBox.Show($"Карта загружена!\nГридов: {_map.Grids.Count}\nТайлов: {_map.ActiveGrid?.Tiles.Count ?? 0}\nСущностей: {_map.ActiveGrid?.Entities.Count ?? 0}\nДекалей: {_map.ActiveGrid?.Decals.Count ?? 0}");
+            MessageBox.Show($"Карта загружена!\nСлоёв: {_map.Grids.Count}\nТайлов: {_map.ActiveGrid?.Tiles.Count ?? 0}\nСущностей: {_map.ActiveGrid?.Entities.Count ?? 0}\nДекалей: {_map.ActiveGrid?.Decals.Count ?? 0}");
         }
         catch (Exception ex)
         {

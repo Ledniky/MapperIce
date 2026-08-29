@@ -55,6 +55,16 @@ public class Renderer
 
     private (int x, int y, int w, int h)? _decalAreaEditRect = null;
 
+    /// <summary>
+    /// Проверяет, запрещён ли поворот для данного прототипа (noRot: true)
+    /// или любого из его родителей.
+    /// </summary>
+    private bool IsPrototypeNoRotate(string protoId)
+    {
+        if (_indexer == null) return false;
+        return _indexer.FindPrototypeNoRotate(protoId);
+    }
+
     public void SetDecalAreaEditRect(int x, int y, int w, int h)
     {
         _decalAreaEditRect = (x, y, w, h);
@@ -175,6 +185,7 @@ public class Renderer
 
                 var visibleDecals = grid.Decals
                     .Where(d => IsPointVisible(d.X, d.Y, visibleRect))
+                    .OrderBy(d => d.Y)
                     .ToList();
                 DrawDecalsBatch(g, visibleDecals, tileSize, viewOffset, grid.Position, opacity);
 
@@ -184,6 +195,7 @@ public class Renderer
 
                 var firelocks = grid.Entities.OfType<FirelockEntity>()
                     .Where(f => IsPointVisible(f.X, f.Y, visibleRect))
+                    .OrderBy(f => f.Y)
                     .ToList();
                 DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, grid.Position);
 
@@ -192,6 +204,7 @@ public class Renderer
                                 e is not AirAlarmEntity && e is not FireAlarmEntity)
                     .Where(e => IsPointVisible(e.X, e.Y, visibleRect))
                     .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
+                    .OrderBy(e => e.Y)
                     .ToList();
                 DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, grid.Position);
 
@@ -228,6 +241,7 @@ public class Renderer
                 {
                     var allPipes = _pipeBuilder.GetPipes(grid)
                         .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
+                        .OrderBy(p => p.Y)
                         .ToList();
                     DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, grid.Position);
 
@@ -247,9 +261,11 @@ public class Renderer
 
                 var airAlarms = grid.Entities.OfType<AirAlarmEntity>()
                     .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
+                    .OrderBy(a => a.Y)
                     .ToList();
                 var fireAlarms = grid.Entities.OfType<FireAlarmEntity>()
                     .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
+                    .OrderBy(a => a.Y)
                     .ToList();
 
                 DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, grid.Position, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
@@ -361,6 +377,37 @@ public class Renderer
     }
 
     /// <summary>
+    /// Рисует текстуру с сохранением пропорций кадра. Если src пропорции отличаются от rect,
+    /// текстура центрируется внутри rect без растяжения.
+    /// </summary>
+    private void DrawPreservingAspect(Graphics g, Image texture, Rectangle rect, Rectangle src)
+    {
+        // Пустой srcRect — ничего не рисуем (текстура не загрузилась)
+        if (src.Width == 0 || src.Height == 0) return;
+
+        // Для неквадратных спрайтов (напр. 32×64) — масштабируем так, чтобы ширина = tileSize,
+        // высота сохраняется пропорционально. Спрайт центрируется на тайле и может выходить
+        // за его границы (нахлёст сверху/снизу на пол-тайла, как у высоких стен).
+        float ratio = (float)src.Width / src.Height;
+        int drawW, drawH;
+        if (src.Width == src.Height)
+        {
+            // Квадратный спрайт — рисуем во весь rect
+            drawW = rect.Width;
+            drawH = rect.Height;
+        }
+        else
+        {
+            // Неквадратный — ширина = tileSize, высота пропорциональна
+            drawW = rect.Width;
+            drawH = Math.Max(1, (int)(rect.Width / ratio));
+        }
+        int drawX = rect.X + (rect.Width - drawW) / 2;
+        int drawY = rect.Y + (rect.Height - drawH) / 2;
+        g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), src, GraphicsUnit.Pixel);
+    }
+
+    /// <summary>
     /// Рисует текстуру прототипа в rect (с опциональным тонированием tint), либо, если текстуры
     /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
     /// каждого типа объекта своя.
@@ -375,9 +422,14 @@ public class Renderer
             void DoDraw()
             {
                 if (tint != null)
+                {
+                    // With tint — use original behavior (full stretch for tinted overlays)
                     g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+                }
                 else
-                    g.DrawImage(texture, rect, src, GraphicsUnit.Pixel);
+                {
+                    DrawPreservingAspect(g, texture, rect, src);
+                }
             }
 
             // У спрайтов с направленными строками (RSI: юг/север/восток/запад) поворот
@@ -418,10 +470,6 @@ public class Renderer
         {
             string protoId = group.Key;
 
-            // Текстура и srcRect одинаковы для ВСЕХ тайлов группы (один proto, поворота
-            // у пола нет) — считаем один раз на группу, а не заново на каждый из тысяч
-            // тайлов одного и того же типа пола (раньше DrawTexturedRect на каждый тайл
-            // заново собирал строку ключа кэша и лез в словарь текстур/srcRect).
             Image? texture = GetOrLoadTexture(protoId);
             Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
 
@@ -498,13 +546,36 @@ public class Renderer
             Image? texture = GetOrLoadTexture(wallProto);
             Rectangle srcRect = texture != null ? GetSourceRect(wallProto, texture, 0f) : Rectangle.Empty;
 
+            // Для неквадратных спрайтов (напр. 32×64) — рисуем в правильной пропорции,
+            // центрируя на тайле. Спрайт может выходить за границы клетки (нахлёст
+            // сверху/снизу на пол-тайла, как у высоких стен).
+            bool isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
+
             foreach (var tile in group.Value)
             {
                 var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
                 if (texture != null)
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                {
+                    if (isNonSquare)
+                    {
+                        // Масштабируем спрайт так, чтобы его ширина = tileSize,
+                        // высота сохраняется пропорционально. Центрируем на тайле.
+                        float ratio = (float)srcRect.Width / srcRect.Height;
+                        int drawW = tileSize;
+                        int drawH = Math.Max(1, (int)(tileSize / ratio));
+                        int drawX = rect.X + (rect.Width - drawW) / 2;
+                        int drawY = rect.Y + (rect.Height - drawH) / 2;
+                        g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
+                    }
+                    else
+                    {
+                        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                    }
+                }
                 else
+                {
                     g.DrawRectangle(fallbackPen, rect);
+                }
             }
         }
     }
@@ -523,6 +594,8 @@ public class Renderer
             Image? texture = GetOrLoadTexture(protoId);
             Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
 
+            bool isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
+
             foreach (var tile in group)
             {
                 // (x + 0.5 - 0.5) эквивалентно углу клетки — та же формула, что у пола
@@ -530,7 +603,19 @@ public class Renderer
 
                 if (texture != null)
                 {
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                    if (isNonSquare)
+                    {
+                        float ratio = (float)srcRect.Width / srcRect.Height;
+                        int drawW = tileSize;
+                        int drawH = Math.Max(1, (int)(tileSize / ratio));
+                        int drawX = rect.X + (rect.Width - drawW) / 2;
+                        int drawY = rect.Y + (rect.Height - drawH) / 2;
+                        g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
+                    }
+                    else
+                    {
+                        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                    }
                 }
                 else
                 {
@@ -1483,6 +1568,9 @@ public class Renderer
         ? GetDecalTintAttributes(_previewDecalColor)
         : null;
 
+        // Если noRot: true — игнорируем rotation превью
+        float previewRotation = IsPrototypeNoRotate(_previewEntityProto) ? 0f : _previewEntityRotation;
+
         DrawTexturedRect(g, _previewEntityProto, rect, tint, (gg, r) =>
         {
             Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
@@ -1492,7 +1580,7 @@ public class Renderer
             gg.FillRectangle(brush, r);
             using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
             gg.DrawRectangle(pen, r);
-        }, _previewEntityRotation);
+        }, previewRotation);
     }
 
         private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
@@ -1541,9 +1629,13 @@ public class Renderer
         foreach (var group in entities.GroupBy(e => e.Proto))
         {
             string protoId = group.Key;
+            bool noRotate = IsPrototypeNoRotate(protoId);
             foreach (var entity in group)
             {
                 var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+                // Если noRot: true — игнорируем rotation сущности
+                float rotation = noRotate ? 0f : entity.Rotation;
 
                 DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
                 {
@@ -1559,7 +1651,7 @@ public class Renderer
                         string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                         gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                     }
-                }, entity.Rotation);
+                }, rotation);
             }
         }
     }
