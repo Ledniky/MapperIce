@@ -106,8 +106,22 @@ public partial class MainForm
         switch (target)
         {
             case Room room:
+                int oldX = room.X;
+                int oldY = room.Y;
                 room.X = (int)Math.Round(newX);
                 room.Y = (int)Math.Round(newY);
+                // Сдвигаем RemovedCells вместе с комнатой, чтобы вырез оставался привязанным к ней
+                if (oldX != room.X || oldY != room.Y)
+                {
+                    int dx = room.X - oldX;
+                    int dy = room.Y - oldY;
+                    var newRemovedCells = new HashSet<(int X, int Y)>();
+                    foreach (var cell in room.RemovedCells)
+                    {
+                        newRemovedCells.Add((cell.X + dx, cell.Y + dy));
+                    }
+                    room.RemovedCells = newRemovedCells;
+                }
                 break;
             case Door door:
                 door.X = (int)Math.Round(newX);
@@ -149,8 +163,9 @@ public partial class MainForm
         {
             AddSnapshot(obj);
 
-            // При перемещении комнаты вместе с ней должны сдвигаться её двери
-            // и связанные с ними пожарные шлюзы (иначе они рассинхронизируются с новыми стенами)
+            // При перемещении комнаты вместе с ней должны сдвигаться её двери,
+            // связанные с ними пожарные шлюзы и декали внутри комнаты
+            // (иначе декали в области выреза останутся на месте)
             if (obj is Room room)
             {
                 foreach (var door in room.Doors)
@@ -161,6 +176,23 @@ public partial class MainForm
                         .FirstOrDefault(f => (int)f.X == door.X && (int)f.Y == door.Y);
                     if (firelock != null)
                         AddSnapshot(firelock);
+                }
+
+                // Перемещаем декали, находящиеся в пределах комнаты,
+                // но НЕ те, что попали в RemovedCells (вырезанную область) —
+                // они остаются на абсолютных координатах и не двигаются с комнатой
+                foreach (var decal in grid.Decals)
+                {
+                    if (decal.X >= room.X && decal.X < room.X + room.Width &&
+                        decal.Y >= room.Y && decal.Y < room.Y + room.Height)
+                    {
+                        int dx = FloorToInt(decal.X);
+                        int dy = FloorToInt(decal.Y);
+                        if (!room.RemovedCells.Contains((dx, dy)))
+                        {
+                            AddSnapshot(decal);
+                        }
+                    }
                 }
             }
         }
