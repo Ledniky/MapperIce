@@ -848,7 +848,13 @@ public class Renderer
     // 2=восток,3=запад — порядок enum Direction в Robust Toolbox). Индекс массива —
     // "четверть оборота" от нашего rotation (0=0°,1=90°,2=180°,3=270°), значение —
     // позиция этого направления в последовательности кадров стейта.
-    private static readonly int[] _quarterToDirOrder = { 0, 3, 1, 2 };
+    //
+    // 0° (юг/низ) и 180° (север/верх) уже совпадали с игрой правильно — юг/север
+    // задаются напрямую индексами 0 и 1, без переворота. А вот 90°/270° раньше указывали
+    // на противоположную сторону (запад вместо востока и наоборот) — направление отсчёта
+    // поворота у игры и у этой раскладки не совпадало именно по горизонтальной оси.
+    // Меняем местами значения для quarter=1 и quarter=3 (было 3 и 2, стало 2 и 3).
+    private static readonly int[] _quarterToDirOrder = { 0, 2, 1, 3 };
 
     /// <summary>
     /// Читает у стейта и "directions", и число кадров анимации на направление
@@ -1495,16 +1501,6 @@ public class Renderer
         }
     }
 
-    // Спрайты этих труб несимметричны относительно поворота на 180° (в отличие от
-    // GasPipeStraight/GasPipeFourway, где ошибка в повороте попросту незаметна) — при
-    // отображении сущностей, пришедших готовыми из игрового .yml (с уже сохранённым там
-    // rot), их нужно довернуть на π, чтобы совпадало с тем, как труба реально стоит.
-    // Contains, а не точное сравнение — так же ловятся варианты с суффиксом слоя
-    // (GasPipeBendAlt1/Alt2 у Waste/Distra).
-    private static bool NeedsPipeRotationCorrection(string protoId)
-    {
-        return protoId.Contains("GasPipeBend") || protoId.Contains("GasPipeTJunction");
-    }
 
     private void DrawGenericEntitiesBatch(Graphics g, List<MapEntity> entities, int tileSize, PointF viewOffset, PointF gridOffset)
     {
@@ -1513,8 +1509,6 @@ public class Renderer
         foreach (var group in entities.GroupBy(e => e.Proto))
         {
             string protoId = group.Key;
-            float rotationCorrection = NeedsPipeRotationCorrection(protoId) ? (float)Math.PI : 0f;
-
             foreach (var entity in group)
             {
                 var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
@@ -1524,7 +1518,7 @@ public class Renderer
                     using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
                     gg.FillRectangle(brush, r);
                     using var pen = new Pen(Color.Black, 1);
-                    gg.DrawRectangle(pen, r);
+                    gg.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
 
                     if (tileSize > 16)
                     {
@@ -1533,7 +1527,7 @@ public class Renderer
                         string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                         gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                     }
-                }, entity.Rotation + rotationCorrection);
+                }, entity.Rotation);
             }
         }
     }

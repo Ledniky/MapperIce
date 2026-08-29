@@ -792,41 +792,37 @@ public static class YAMLGenerator
             }
             else
             {
-                // Угловая труба (GasPipeBend) — форма несимметрична относительно поворота
-                // на 180°, поэтому ошибка тут (в отличие от прямой/четырёхсторонней трубы)
-                // сразу заметна. Добавляем +π к каждому из 4 случаев, разворачивая спрайт
-                // на нужную сторону.
+                // Угловая труба (GasPipeBend)
                 bool hasUp = neighbors.Any(n => n.dy == -1);
                 bool hasDown = neighbors.Any(n => n.dy == 1);
                 bool hasLeft = neighbors.Any(n => n.dx == -1);
                 bool hasRight = neighbors.Any(n => n.dx == 1);
 
-                if (hasRight && hasUp) return (float)Math.PI + (float)Math.PI;
-                if (hasRight && hasDown) return (float)(Math.PI / 2) + (float)Math.PI;
-                if (hasLeft && hasUp) return (float)(-Math.PI / 2) + (float)Math.PI;
-                if (hasLeft && hasDown) return 0 + (float)Math.PI;
+                if (hasRight && hasUp) return (float)Math.PI;
+                if (hasRight && hasDown) return (float)(Math.PI / 2);
+                if (hasLeft && hasUp) return (float)(-Math.PI / 2);
+                if (hasLeft && hasDown) return 0;
             }
         }
 
         if (neighbors.Count == 3)
         {
-            // Тройник (GasPipeTJunction) — тоже несимметричен относительно 180°, тот же фикс
+            // Тройник (GasPipeTJunction)
             bool hasUp = neighbors.Any(n => n.dy == -1);
             bool hasDown = neighbors.Any(n => n.dy == 1);
             bool hasLeft = neighbors.Any(n => n.dx == -1);
             bool hasRight = neighbors.Any(n => n.dx == 1);
 
-            if (!hasUp) return 0 + (float)Math.PI;
-            if (!hasDown) return (float)Math.PI + (float)Math.PI;
-            if (!hasLeft) return (float)(Math.PI / 2) + (float)Math.PI;
-            if (!hasRight) return (float)(-Math.PI / 2) + (float)Math.PI;
+            if (!hasUp) return 0;
+            if (!hasDown) return (float)Math.PI;
+            if (!hasLeft) return (float)(Math.PI / 2);
+            if (!hasRight) return (float)(-Math.PI / 2);
         }
 
         return 0;
     }
 
 
-    
     private static void GenerateDecalsGrid(StringBuilder sb, Grid grid)
     {
         sb.AppendLine("    - type: DecalGrid");
@@ -840,7 +836,7 @@ public static class YAMLGenerator
         }
 
         // Группируем по (прототип, цвет, поворот) — именно так объединяются декали в один node
-// Группируем по (прототип, цвет, поворот, стираемость) — именно так объединяются
+        // Группируем по (прототип, цвет, поворот, стираемость) — именно так объединяются
         // декали в один node. Cleanable добавлен в ключ, т.к. это отдельное поле у node
         // в DecalGrid (как color/id/angle) — стираемые и обычные декали одного прототипа
         // и цвета нельзя объединять в один узел, иначе флаг "потеряется" для части из них
