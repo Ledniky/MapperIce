@@ -208,6 +208,10 @@ public class Renderer
                         {
                             DrawSubtractPreview(g, currentRoom, tileSize, viewOffset, grid.Position);
                         }
+                        else if (toolName == "RestoreRoom")
+                        {
+                            DrawRestorePreview(g, currentRoom, tileSize, viewOffset, grid.Position);
+                        }
                         else
                         {
                             DrawRoomFill(g, currentRoom, tileSize, viewOffset, grid.Position, 1.0f);
@@ -1240,7 +1244,7 @@ public class Renderer
         g.FillRectangle(brush, fillRect);
 
         // Рамку вырезаемой области рисуем с тем же инсетом в половину тайла,
-        // что и обводку комнат (DrawRoomLine) — иначе во время перетягивания
+        // что и обводку комнат (DrawRoomLine) — иначе во время перетаскивания
         // рамка идёт по краю тайлов, а не по их середине, и визуально не совпадает
         // с тем, как будет выглядеть итоговый контур после применения вычитания
         float half = tileSize / 2f;
@@ -1251,6 +1255,34 @@ public class Renderer
             startY + height - half);
 
         using var pen = new Pen(Color.Red, 3)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        if (lineRect.Width > 0 && lineRect.Height > 0)
+            g.DrawRectangle(pen, lineRect.X, lineRect.Y, lineRect.Width, lineRect.Height);
+    }
+
+    private void DrawRestorePreview(Graphics g, Room room, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        // Заливка восстанавливаемой области — зелёный цвет
+        float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X;
+        float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y;
+        float width = room.Width * tileSize;
+        float height = room.Height * tileSize;
+
+        var fillRect = new RectangleF(startX, startY, width, height);
+        using var brush = new SolidBrush(Color.FromArgb(90, 0, 180, 0));
+        g.FillRectangle(brush, fillRect);
+
+        // Рамка восстанавливаемой области
+        float half = tileSize / 2f;
+        var lineRect = RectangleF.FromLTRB(
+            startX + half,
+            startY + half,
+            startX + width - half,
+            startY + height - half);
+
+        using var pen = new Pen(Color.Green, 3)
         {
             DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
         };

@@ -137,6 +137,19 @@ public partial class MainForm
                 _startPoint = e.Location;
                 _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
             }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.RestoreRoom)
+            {
+                var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+                if (targetRoom != null && targetRoom.RemovedCells.Count > 0)
+                {
+                    _isDrawing = true;
+                    _startPoint = e.Location;
+                    _currentRoom = new Room { X = tileX, Y = tileY, Width = 1, Height = 1 };
+                    _restoreTargetRoom = targetRoom;
+                }
+            }
             else if (_toolManager.CurrentTool == ToolManager.Tool.Door)
             {
                 var targetRoom = _map.ActiveGrid.Rooms.FirstOrDefault(r =>
@@ -821,6 +834,29 @@ public partial class MainForm
                     }
                 }
 
+                _currentRoom = null;
+                _isDrawing = false;
+                Render();
+                return;
+            }
+
+            if (_toolManager.CurrentTool == ToolManager.Tool.RestoreRoom && _restoreTargetRoom != null)
+            {
+                if (_currentRoom.Width >= 1 && _currentRoom.Height >= 1)
+                {
+                    bool changed = RoomSubtractor.RestoreFromRoom(
+                        _restoreTargetRoom, _currentRoom.X, _currentRoom.Y, _currentRoom.Width, _currentRoom.Height);
+
+                    if (changed)
+                    {
+                        _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+                        RecalculateDecalPatterns();
+                        UpdateTileGrid();
+                        SaveState();
+                    }
+                }
+
+                _restoreTargetRoom = null;
                 _currentRoom = null;
                 _isDrawing = false;
                 Render();

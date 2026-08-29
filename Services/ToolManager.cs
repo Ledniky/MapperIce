@@ -10,6 +10,7 @@ public class ToolManager
         None,
         CreateRoom,
         SubtractRoom,
+        RestoreRoom,
         Delete,
         DeleteArea,
         DeleteSettings,

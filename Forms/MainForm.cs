@@ -43,6 +43,8 @@ public partial class MainForm : Form
     private Button _btnAirlock = null!;
     private Button _btnAirlockGlass = null!;
     private Button _btnSubtractRoom = null!;
+    private Button _btnRestoreRoom = null!;
+    private Room? _restoreTargetRoom = null;
     private Button _btnPipeDistra = null!;
     private Button _btnPipeWaste = null!;
     private Button _btnPipeNormal = null!;
@@ -329,6 +331,7 @@ public partial class MainForm : Form
     {
         _btnCreateRoom.BackColor = Color.White;
         _btnSubtractRoom.BackColor = Color.White;
+        _btnRestoreRoom.BackColor = Color.White;
         _btnDelete.BackColor = Color.White;
         _btnDeleteArea.BackColor = Color.White;
         _btnDeleteSettings.BackColor = Color.White;
@@ -368,7 +371,11 @@ public partial class MainForm : Form
                 break;
             case ToolManager.Tool.SubtractRoom:
                 _btnSubtractRoom.BackColor = Color.LightBlue;
-                _typeLabel.Text = "Вычитание: выделите область, которую вырезать из существующих комнат";
+                _typeLabel.Text = "✂️ Вычесть из комнаты";
+                break;
+            case ToolManager.Tool.RestoreRoom:
+                _btnRestoreRoom.BackColor = Color.LightBlue;
+                _typeLabel.Text = "🔨 Восстановить область";
                 break;
             case ToolManager.Tool.Delete:
                 _btnDelete.BackColor = Color.LightBlue;
@@ -432,7 +439,7 @@ public partial class MainForm : Form
 
         Cursor = tool switch
         {
-            ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom => Cursors.Cross,
+            ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom or ToolManager.Tool.RestoreRoom => Cursors.Cross,
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule => Cursors.Hand,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,

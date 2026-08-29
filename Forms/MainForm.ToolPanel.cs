@@ -59,35 +59,91 @@ public partial class MainForm
         _toolPanel.Controls.Add(_typeLabel);
         y += 25 + 2;
 
+        // КОМНАТЫ — 3 кнопки в ряд (создать, вычесть, восстановить)
+        var roomPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
         _btnCreateRoom = new Button
         {
-            Text = "🟦 Создать",
-            Location = new Point(leftMargin + 2, y),
-            Width = 149,
+            Text = "➕",
+            Location = new Point(0, 0),
+            Width = (roomPanel.Width / 3) - 1,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Arial", 9, FontStyle.Bold)
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 14)
         };
         _btnCreateRoom.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.CreateRoom);
         };
-        _toolPanel.Controls.Add(_btnCreateRoom);
+        roomPanel.Controls.Add(_btnCreateRoom);
+
+        _btnSubtractRoom = new Button
+        {
+            Text = "✂️",
+            Location = new Point((roomPanel.Width / 3) + 1, 0),
+            Width = (roomPanel.Width / 3) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 14)
+        };
+        _btnSubtractRoom.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.SubtractRoom);
+        };
+        roomPanel.Controls.Add(_btnSubtractRoom);
+
+        _btnRestoreRoom = new Button
+        {
+            Text = "🔨",
+            Location = new Point((roomPanel.Width / 3) * 2 + 2, 0),
+            Width = (roomPanel.Width / 3) - 2,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 14)
+        };
+        _btnRestoreRoom.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.RestoreRoom);
+        };
+        roomPanel.Controls.Add(_btnRestoreRoom);
 
         _btnRoomSettings = new Button
         {
             Text = "⚙",
-            Location = new Point(leftMargin + 151 + 2, y),
-            Width = contentWidth - 155,
+            Location = new Point(roomPanel.Width - 42, 0),
+            Width = 40,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Segoe UI", 12)
         };
         _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
-        _toolPanel.Controls.Add(_btnRoomSettings);
+        roomPanel.Controls.Add(_btnRoomSettings);
+
+        roomPanel.Resize += (s, e) =>
+        {
+            int bw = roomPanel.Width / 3;
+            _btnCreateRoom.Width = bw - 1;
+            _btnSubtractRoom.Location = new Point(bw + 1, 0);
+            _btnSubtractRoom.Width = bw - 1;
+            _btnRestoreRoom.Location = new Point(bw * 2 + 2, 0);
+            _btnRestoreRoom.Width = bw - 2;
+            _btnRoomSettings.Location = new Point(roomPanel.Width - 42, 0);
+        };
+
+        _toolPanel.Controls.Add(roomPanel);
         y += 40 + 2;
 
         // ДВЕРИ
@@ -146,26 +202,6 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(doorPanel);
-        y += 40 + 2;
-
-
-        // ВЫЧИТАНИЕ КОМНАТ
-        _btnSubtractRoom = new Button
-        {
-            Text = "✂️ Вычесть комнату",
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Arial", 9, FontStyle.Bold)
-        };
-        _btnSubtractRoom.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.SubtractRoom);
-        };
-        _toolPanel.Controls.Add(_btnSubtractRoom);
         y += 40 + 2;
 
         // ТРУБЫ

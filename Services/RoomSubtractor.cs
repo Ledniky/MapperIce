@@ -173,6 +173,41 @@ public static class RoomSubtractor
         return anyChanged;
     }
 
+    /// <summary>
+    /// "Восстановление" прямоугольной области в комнате — обратная операция к Subtract.
+    /// Клетки из заданного прямоугольника удаляются из RemovedCells (становятся снова
+    /// частью комнаты), а прямоугольник комнаты расширяется (ExpandBounds), чтобы
+    /// включить восстановленные клетки.
+    /// </summary>
+    public static bool RestoreFromRoom(Room room, int cutX, int cutY, int cutW, int cutH)
+    {
+        int eRight = room.X + room.Width;
+        int eBottom = room.Y + room.Height;
+        int cRight = cutX + cutW;
+        int cBottom = cutY + cutH;
+
+        int iLeft = Math.Max(room.X, cutX);
+        int iTop = Math.Max(room.Y, cutY);
+        int iRight = Math.Min(eRight, cRight);
+        int iBottom = Math.Min(eBottom, cBottom);
+
+        if (iLeft >= iRight || iTop >= iBottom)
+            return false; // пересечения нет
+
+        bool anyRestored = false;
+        for (int x = iLeft; x < iRight; x++)
+            for (int y = iTop; y < iBottom; y++)
+            {
+                if (room.RemovedCells.Remove((x, y)))
+                    anyRestored = true;
+            }
+
+        if (anyRestored)
+            ExpandBounds(room);
+
+        return anyRestored;
+    }
+
     private static void ShrinkBounds(Room room)
     {
         bool shrunk;
@@ -252,5 +287,38 @@ public static class RoomSubtractor
     {
         for (int x = room.X; x < room.X + room.Width; x++)
             room.RemovedCells.Remove((x, y));
+    }
+
+    /// <summary>
+    /// Расширяет прямоугольник комнаты, чтобы включить все клетки из RemovedCells.
+    /// Вызывается после RestoreFromRoom — когда клетки возвращены в комнату,
+    /// но прямоугольник комнаты ещё не расширен до их границ.
+    /// </summary>
+    private static void ExpandBounds(Room room)
+    {
+        if (room.RemovedCells.Count == 0) return;
+
+        int minX = room.X;
+        int maxX = room.X + room.Width - 1;
+        int minY = room.Y;
+        int maxY = room.Y + room.Height - 1;
+
+        foreach (var cell in room.RemovedCells)
+        {
+            if (cell.X < minX) minX = cell.X;
+            if (cell.X > maxX) maxX = cell.X;
+            if (cell.Y < minY) minY = cell.Y;
+            if (cell.Y > maxY) maxY = cell.Y;
+        }
+
+        int dx = minX - room.X;
+        int dy = minY - room.Y;
+        room.X += dx;
+        room.Y += dy;
+
+        int newRight = Math.Max(maxX + 1, room.X + room.Width);
+        int newBottom = Math.Max(maxY + 1, room.Y + room.Height);
+        room.Width = newRight - room.X;
+        room.Height = newBottom - room.Y;
     }
 }
