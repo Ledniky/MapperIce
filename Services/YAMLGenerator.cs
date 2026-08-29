@@ -662,6 +662,12 @@ public static class YAMLGenerator
             int lx = x % CHUNK_SIZE;
             int ly = y % CHUNK_SIZE;
 
+            // Коррекция отрицательных значений оператора % в C#
+            if (lx < 0)
+            {
+                lx += CHUNK_SIZE;
+                cx--;
+            }
             if (ly < 0)
             {
                 ly += CHUNK_SIZE;
@@ -675,7 +681,11 @@ public static class YAMLGenerator
             }
 
             int index = ly * CHUNK_SIZE + lx;
-            chunks[key][index] = tileId;
+            // Защита от выхода за границы массива
+            if (index >= 0 && index < chunks[key].Length)
+            {
+                chunks[key][index] = tileId;
+            }
         }
 
         foreach (var tile in floorTiles)
