@@ -6,13 +6,72 @@ namespace MapperIce.Models;
 
 public class ProjectData
 {
-    public List<PlacedDecal> Decals { get; set; } = new();
-    public List<RoomData> Rooms { get; set; } = new();
-    public List<GenericEntityData> Entities { get; set; } = new();
-    public List<PlacedTile> Tiles { get; set; } = new();   // ← добавлено
+    public List<GridData> Grids { get; set; } = new();
     public string? ActiveGridName { get; set; }
     public DateTime LastSaved { get; set; }
     public string? Version { get; set; } = "1.0";
+}
+
+public class GridData
+{
+    public int Uid { get; set; }
+    public string Name { get; set; } = "grid";
+    public float PositionX { get; set; }
+    public float PositionY { get; set; }
+    public List<RoomGridData> Rooms { get; set; } = new();
+    public List<GenericEntityData> Entities { get; set; } = new();
+    public List<PlacedTile> Tiles { get; set; } = new();
+    public List<PlacedDecal> Decals { get; set; } = new();
+    public List<DoorData> LooseDoors { get; set; } = new();
+    public bool IsVisible { get; set; } = true;
+    public string Color { get; set; } = "255,0,0,255";
+}
+
+public class RoomGridData
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public string RoomType { get; set; } = "General";
+    public string WallProto { get; set; } = "WallSolid";
+    public string FloorProto { get; set; } = "Plating";
+    public string DoorProto { get; set; } = "Airlock";
+    public string GlassDoorProto { get; set; } = "AirlockGlass";
+    public string? AirAlarmProto { get; set; }
+    public string? FireAlarmProto { get; set; }
+    public string FillColor { get; set; } = "100,230,230,230";
+    public string LineColor { get; set; } = "255,180,180,180";
+    public List<DoorData> Doors { get; set; } = new();
+    public List<string> RemovedCells { get; set; } = new();
+    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;
+    public DecalRuleData? AutoDecalRule { get; set; }
+    public List<ManualDecalAreaData> ManualDecalAreas { get; set; } = new();
+    public bool HasCustomDecalRule { get; set; } = false;
+    public int Priority { get; set; } = 0;
+}
+
+public class DecalRuleData
+{
+    public List<DecalLayerData> Layers { get; set; } = new();
+}
+
+public class DecalLayerData
+{
+    public string Name { get; set; } = "Слой";
+    public string? SourcePackId { get; set; }
+    public bool Enabled { get; set; } = true;
+    public string? Color { get; set; }
+    public DecalPatternMode Mode { get; set; } = DecalPatternMode.Auto;
+    public List<ManualDecalAreaData> ManualAreas { get; set; } = new();
+}
+
+public class ManualDecalAreaData
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
 }
 
 public class RoomData
@@ -40,6 +99,6 @@ public class DoorData
 
 public class GenericEntityData
 {
-    public string Type { get; set; } = "";   // имя класса, например "PipeEntity", "FireAlarmEntity"
-    public JsonElement Data { get; set; }    // все поля конкретного типа как есть
+    public string Type { get; set; } = "";
+    public JsonElement Data { get; set; }
 }

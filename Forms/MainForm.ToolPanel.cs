@@ -59,8 +59,9 @@ public partial class MainForm
         _toolPanel.Controls.Add(_typeLabel);
         y += 25 + 2;
 
-        // КОМНАТЫ — 3 кнопки в ряд (создать, вычесть, восстановить)
-        var roomPanel = new Panel
+        // === КОМНАТЫ ===
+        // Строка 1: большая кнопка "Создать комнату" + маленькая шестерёнка настроек
+        var roomRow1Panel = new Panel
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
@@ -70,80 +71,95 @@ public partial class MainForm
 
         _btnCreateRoom = new Button
         {
-            Text = "➕",
+            Text = "➕ Добавить",
             Location = new Point(0, 0),
-            Width = (roomPanel.Width / 3) - 1,
+            Width = contentWidth - 50,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 14)
+            Font = new Font("Arial", 12)
         };
         _btnCreateRoom.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.CreateRoom);
         };
-        roomPanel.Controls.Add(_btnCreateRoom);
+        roomRow1Panel.Controls.Add(_btnCreateRoom);
+
+        _btnRoomSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(contentWidth - 44, 0),
+            Width = 40,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 14),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
+        roomRow1Panel.Controls.Add(_btnRoomSettings);
+
+        roomRow1Panel.Resize += (s, e) =>
+        {
+            _btnCreateRoom.Width = roomRow1Panel.Width - 50;
+            _btnRoomSettings.Location = new Point(roomRow1Panel.Width - 44, 0);
+        };
+        _toolPanel.Controls.Add(roomRow1Panel);
+        y += 40 + 2;
+
+        // Строка 2: вычесть и восстановить
+        var roomRow2Panel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
 
         _btnSubtractRoom = new Button
         {
             Text = "✂️",
-            Location = new Point((roomPanel.Width / 3) + 1, 0),
-            Width = (roomPanel.Width / 3) - 1,
+            Location = new Point(0, 0),
+            Width = (roomRow2Panel.Width / 2) - 1,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 14)
+            Font = new Font("Arial", 14)
         };
         _btnSubtractRoom.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.SubtractRoom);
         };
-        roomPanel.Controls.Add(_btnSubtractRoom);
+        roomRow2Panel.Controls.Add(_btnSubtractRoom);
 
         _btnRestoreRoom = new Button
         {
             Text = "🔨",
-            Location = new Point((roomPanel.Width / 3) * 2 + 2, 0),
-            Width = (roomPanel.Width / 3) - 2,
+            Location = new Point((roomRow2Panel.Width / 2) + 1, 0),
+            Width = (roomRow2Panel.Width / 2) - 1,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 14)
+            Font = new Font("Arial", 14)
         };
         _btnRestoreRoom.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.RestoreRoom);
         };
-        roomPanel.Controls.Add(_btnRestoreRoom);
+        roomRow2Panel.Controls.Add(_btnRestoreRoom);
 
-        _btnRoomSettings = new Button
+        roomRow2Panel.Resize += (s, e) =>
         {
-            Text = "⚙",
-            Location = new Point(roomPanel.Width - 42, 0),
-            Width = 40,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Segoe UI", 12)
-        };
-        _btnRoomSettings.Click += (s, e) => ShowRoomTypeDialog();
-        roomPanel.Controls.Add(_btnRoomSettings);
-
-        roomPanel.Resize += (s, e) =>
-        {
-            int bw = roomPanel.Width / 3;
-            _btnCreateRoom.Width = bw - 1;
-            _btnSubtractRoom.Location = new Point(bw + 1, 0);
-            _btnSubtractRoom.Width = bw - 1;
-            _btnRestoreRoom.Location = new Point(bw * 2 + 2, 0);
-            _btnRestoreRoom.Width = bw - 2;
-            _btnRoomSettings.Location = new Point(roomPanel.Width - 42, 0);
+            int halfW = roomRow2Panel.Width / 2;
+            _btnSubtractRoom.Width = halfW - 1;
+            _btnRestoreRoom.Location = new Point(halfW + 1, 0);
+            _btnRestoreRoom.Width = halfW - 1;
         };
 
-        _toolPanel.Controls.Add(roomPanel);
+        _toolPanel.Controls.Add(roomRow2Panel);
         y += 40 + 2;
 
         // ДВЕРИ
@@ -296,7 +312,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 12)
+            Font = new Font("Arial", 12)
         };
         _btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
         pipePanel.Controls.Add(_btnPipeSettings);
@@ -349,7 +365,7 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Text = "🔊",
-            Font = new Font("Segoe UI", 14)
+            Font = new Font("Arial", 14)
         };
         _btnAirAlarm.Click += (s, e) =>
         {
@@ -366,7 +382,7 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Text = "🔥",
-            Font = new Font("Segoe UI", 14)
+            Font = new Font("Arial", 14)
         };
         _btnFireAlarm.Click += (s, e) =>
         {
@@ -382,7 +398,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 12)
+            Font = new Font("Arial", 12)
         };
         _btnAlarmSettings.Click += (s, e) => ShowAlarmSettingsDialog();
         alarmPanel.Controls.Add(_btnAlarmSettings);
@@ -449,7 +465,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 12)
+            Font = new Font("Arial", 12)
         };
         _btnMoveSettings.Click += (s, e) => ShowMoveSettingsDialog();
         movePanel.Controls.Add(_btnMoveSettings);
@@ -569,7 +585,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 14),
+            Font = new Font("Arial", 14),
             TextAlign = ContentAlignment.MiddleCenter
         };
         _btnDelete.Click += (s, e) =>
@@ -586,7 +602,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 14),
+            Font = new Font("Arial", 14),
             TextAlign = ContentAlignment.MiddleCenter
         };
         _btnDeleteArea.Click += (s, e) =>
@@ -603,7 +619,7 @@ public partial class MainForm
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 12),
+            Font = new Font("Arial", 12),
             TextAlign = ContentAlignment.MiddleCenter
         };
         _btnDeleteSettings.Click += (s, e) => ShowDeleteSettingsDialog();
