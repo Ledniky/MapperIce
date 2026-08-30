@@ -31,7 +31,7 @@ public partial class MainForm
             {
                 var grid = loadedMap.Grids[i].Clone();
                 grid.Uid = uidOffset + i;
-                grid.Name = $"Слой {grid.Uid}";
+                grid.Name = $"Слой {i + 1}";
                 // Смещение слоя рассчитывается автоматически через Grid.GetLayerOffsetY
                 grid.Position = PointF.Empty;
                 _map.Grids.Add(grid);
@@ -452,7 +452,7 @@ public partial class MainForm
 
             InitGridTabs();
 
-            ShowInfoDialog("Проект загружен", $"Слоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
+            MessageBox.Show($"Проект загружен!\nСлоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
         }
         catch (Exception ex)
         {

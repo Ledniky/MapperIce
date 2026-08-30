@@ -378,7 +378,7 @@ public partial class MainForm
         var grid = new Grid
         {
             Uid = newUid,
-            Name = $"Слой {newUid}",
+            Name = $"Слой {_map.Grids.Count + 1}",
             Position = new PointF(10, 10),
             Color = Color.FromArgb(
                 Random.Shared.Next(100, 200),
@@ -619,42 +619,6 @@ public partial class MainForm
         dlg.CancelButton = btnNo;
 
         return dlg.ShowDialog(this) == DialogResult.Yes;
-    }
-
-    private void ShowInfoDialog(string title, string message)
-    {
-        var dlg = new Form
-        {
-            Text = title,
-            StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false,
-            Size = new Size(190, 220),
-            TopMost = true
-        };
-
-        var label = new Label
-        {
-            Text = message,
-            Location = new Point(20, 20),
-            Size = new Size(340, 120),
-            Font = new Font("Arial", 10),
-            AutoSize = false
-        };
-        dlg.Controls.Add(label);
-
-        var btnOk = new Button
-        {
-            Text = "OK",
-            Location = new Point(100, 150),
-            Width = 75,
-            DialogResult = DialogResult.OK
-        };
-        dlg.Controls.Add(btnOk);
-        dlg.AcceptButton = btnOk;
-
-        dlg.Show(this);
     }
 
     // --- Initialization ---

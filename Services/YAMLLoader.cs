@@ -32,20 +32,15 @@ public class YAMLLoader
         var doc = deserializer.Deserialize<Dictionary<object, object>>(yaml);
         var map = new MapData();
 
-        if (doc.TryGetValue("grids", out var gridsObj))
-        {
-            var gridIds = ((List<object>)gridsObj).Select(Convert.ToInt32).ToList();
+        // Создаём один слой для всей карты — grids: содержит список всех grid-сущностей,
+        // а не отдельные слои. ParseTilemap/ParseEntities/ParseDecals парсят данные
+        // из всех grid-сущностей и кладут в один переданный Grid.
+        var grid = new Grid { Uid = 1, Name = "Слой 1" };
+        map.AddGrid(grid);
 
-            foreach (var gridId in gridIds)
-            {
-                var grid = new Grid { Uid = gridId, Name = $"Слой {gridId}" };
-                map.AddGrid(grid);
-
-                ParseTilemap(doc, grid);
-                ParseEntities(doc, grid);
-                ParseDecals(doc, grid);
-            }
-        }
+        ParseTilemap(doc, grid);
+        ParseEntities(doc, grid);
+        ParseDecals(doc, grid);
 
         return map;
     }
@@ -200,7 +195,19 @@ public class YAMLLoader
                         }
                         if (comp.TryGetValue("rot", out var rotObj))
                         {
-                            var rotStr = rotObj.ToString()!.Replace(" rad", "");
+                            string rotStr;
+                            if (rotObj is float f)
+                            {
+                                rotStr = f.ToString(CultureInfo.InvariantCulture);
+                            }
+                            else if (rotObj is double d)
+                            {
+                                rotStr = d.ToString(CultureInfo.InvariantCulture);
+                            }
+                            else
+                            {
+                                rotStr = rotObj.ToString()!.Replace(" rad", "").Trim();
+                            }
                             rotation = float.Parse(rotStr, CultureInfo.InvariantCulture);
                         }
                         if (comp.TryGetValue("parent", out var parentObj))
@@ -209,9 +216,6 @@ public class YAMLLoader
                         }
                     }
                 }
-
-                // Если noRot: true — сбрасываем вращение
-                rotation = ResolveRotation(proto, rotation);
 
                 // Конвертируем координаты (игровые → редакторские). ВАЖНО: у разных типов
                 // сущностей РАЗНАЯ внутренняя система координат (см. YAMLGenerator), поэтому
@@ -282,16 +286,6 @@ public class YAMLLoader
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Проверяет, запрещён ли поворот для данного прототипа (noRot: true)
-    /// или любого из его родителей.
-    /// </summary>
-    private float ResolveRotation(string protoId, float rotation)
-    {
-        if (_indexer == null) return rotation;
-        return _indexer.FindPrototypeNoRotate(protoId) ? 0f : rotation;
     }
 
     private void ParseDecals(Dictionary<object, object> doc, Grid grid)

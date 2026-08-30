@@ -55,16 +55,6 @@ public class Renderer
 
     private (int x, int y, int w, int h)? _decalAreaEditRect = null;
 
-    /// <summary>
-    /// Проверяет, запрещён ли поворот для данного прототипа (noRot: true)
-    /// или любого из его родителей.
-    /// </summary>
-    private bool IsPrototypeNoRotate(string protoId)
-    {
-        if (_indexer == null) return false;
-        return _indexer.FindPrototypeNoRotate(protoId);
-    }
-
     public void SetDecalAreaEditRect(int x, int y, int w, int h)
     {
         _decalAreaEditRect = (x, y, w, h);
@@ -890,7 +880,14 @@ public class Renderer
 
                     texture = Image.FromFile(texturePath);
                     _protoTextureDirCache[protoId] = Path.GetDirectoryName(texturePath) ?? "";
-                    _protoStateNameCache[protoId] = Path.GetFileNameWithoutExtension(texturePath);
+
+                    // Имя состояния берём из прототипа, а не из имени файла — иначе для
+                    // RSI-спрайтов (где файл называется "door.png", а состояния в
+                    // meta.json — "closed"/"open"/...) rotation не работает
+                    string? stateFromProto = _indexer?.FindPrototype(protoId)?.State;
+                    _protoStateNameCache[protoId] = !string.IsNullOrEmpty(stateFromProto)
+                        ? stateFromProto
+                        : Path.GetFileNameWithoutExtension(texturePath);
                 }
                 catch { }
             }
@@ -1042,7 +1039,18 @@ public class Renderer
             _rsiStateDirectionsCache[dir] = stateMap;
         }
 
-        return stateMap.TryGetValue(state, out var found) ? found : (1, 1);
+        if (stateMap.TryGetValue(state, out var found))
+            return found;
+
+        // Если указанное состояние не найдено, ищем любое с directions > 1 —
+        // иначе RSI-спрайты без точного совпадения state теряют rotation
+        foreach (var kv in stateMap)
+        {
+            if (kv.Value.directions > 1)
+                return kv.Value;
+        }
+
+        return (1, 1);
     }
 
     private int GetStateDirections(string protoId) => GetStateDirectionInfo(protoId).directions;
@@ -1619,9 +1627,6 @@ public class Renderer
         ? GetDecalTintAttributes(_previewDecalColor)
         : null;
 
-        // Если noRot: true — игнорируем rotation превью
-        float previewRotation = IsPrototypeNoRotate(_previewEntityProto) ? 0f : _previewEntityRotation;
-
         DrawTexturedRect(g, _previewEntityProto, rect, tint, (gg, r) =>
         {
             Color fallback = !string.IsNullOrEmpty(_previewDecalColor)
@@ -1631,7 +1636,7 @@ public class Renderer
             gg.FillRectangle(brush, r);
             using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
             gg.DrawRectangle(pen, r);
-        }, previewRotation);
+        }, _previewEntityRotation);
     }
 
     private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
@@ -1680,22 +1685,11 @@ public class Renderer
         // Сортируем по Y — сущности ниже на экране рисуются первыми
         var sortedEntities = entities.OrderBy(e => e.Y).ToList();
 
-        // Кэш прототипов с noRotate по protoId
-        var noRotateCache = new Dictionary<string, bool>();
-
         foreach (var entity in sortedEntities)
         {
             var protoId = entity.Proto ?? "";
-            if (!noRotateCache.TryGetValue(protoId, out var noRotate))
-            {
-                noRotate = IsPrototypeNoRotate(protoId);
-                noRotateCache[protoId] = noRotate;
-            }
 
             var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-
-            // Если noRot: true — игнорируем rotation сущности
-            float rotation = noRotate ? 0f : entity.Rotation;
 
             DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
             {
@@ -1711,7 +1705,7 @@ public class Renderer
                     string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                     gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                 }
-            }, rotation);
+            }, entity.Rotation);
         }
     }
 

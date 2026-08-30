@@ -354,15 +354,6 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
             proto.Components.Add(compType);
         }
 
-        // Ищем noRot (запрет вращения)
-        var noRotMatch = Regex.Match(block, @"noRot:\s*(\w+)");
-        if (noRotMatch.Success)
-        {
-            proto.NoRotate = string.Equals(noRotMatch.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase);
-        }
-
-
-
         // Ищем offset у компонента Sprite ("offset: X,Y" — тот же Vector2-формат,
         // что pos/rot у Transform). Значение задано для южной (rotation=0)
         // ориентации спрайта; поворот под текущую facing-direction сущности
@@ -375,16 +366,6 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
             proto.HasOffset = true;
         }
 
-
-        // Ищем пустой компонент Rotatable (без вложенных свойств)
-        // Пустой Rotatable = "- type: Rotatable" без параметров → прототип не вращается
-        // Непустой (с flags/direction и т.д.) — вращается как обычно
-        var emptyRotatablePattern = @"-\s*type:\s*Rotatable\b\s*(\r?\n|\s*-|\s*$)";
-        if (Regex.IsMatch(block, emptyRotatablePattern))
-        {
-            proto.NoRotate = true;
-        }
-
         return proto;
     }
 
@@ -393,39 +374,6 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         _prototypes.TryGetValue(id, out var proto);
         return proto;
     }
-
-    /// <summary>
-    /// Проверяет, запрещён ли поворот для прототипа или любого из его родителей.
-    /// Ищет noRot: true по цепочке: сам прототип → родитель → дед → ...
-    /// </summary>
-    public bool FindPrototypeNoRotate(string id)
-    {
-        return FindNoRotateRecursive(id, 0);
-    }
-
-    private bool FindNoRotateRecursive(string id, int depth)
-    {
-        if (depth > 10) return false;
-
-        var proto = FindPrototype(id);
-        if (proto == null) return false;
-
-        // СНАЧАЛА проверяем сам прототип
-        if (proto.NoRotate)
-        {
-            System.Diagnostics.Debug.WriteLine($"NoRotate найден у прототипа {id} (глубина {depth})");
-            return true;
-        }
-
-        // Если нет — идем к родителю
-        if (!string.IsNullOrEmpty(proto.Parent))
-        {
-            return FindNoRotateRecursive(proto.Parent, depth + 1);
-        }
-
-        return false;
-    }
-
 
     /// <summary>
     /// Отступ спрайта (Sprite.offset), заданный для южной (rotation=0) ориентации.
