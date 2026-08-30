@@ -1,5 +1,6 @@
 using MapperIce.Models;
 using System.Text.Json;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace MapperIce.Services;
@@ -11,16 +12,34 @@ public class PrototypeIndexer
     private string _currentRepoId = "";
     private string _rootPath = "";
     private Dictionary<string, Palette> _palettes = new();
+
+    // Кэш результатов поиска прототипов: query -> список найденных ID
+    private readonly Dictionary<string, List<string>> _searchCache = new(StringComparer.OrdinalIgnoreCase);
+    private const int MaxSearchCacheSize = 512;
+
     public event Action? OnIndexingComplete;
     public string CurrentRepoId => _currentRepoId;
 
     public string GetRootPath() => _rootPath;
+
+    /// <summary>
+    /// Очищает кэш результатов поиска. Вызывается при смене или переиндексации репозитория.
+    /// </summary>
+    public void ClearSearchCache()
+    {
+        lock (_searchCache)
+        {
+            _searchCache.Clear();
+        }
+    }
 
     public void IndexRepository(Repository repo)
     {
         _rootPath = repo.Path;
         _currentRepoId = repo.Id;
         _currentRepoPath = repo.Path;
+
+        ClearSearchCache();
 
         // Сначала пробуем быстро восстановить индекс из кэша на диске,
         // чтобы не пересканировать весь репозиторий заново при каждом запуске
@@ -44,6 +63,7 @@ public void ReindexFromDisk(Repository repo)
     _currentRepoPath = repo.Path;
     _prototypes.Clear();
     _palettes.Clear();
+    ClearSearchCache();
 
     string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
     if (!Directory.Exists(prototypesPath))
@@ -101,7 +121,7 @@ public void ReindexFromDisk(Repository repo)
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
     
-    private const int CacheFormatVersion = 7; 
+    private const int CacheFormatVersion = 8;
 
 private class CacheEnvelope
 {
@@ -172,6 +192,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         }
 
         System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов, {_palettes.Count} палитр");
+        ClearSearchCache();
         return true;
         }
         catch (Exception ex)
@@ -273,11 +294,24 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
         var proto = new Prototype { Id = id, FilePath = filePath, Type = type };
 
-        // Ищем parent
-        var parentMatch = Regex.Match(block, @"parent:\s*([^\s]+)");
+        // Ищем parent — поддерживаем и однострочный формат ("parent: X"), и YAML-список
+        // множественного наследования ("parent:\n  - X\n  - Y"). Раньше на списочном
+        // формате "\s*" перепрыгивал через перенос строки и захватывал сам "-" как id
+        // родителя — цепочка поиска спрайта/state дальше шла на несуществующий
+        // прототип "-" и обрывалась (сюда попадает MedievalBaseChair и все дочерние
+        // стулья от него — отсюда розовые заглушки вместо спрайтов).
+        // Множественное наследование берём только по первому родителю в списке —
+        // этого достаточно для поиска спрайта/state по цепочке.
+        var parentMatch = Regex.Match(block, @"parent:[ \t]*([^\s\-][^\s]*)");
         if (parentMatch.Success)
         {
             proto.Parent = parentMatch.Groups[1].Value;
+        }
+        else
+        {
+            var parentListMatch = Regex.Match(block, @"parent:\s*\r?\n\s*-\s*([^\s]+)");
+            if (parentListMatch.Success)
+                proto.Parent = parentListMatch.Groups[1].Value;
         }
 
         // Ищем sprite
@@ -326,6 +360,21 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         {
             proto.NoRotate = string.Equals(noRotMatch.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase);
         }
+
+
+
+        // Ищем offset у компонента Sprite ("offset: X,Y" — тот же Vector2-формат,
+        // что pos/rot у Transform). Значение задано для южной (rotation=0)
+        // ориентации спрайта; поворот под текущую facing-direction сущности
+        // считается в Renderer.DrawTexturedRect через GetSpriteOffset.
+        var offsetMatch = Regex.Match(block, @"offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
+        if (offsetMatch.Success)
+        {
+            proto.OffsetX = float.Parse(offsetMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+            proto.OffsetY = float.Parse(offsetMatch.Groups[2].Value, CultureInfo.InvariantCulture);
+            proto.HasOffset = true;
+        }
+
 
         // Ищем пустой компонент Rotatable (без вложенных свойств)
         // Пустой Rotatable = "- type: Rotatable" без параметров → прототип не вращается
@@ -377,6 +426,34 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         return false;
     }
 
+
+    /// <summary>
+    /// Отступ спрайта (Sprite.offset), заданный для южной (rotation=0) ориентации.
+    /// Ищет по цепочке родителей, как и FindStateRecursive — если у конкретного
+    /// прототипа offset не переопределён, наследуется от родителя.
+    /// </summary>
+    public (float x, float y) GetSpriteOffset(string id)
+    {
+        return FindOffsetRecursive(id, 0);
+    }
+
+    private (float x, float y) FindOffsetRecursive(string id, int depth)
+    {
+        if (depth > 10) return (0f, 0f);
+
+        var proto = FindPrototype(id);
+        if (proto == null) return (0f, 0f);
+
+        if (proto.HasOffset)
+            return (proto.OffsetX, proto.OffsetY);
+
+        if (!string.IsNullOrEmpty(proto.Parent))
+            return FindOffsetRecursive(proto.Parent, depth + 1);
+
+        return (0f, 0f);
+    }
+
+    
     public List<string> GetPrototypeIds()
     {
         return _prototypes.Keys.OrderBy(k => k).ToList();
@@ -392,10 +469,27 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         if (string.IsNullOrWhiteSpace(query))
             return GetPrototypeIds();
 
-        return _prototypes.Keys
+        // Проверяем кэш (case-insensitive key)
+        lock (_searchCache)
+        {
+            if (_searchCache.TryGetValue(query, out var cached))
+                return cached;
+        }
+
+        var results = _prototypes.Keys
             .Where(k => k.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Take(1000)
             .ToList();
+
+        // Сохраняем в кэш с ограничением размера (LRU через полную очистку при переполнении)
+        lock (_searchCache)
+        {
+            if (_searchCache.Count >= MaxSearchCacheSize)
+                _searchCache.Clear();
+            _searchCache[query] = results;
+        }
+
+        return results;
     }
 
     public string? GetFullTexturePath(string id)

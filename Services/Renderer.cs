@@ -392,37 +392,38 @@ public class Renderer
         finally { g.Transform = old; }
     }
 
-    /// <summary>
-    /// Рисует текстуру с сохранением пропорций кадра. Если src пропорции отличаются от rect,
-    /// текстура центрируется внутри rect без растяжения.
-    /// </summary>
+    // Стандартное разрешение одного RSI-кадра в игре: 32×32 пикселя = ровно 1 тайл.
+    // Кадр, чей реальный пиксельный размер (src, взят из GetRsiFrameSize/meta.json
+    // "size") кратен этому числу больше единицы, должен занимать несколько тайлов
+    // на экране и намеренно "наползать" на соседние клетки — не сжиматься в одну.
+    private const int RsiBaseTexelsPerTile = 32;
+
     private void DrawPreservingAspect(Graphics g, Image texture, Rectangle rect, Rectangle src)
     {
         // Пустой srcRect — ничего не рисуем (текстура не загрузилась)
         if (src.Width == 0 || src.Height == 0) return;
 
-        // Для неквадратных спрайтов (напр. 32×64) — масштабируем так, чтобы ширина = tileSize,
-        // высота сохраняется пропорционально. Спрайт центрируется на тайле и может выходить
-        // за его границы (нахлёст сверху/снизу на пол-тайла, как у высоких стен).
-        float ratio = (float)src.Width / src.Height;
-        int drawW, drawH;
-        if (src.Width == src.Height)
-        {
-            // Квадратный спрайт — рисуем во весь rect
-            drawW = rect.Width;
-            drawH = rect.Height;
-        }
-        else
-        {
-            // Неквадратный — ширина = tileSize, высота пропорциональна
-            drawW = rect.Width;
-            drawH = Math.Max(1, (int)(rect.Width / ratio));
-        }
+        // Масштаб считаем НЕЗАВИСИМО по каждой оси от реального размера кадра
+        // относительно стандартных 32×32 px/тайл — а не от соотношения сторон
+        // между собой (как было раньше). Благодаря этому:
+        // - 32×32  → 1×1 тайл (без изменений, обычный случай);
+        // - 32×64  → 1×2 тайла (как и раньше, высокие стены и т.п.);
+        // - 64×64  → 2×2 тайла (раньше ошибочно сжимался в 1×1 — отсюда были
+        //   вдвое уменьшенные лестницы и подобные крупные объекты);
+        // - 64×128 → 2×4 тайла и т.д. — любой размер экстрагируется "как есть".
+        float tilesWide = (float)src.Width / RsiBaseTexelsPerTile;
+        float tilesHigh = (float)src.Height / RsiBaseTexelsPerTile;
+
+        int drawW = Math.Max(1, (int)Math.Round(rect.Width * tilesWide));
+        int drawH = Math.Max(1, (int)Math.Round(rect.Height * tilesHigh));
+
+        // Спрайт центрируется на исходном тайле (том, куда фактически поставлен
+        // объект) и может выходить за его границы во все стороны — точно так же,
+        // как раньше это уже работало для высоких неквадратных спрайтов.
         int drawX = rect.X + (rect.Width - drawW) / 2;
         int drawY = rect.Y + (rect.Height - drawH) / 2;
         g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), src, GraphicsUnit.Pixel);
     }
-
     /// <summary>
     /// Рисует текстуру прототипа в rect (с опциональным тонированием tint), либо, если текстуры
     /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
@@ -433,6 +434,28 @@ public class Renderer
         Image? texture = GetOrLoadTexture(protoId ?? "");
         if (texture != null)
         {
+            // Sprite.offset задан для южной (rotation=0) ориентации. Поворачиваем
+            // вектор на текущий rotation сущности (юг=0°,восток=90°,север=180°,
+            // запад=270° — та же конвенция угла, что и везде в проекте), затем
+            // зеркалим Y при переводе в экранные координаты (игровой север = "вверх"
+            // на экране = отрицательный screen Y — тот же game->screen флип, что и в
+            // YAMLGenerator: posY = -Y + ...). При такой формуле "восток" на 90°
+            // визуально уводит смещение в "запад" экрана и наоборот — так и должно
+            // быть по факту наблюдаемого поведения игры.
+            var (offX, offY) = _indexer?.GetSpriteOffset(protoId ?? "") ?? (0f, 0f);
+            if (offX != 0f || offY != 0f)
+            {
+                float cosR = (float)Math.Cos(rotation);
+                float sinR = (float)Math.Sin(rotation);
+                float rotatedX = offX * cosR - offY * sinR;
+                float rotatedY = offX * sinR + offY * cosR;
+
+                int pixelDX = (int)Math.Round(rotatedX * rect.Width);
+                int pixelDY = (int)Math.Round(-rotatedY * rect.Height);
+
+                rect = new Rectangle(rect.X + pixelDX, rect.Y + pixelDY, rect.Width, rect.Height);
+            }
+
             var src = GetSourceRect(protoId!, texture, rotation);
 
             void DoDraw()
@@ -482,21 +505,18 @@ public class Renderer
         var fallbackColor = Color.FromArgb((int)(150 * opacity), 200, 200, 200);
         using var fallbackBrush = new SolidBrush(fallbackColor);
 
-        foreach (var group in tiles.GroupBy(t => t.ProtoId ?? "Plating"))
+        // Сортируем по Y — тайлы ниже на экране рисуются первыми
+        foreach (var tile in tiles.OrderBy(t => t.Y))
         {
-            string protoId = group.Key;
+            var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+            var protoId = tile.ProtoId ?? "Plating";
+            var texture = GetOrLoadTexture(protoId);
+            var srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
 
-            Image? texture = GetOrLoadTexture(protoId);
-            Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
-
-            foreach (var tile in group)
-            {
-                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
-                if (texture != null)
-                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                else
-                    g.FillRectangle(fallbackBrush, rect);
-            }
+            if (texture != null)
+                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            else
+                g.FillRectangle(fallbackBrush, rect);
         }
     }
 
@@ -504,33 +524,31 @@ public class Renderer
     {
         if (decals == null || decals.Count == 0) return;
 
-        foreach (var group in decals.GroupBy(d => d.Proto))
+        // Сортируем по Y — декали ниже на экране рисуются первыми
+        foreach (var decal in decals.OrderBy(d => d.Y))
         {
-            string protoId = group.Key;
+            string protoId = decal.Proto;
 
-            foreach (var decal in group)
+            // decal.X/Y — точная мировая координата (как у MapEntity), центрируем прямоугольник,
+            // а не рисуем от угла как тайл — отсюда offsetTiles = -0.5
+            var rect = ToRect(decal.X, decal.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+            float cx = rect.X + tileSize / 2f;
+            float cy = rect.Y + tileSize / 2f;
+
+            WithRotation(g, cx, cy, decal.Rotation, () =>
             {
-                // decal.X/Y — точная мировая координата (как у MapEntity), центрируем прямоугольник,
-                // а не рисуем от угла как тайл — отсюда offsetTiles = -0.5
-                var rect = ToRect(decal.X, decal.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-                float cx = rect.X + tileSize / 2f;
-                float cy = rect.Y + tileSize / 2f;
-
-                WithRotation(g, cx, cy, decal.Rotation, () =>
+                var tintAttrs = GetDecalTintAttributes(decal.Color);
+                DrawTexturedRect(g, protoId, rect, tintAttrs, (gg, r) =>
                 {
-                    var tintAttrs = GetDecalTintAttributes(decal.Color);
-                    DrawTexturedRect(g, protoId, rect, tintAttrs, (gg, r) =>
-                    {
-                        // Фолбэк-заглушку (нет текстуры) тоже красим в цвет декали, чтобы
-                        // цвет был виден даже без спрайта
-                        var fallbackColor = ParseDecalColor(decal.Color);
-                        using var brush = new SolidBrush(Color.FromArgb(
-                            (int)(160 * opacity),
-                            fallbackColor.R, fallbackColor.G, fallbackColor.B));
-                        gg.FillRectangle(brush, r);
-                    });
+                    // Фолбэк-заглушку (нет текстуры) тоже красим в цвет декали, чтобы
+                    // цвет был виден даже без спрайта
+                    var fallbackColor = ParseDecalColor(decal.Color);
+                    using var brush = new SolidBrush(Color.FromArgb(
+                        (int)(160 * opacity),
+                        fallbackColor.R, fallbackColor.G, fallbackColor.B));
+                    gg.FillRectangle(brush, r);
                 });
-            }
+            });
         }
     }
 
@@ -538,60 +556,48 @@ public class Renderer
     {
         if (tiles.Count == 0) return;
 
-        var grouped = new Dictionary<string, List<TileData>>();
+        // Сортируем по Y — стены ниже на экране рисуются первыми
+        var sortedTiles = tiles.OrderBy(t => t.Y).ToList();
 
-        foreach (var tile in tiles)
-        {
-            string wallProto = tile.ProtoId ?? "WallSolid";
-            if (!grouped.TryGetValue(wallProto, out var list))
-            {
-                list = new List<TileData>();
-                grouped[wallProto] = list;
-            }
-            list.Add(tile);
-        }
+        // Кэш текстур по protoId — чтобы не грузить одну и ту же текстуру много раз
+        var textureCache = new Dictionary<string, (Image? texture, Rectangle srcRect, bool isNonSquare)>();
 
         using var fallbackPen = new Pen(Color.Gray, 1);
 
-        foreach (var group in grouped)
+        foreach (var tile in sortedTiles)
         {
-            string wallProto = group.Key;
+            string wallProto = tile.ProtoId ?? "WallSolid";
 
-            // Как и с полом — текстура и srcRect одни на всю группу (стены не повёрнуты),
-            // считаем один раз, а не на каждую из тысяч клеток одной и той же стены.
-            Image? texture = GetOrLoadTexture(wallProto);
-            Rectangle srcRect = texture != null ? GetSourceRect(wallProto, texture, 0f) : Rectangle.Empty;
-
-            // Для неквадратных спрайтов (напр. 32×64) — рисуем в правильной пропорции,
-            // центрируя на тайле. Спрайт может выходить за границы клетки (нахлёст
-            // сверху/снизу на пол-тайла, как у высоких стен).
-            bool isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
-
-            foreach (var tile in group.Value)
+            if (!textureCache.TryGetValue(wallProto, out var cached))
             {
-                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
-                if (texture != null)
+                var texture = GetOrLoadTexture(wallProto);
+                var srcRect = texture != null ? GetSourceRect(wallProto, texture, 0f) : Rectangle.Empty;
+                var isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
+                cached = (texture, srcRect, isNonSquare);
+                textureCache[wallProto] = cached;
+            }
+
+            var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+
+            if (cached.texture != null)
+            {
+                if (cached.isNonSquare)
                 {
-                    if (isNonSquare)
-                    {
-                        // Масштабируем спрайт так, чтобы его ширина = tileSize,
-                        // высота сохраняется пропорционально. Центрируем на тайле.
-                        float ratio = (float)srcRect.Width / srcRect.Height;
-                        int drawW = tileSize;
-                        int drawH = Math.Max(1, (int)(tileSize / ratio));
-                        int drawX = rect.X + (rect.Width - drawW) / 2;
-                        int drawY = rect.Y + (rect.Height - drawH) / 2;
-                        g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
-                    }
-                    else
-                    {
-                        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                    }
+                    float ratio = (float)cached.srcRect.Width / cached.srcRect.Height;
+                    int drawW = tileSize;
+                    int drawH = Math.Max(1, (int)(tileSize / ratio));
+                    int drawX = rect.X + (rect.Width - drawW) / 2;
+                    int drawY = rect.Y + (rect.Height - drawH) / 2;
+                    g.DrawImage(cached.texture, new Rectangle(drawX, drawY, drawW, drawH), cached.srcRect, GraphicsUnit.Pixel);
                 }
                 else
                 {
-                    g.DrawRectangle(fallbackPen, rect);
+                    g.DrawImage(cached.texture, rect, cached.srcRect, GraphicsUnit.Pixel);
                 }
+            }
+            else
+            {
+                g.DrawRectangle(fallbackPen, rect);
             }
         }
     }
@@ -600,49 +606,52 @@ public class Renderer
     {
         if (tiles.Count == 0) return;
 
-        var grouped = tiles.GroupBy(t => t.ProtoId ?? "Airlock");
+        // Сортируем по Y — двери ниже на экране рисуются первыми
+        var sortedTiles = tiles.OrderBy(t => t.Y).ToList();
 
-        foreach (var group in grouped)
+        // Кэш текстур по protoId
+        var textureCache = new Dictionary<string, (Image? texture, Rectangle srcRect, bool isNonSquare)>();
+
+        foreach (var tile in sortedTiles)
         {
-            string protoId = group.Key;
+            string protoId = tile.ProtoId ?? "Airlock";
 
-            // Текстура и srcRect одни на всю группу дверей одного прототипа (без поворота)
-            Image? texture = GetOrLoadTexture(protoId);
-            Rectangle srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
-
-            bool isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
-
-            foreach (var tile in group)
+            if (!textureCache.TryGetValue(protoId, out var cached))
             {
-                // (x + 0.5 - 0.5) эквивалентно углу клетки — та же формула, что у пола
-                var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+                var texture = GetOrLoadTexture(protoId);
+                var srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+                var isNonSquare = texture != null && srcRect.Width > 0 && srcRect.Height > 0 && srcRect.Width != srcRect.Height;
+                cached = (texture, srcRect, isNonSquare);
+                textureCache[protoId] = cached;
+            }
 
-                if (texture != null)
+            var rect = ToRect(tile.X, tile.Y, tileSize, viewOffset, gridOffset);
+
+            if (cached.texture != null)
+            {
+                if (cached.isNonSquare)
                 {
-                    if (isNonSquare)
-                    {
-                        float ratio = (float)srcRect.Width / srcRect.Height;
-                        int drawW = tileSize;
-                        int drawH = Math.Max(1, (int)(tileSize / ratio));
-                        int drawX = rect.X + (rect.Width - drawW) / 2;
-                        int drawY = rect.Y + (rect.Height - drawH) / 2;
-                        g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
-                    }
-                    else
-                    {
-                        g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
-                    }
+                    float ratio = (float)cached.srcRect.Width / cached.srcRect.Height;
+                    int drawW = tileSize;
+                    int drawH = Math.Max(1, (int)(tileSize / ratio));
+                    int drawX = rect.X + (rect.Width - drawW) / 2;
+                    int drawY = rect.Y + (rect.Height - drawH) / 2;
+                    g.DrawImage(cached.texture, new Rectangle(drawX, drawY, drawW, drawH), cached.srcRect, GraphicsUnit.Pixel);
                 }
                 else
                 {
-                    using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
-                    g.FillRectangle(brush, rect);
-                    using var pen = new Pen(Color.DarkBlue, 2);
-                    g.DrawRectangle(pen, rect);
-                    using var font = new Font("Segoe UI", 14);
-                    using var textBrush = new SolidBrush(Color.White);
-                    g.DrawString("🚪", font, textBrush, rect.X + 4, rect.Y + 2);
+                    g.DrawImage(cached.texture, rect, cached.srcRect, GraphicsUnit.Pixel);
                 }
+            }
+            else
+            {
+                using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
+                g.FillRectangle(brush, rect);
+                using var pen = new Pen(Color.DarkBlue, 2);
+                g.DrawRectangle(pen, rect);
+                using var font = new Font("Segoe UI", 14);
+                using var textBrush = new SolidBrush(Color.White);
+                g.DrawString("🚪", font, textBrush, rect.X + 4, rect.Y + 2);
             }
         }
     }
@@ -672,45 +681,54 @@ public class Renderer
     {
         if (pipes.Count == 0) return;
 
-        var grouped = pipes.GroupBy(p => p.PipeType);
+        // Кэш цветов/пер по типу трубы
+        var penCache = new Dictionary<string, Pen>();
+        using var fallbackPen = new Pen(Color.Gray, 2);
 
-        foreach (var group in grouped)
+        // Собираем все трубы в один плоский список и сортируем по Y — трубы ниже рисуются первыми
+        var sortedPipes = pipes.OrderBy(p => p.Y).ToList();
+
+        // Для каждого типа трубы строим словарь позиций (нужен для поиска соседей)
+        var pipeDicts = new Dictionary<string, Dictionary<(float x, float y), PipeEntity>>();
+        foreach (var pipe in pipes)
         {
-            Color color = GetPipeColor(group.Key);
-            using var pen = new Pen(color, Math.Max(2, tileSize / 10));
-
-            // Словарь строится ОТДЕЛЬНО для каждого типа трубы (Distra/Waste/Normal), а не
-            // один общий на все pipes сразу — разные слои труб МОГУТ лежать в одной и той
-            // же клетке (это нормально для реальных карт), и общий ToDictionary() падал
-            // с "An item with the same key has already been added" при двух трубах
-            // разных типов в одной клетке. Заодно это чинит и логическую ошибку: раньше
-            // сюда же могла попасть труба ДРУГОГО типа из соседней клетки, и линия
-            // соединения рисовалась между двумя разными сетями труб.
-            // Индексатор вместо ToDictionary — если в данных всё-таки окажется буквальный
-            // дубль (труба дважды в одной клетке ОДНОГО типа), он просто тихо
-            // перезапишется, а не уронит рендер.
-            var pipeDict = new Dictionary<(float x, float y), PipeEntity>();
-            foreach (var p in group)
-                pipeDict[(p.X, p.Y)] = p;
-
-            foreach (var pipe in group)
+            if (!pipeDicts.TryGetValue(pipe.PipeType, out var dict))
             {
-                float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                dict = new Dictionary<(float x, float y), PipeEntity>();
+                pipeDicts[pipe.PipeType] = dict;
+            }
+            dict[(pipe.X, pipe.Y)] = pipe;
+        }
 
-                var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-                foreach (var (dx, dy) in directions)
+        foreach (var pipe in sortedPipes)
+        {
+            if (!penCache.TryGetValue(pipe.PipeType, out var pen))
+            {
+                pen?.Dispose();
+                var color = GetPipeColor(pipe.PipeType);
+                pen = new Pen(color, Math.Max(2, tileSize / 10));
+                penCache[pipe.PipeType] = pen;
+            }
+
+            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            var pipeDict = pipeDicts[pipe.PipeType];
+            var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+            foreach (var (dx, dy) in directions)
+            {
+                var key = (pipe.X + dx, pipe.Y + dy);
+                if (pipeDict.ContainsKey(key))
                 {
-                    var key = (pipe.X + dx, pipe.Y + dy);
-                    if (pipeDict.ContainsKey(key))
-                    {
-                        float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                        float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-                        g.DrawLine(pen, cx, cy, nx, ny);
-                    }
+                    float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                    float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                    g.DrawLine(pen, cx, cy, nx, ny);
                 }
             }
         }
+
+        foreach (var p in penCache.Values)
+            p?.Dispose();
     }
 
     private void DrawPipeDotsBatch(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
@@ -719,22 +737,35 @@ public class Renderer
 
         float dotSize = Math.Max(4, tileSize / 6);
 
-        var grouped = pipes.GroupBy(p => p.PipeType);
+        // Сортируем по Y — трубы ниже на экране рисуются первыми
+        var sortedPipes = pipes.OrderBy(p => p.Y).ToList();
 
-        foreach (var group in grouped)
+        // Кэш кистей по типу трубы
+        var brushCache = new Dictionary<string, (SolidBrush brush, Pen pen)>();
+
+        foreach (var pipe in sortedPipes)
         {
-            Color color = GetPipeDotColor(group.Key);
-            using var brush = new SolidBrush(color);
-            using var borderPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1);
-
-            foreach (var pipe in group)
+            if (!brushCache.TryGetValue(pipe.PipeType, out var cached))
             {
-                float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-
-                g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
-                g.DrawEllipse(borderPen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
+                var color = GetPipeDotColor(pipe.PipeType);
+                var brush = new SolidBrush(color);
+                var borderPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1);
+                cached = (brush, borderPen);
+                brushCache[pipe.PipeType] = cached;
             }
+
+            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            g.FillEllipse(cached.brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
+            g.DrawEllipse(cached.pen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
+        }
+
+        // Освобождаем ресурсы
+        foreach (var cached in brushCache.Values)
+        {
+            cached.brush.Dispose();
+            cached.pen.Dispose();
         }
     }
 
@@ -1446,7 +1477,7 @@ public class Renderer
             bool targetVisible = IsPointVisible(connection.Target.X, connection.Target.Y, visibleRect);
             if (!sourceVisible && !targetVisible) continue;
 
-            float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;            float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            float sx = (connection.Source.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X; float sy = (connection.Source.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
             float tx = (connection.Target.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float ty = (connection.Target.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
@@ -1603,7 +1634,7 @@ public class Renderer
         }, previewRotation);
     }
 
-        private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
+    private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
     {
         if (!ShowAlarmConnections) return;
         if (alarms.Count == 0) return;
@@ -1646,33 +1677,41 @@ public class Renderer
     {
         if (entities.Count == 0) return;
 
-        foreach (var group in entities.GroupBy(e => e.Proto))
+        // Сортируем по Y — сущности ниже на экране рисуются первыми
+        var sortedEntities = entities.OrderBy(e => e.Y).ToList();
+
+        // Кэш прототипов с noRotate по protoId
+        var noRotateCache = new Dictionary<string, bool>();
+
+        foreach (var entity in sortedEntities)
         {
-            string protoId = group.Key;
-            bool noRotate = IsPrototypeNoRotate(protoId);
-            foreach (var entity in group)
+            var protoId = entity.Proto ?? "";
+            if (!noRotateCache.TryGetValue(protoId, out var noRotate))
             {
-                var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-
-                // Если noRot: true — игнорируем rotation сущности
-                float rotation = noRotate ? 0f : entity.Rotation;
-
-                DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
-                {
-                    using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
-                    gg.FillRectangle(brush, r);
-                    using var pen = new Pen(Color.Black, 1);
-                    gg.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
-
-                    if (tileSize > 16)
-                    {
-                        using var font = new Font("Segoe UI", 6);
-                        using var textBrush = new SolidBrush(Color.White);
-                        string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
-                        gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
-                    }
-                }, rotation);
+                noRotate = IsPrototypeNoRotate(protoId);
+                noRotateCache[protoId] = noRotate;
             }
+
+            var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+            // Если noRot: true — игнорируем rotation сущности
+            float rotation = noRotate ? 0f : entity.Rotation;
+
+            DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
+            {
+                using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+                gg.FillRectangle(brush, r);
+                using var pen = new Pen(Color.Black, 1);
+                gg.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
+
+                if (tileSize > 16)
+                {
+                    using var font = new Font("Segoe UI", 6);
+                    using var textBrush = new SolidBrush(Color.White);
+                    string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                    gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
+                }
+            }, rotation);
         }
     }
 
