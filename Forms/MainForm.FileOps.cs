@@ -452,7 +452,7 @@ public partial class MainForm
 
             InitGridTabs();
 
-            MessageBox.Show($"Проект загружен!\nСлоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
+            ShowInfoDialog("Проект загружен", $"Слоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
         }
         catch (Exception ex)
         {

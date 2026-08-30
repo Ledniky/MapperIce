@@ -186,25 +186,33 @@ public partial class MainForm
 
     private void CreateTabForGrid(Grid grid)
     {
+        const int tabWidth = 120;
+        const int tabHeight = 55;
+        const int btnSize = 22;
+        const int bottomY = 30;
+
         var tabPanel = new Panel
         {
             Tag = grid,
-            Size = new Size(120, 55),
+            Size = new Size(tabWidth, tabHeight),
             BackColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(255, 255, 255) : Color.FromArgb(225, 225, 225),
             Margin = new Padding(0, 0, 2, 0),
             BorderStyle = BorderStyle.None
         };
 
-        // Tab name label
+        Color defaultBtnColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160);
+
+        // Tab name label (top)
         var label = new Label
         {
             Text = grid.Name,
             Location = new Point(4, 4),
-            Size = new Size(80, 20),
+            Size = new Size(tabWidth - 8, 20),
             Font = new Font("Segoe UI", 9),
             AutoSize = false,
             BackColor = Color.Transparent,
-            ForeColor = grid.Uid == _map.ActiveGridUid ? Color.Black : Color.FromArgb(60, 60, 60)
+            ForeColor = grid.Uid == _map.ActiveGridUid ? Color.Black : Color.FromArgb(60, 60, 60),
+            TextAlign = ContentAlignment.MiddleCenter
         };
         tabPanel.Click += (s, e) =>
         {
@@ -223,12 +231,68 @@ public partial class MainForm
         };
         tabPanel.Controls.Add(label);
 
+        // --- Bottom row: ◀ ▶ ⚙ × (all right-aligned) ---
+        int totalBtns = 4;
+        int groupWidth = btnSize * totalBtns + 3 * 2; // 2 = gap between buttons
+        int startX = tabWidth - groupWidth - 2;
+
+        // Left arrow
+        var btnLeft = new Button
+        {
+            Text = "◀",
+            Location = new Point(startX, bottomY),
+            Size = new Size(btnSize, btnSize),
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 7, FontStyle.Bold),
+            BackColor = Color.Transparent,
+            ForeColor = defaultBtnColor,
+            Margin = Padding.Empty
+        };
+        btnLeft.MouseEnter += (s, e) => { btnLeft.BackColor = Color.FromArgb(200, 200, 200); };
+        btnLeft.MouseLeave += (s, e) => { btnLeft.BackColor = Color.Transparent; };
+        btnLeft.Click += (s, e) => MoveGridLeft(grid);
+        tabPanel.Controls.Add(btnLeft);
+
+        // Right arrow
+        var btnRight = new Button
+        {
+            Text = "▶",
+            Location = new Point(startX + btnSize + 2, bottomY),
+            Size = new Size(btnSize, btnSize),
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 7, FontStyle.Bold),
+            BackColor = Color.Transparent,
+            ForeColor = defaultBtnColor,
+            Margin = Padding.Empty
+        };
+        btnRight.MouseEnter += (s, e) => { btnRight.BackColor = Color.FromArgb(200, 200, 200); };
+        btnRight.MouseLeave += (s, e) => { btnRight.BackColor = Color.Transparent; };
+        btnRight.Click += (s, e) => MoveGridRight(grid);
+        tabPanel.Controls.Add(btnRight);
+
+        // Settings gear
+        var btnSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(startX + (btnSize + 2) * 2, bottomY),
+            Size = new Size(btnSize, btnSize),
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent,
+            ForeColor = defaultBtnColor,
+            Margin = Padding.Empty
+        };
+        btnSettings.MouseEnter += (s, e) => { btnSettings.BackColor = Color.FromArgb(200, 200, 200); };
+        btnSettings.MouseLeave += (s, e) => { btnSettings.BackColor = Color.Transparent; };
+        btnSettings.Click += (s, e) => ShowLayerSettingsDialog(grid);
+        tabPanel.Controls.Add(btnSettings);
+
         // Close button (×)
         var closeBtn = new Button
         {
             Text = "×",
-            Location = new Point(88, 2),
-            Size = new Size(28, 24),
+            Location = new Point(startX + (btnSize + 2) * 3, bottomY),
+            Size = new Size(btnSize, btnSize),
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
             BackColor = Color.Transparent,
@@ -281,7 +345,7 @@ public partial class MainForm
         };
 
         // Position tab next to the "+" button using fixed offset
-        int nextX = TAB_START_X + (_tabStrip.Controls.Count - 1) * (120 + 2); // 2 = margin
+        int nextX = TAB_START_X + (_tabStrip.Controls.Count - 1) * (tabWidth + 2); // 2 = margin
         tabPanel.Left = nextX;
         tabPanel.Top = 0;
 
@@ -334,6 +398,9 @@ public partial class MainForm
     private void RemoveGridTab(int uid)
     {
         if (_map.Grids.Count <= 1) return;
+
+        var grid = _map.Grids.First(g => g.Uid == uid);
+        if (!ShowConfirmDialog($"Удалить слой «{grid.Name}»?")) return;
 
         _map.RemoveGrid(uid);
         RefreshTabStrip();
@@ -446,6 +513,148 @@ public partial class MainForm
         var uid = _contextMenuGrid.Uid;
         _contextMenuGrid = null;
         RemoveGridTab(uid);
+    }
+
+    // --- Initialization ---
+
+    private void MoveGridLeft(Grid grid)
+    {
+        var idx = _map.Grids.IndexOf(grid);
+        if (idx <= 0) return;
+
+        (_map.Grids[idx - 1], _map.Grids[idx]) = (_map.Grids[idx], _map.Grids[idx - 1]);
+        RefreshTabStrip();
+        Render();
+    }
+
+    private void MoveGridRight(Grid grid)
+    {
+        var idx = _map.Grids.IndexOf(grid);
+        if (idx < 0 || idx >= _map.Grids.Count - 1) return;
+
+        (_map.Grids[idx], _map.Grids[idx + 1]) = (_map.Grids[idx + 1], _map.Grids[idx]);
+        RefreshTabStrip();
+        Render();
+    }
+
+    private void ShowLayerSettingsDialog(Grid grid)
+    {
+        // TODO: реализовать настройки слоя
+        var dlg = new Form
+        {
+            Text = "Настройки слоя",
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            Size = new Size(280, 100),
+            TopMost = true
+        };
+
+        var label = new Label
+        {
+            Text = $"Настройки слоя: {grid.Name}",
+            Location = new Point(5, 5),
+            Size = new Size(250, 20),
+            Font = new Font("Segoe UI", 10)
+        };
+        dlg.Controls.Add(label);
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(100, 25),
+            Width = 75,
+            DialogResult = DialogResult.OK
+        };
+        dlg.Controls.Add(btnOk);
+        dlg.AcceptButton = btnOk;
+
+        dlg.Show(this);
+    }
+
+    private bool ShowConfirmDialog(string message)
+    {
+        var dlg = new Form
+        {
+            Text = "Подтверждение",
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            Size = new Size(280, 110),
+            TopMost = true
+        };
+
+        var label = new Label
+        {
+            Text = message,
+            Location = new Point(15, 12),
+            Size = new Size(250, 30),
+            Font = new Font("Segoe UI", 10)
+        };
+        dlg.Controls.Add(label);
+
+        var btnYes = new Button
+        {
+            Text = "Да",
+            Location = new Point(70, 50),
+            Width = 65,
+            DialogResult = DialogResult.Yes,
+            Font = new Font("Segoe UI", 9)
+        };
+        dlg.Controls.Add(btnYes);
+
+        var btnNo = new Button
+        {
+            Text = "Нет",
+            Location = new Point(145, 50),
+            Width = 65,
+            DialogResult = DialogResult.No,
+            Font = new Font("Segoe UI", 9)
+        };
+        dlg.Controls.Add(btnNo);
+
+        dlg.AcceptButton = btnYes;
+        dlg.CancelButton = btnNo;
+
+        return dlg.ShowDialog(this) == DialogResult.Yes;
+    }
+
+    private void ShowInfoDialog(string title, string message)
+    {
+        var dlg = new Form
+        {
+            Text = title,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            Size = new Size(190, 220),
+            TopMost = true
+        };
+
+        var label = new Label
+        {
+            Text = message,
+            Location = new Point(20, 20),
+            Size = new Size(340, 120),
+            Font = new Font("Arial", 10),
+            AutoSize = false
+        };
+        dlg.Controls.Add(label);
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(100, 150),
+            Width = 75,
+            DialogResult = DialogResult.OK
+        };
+        dlg.Controls.Add(btnOk);
+        dlg.AcceptButton = btnOk;
+
+        dlg.Show(this);
     }
 
     // --- Initialization ---
