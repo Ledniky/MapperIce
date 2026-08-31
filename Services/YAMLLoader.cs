@@ -10,9 +10,15 @@ namespace MapperIce.Services;
 public class YAMLLoader
 {
     private readonly PrototypeIndexer? _indexer;
+    private readonly DrawDepthManager _drawDepthManager = new();
 
     public YAMLLoader() { }
     public YAMLLoader(PrototypeIndexer indexer) => _indexer = indexer;
+    public YAMLLoader(PrototypeIndexer indexer, DrawDepthManager drawDepthManager)
+    {
+        _indexer = indexer;
+        _drawDepthManager = drawDepthManager;
+    }
 
     public MapData LoadFromFile(string path)
     {
@@ -275,14 +281,26 @@ public class YAMLLoader
                 }
                 else
                 {
-                    grid.Entities.Add(new MapEntity
+                    var mapEntity = new MapEntity
                     {
                         Proto = proto,
                         X = genericX,
                         Y = genericY,
                         Rotation = rotation,
                         ParentGridUid = parent
-                    });
+                    };
+
+                    // Разрешаем drawdepth из прототипа (с рекурсивным поиском по родителям)
+                    if (_indexer != null)
+                    {
+                        var drawDepthName = _indexer.GetDrawDepth(proto);
+                        if (!string.IsNullOrEmpty(drawDepthName))
+                        {
+                            mapEntity.DrawDepthOffset = _drawDepthManager.GetOffset(drawDepthName);
+                        }
+                    }
+
+                    grid.Entities.Add(mapEntity);
                 }
             }
         }

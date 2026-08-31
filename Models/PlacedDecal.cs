@@ -19,4 +19,10 @@ public class PlacedDecal
     // и перестроить именно их при пересчёте, не трогая ручные декали с левой панели
     public int? PatternOwnerId { get; set; } = null;
     public int PatternLayerIndex { get; set; } = 0;
+
+    /// <summary>
+    /// Разрешённый offset drawdepth (рассчитывается при загрузке карты).
+    /// Чем меньше — тем ниже декаль на экране.
+    /// </summary>
+    public int DrawDepthOffset { get; set; } = 0;
 }

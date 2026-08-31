@@ -10,5 +10,9 @@ public class MapEntity
     public float Y { get; set; }                 // Координата Y в тайлах (с дробной частью)
     public int? ParentGridUid { get; set; }      // К какому гриду привязан (если null - к карте)
     public float Rotation { get; set; } = 0;     // Угол поворота в радианах
-
+    /// <summary>
+    /// Разрешённый offset drawdepth (рассчитывается при загрузке карты).
+    /// Чем меньше — тем ниже сущность на экране.
+    /// </summary>
+    public int DrawDepthOffset { get; set; } = 0;
 }

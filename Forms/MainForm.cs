@@ -117,6 +117,7 @@ public partial class MainForm : Form
     private List<MoveSnapshotItem> _moveSnapshot = new();
     private string _decalColor = "#FFFFFFFF";
     private bool _decalCleanable = false;
+    private readonly DrawDepthManager _drawDepthManager = new();
     // ===== Интерактивное редактирование ручной области декалей на канвасе =====
     private ManualDecalArea? _editingDecalArea = null;
     private Room? _editingDecalAreaRoom = null;
@@ -166,9 +167,9 @@ public partial class MainForm : Form
         _decalPatternBuilder = new DecalPatternBuilder(_decalPackManager);
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
-        _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater);
+        _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater, _drawDepthManager);
         _tileGrid = new TileGrid();
-        _renderer = new Renderer(Width, Height, _indexer, _tileBuilder, _pipeBuilder);
+        _renderer = new Renderer(Width, Height, _indexer, _drawDepthManager, _tileBuilder, _pipeBuilder);
 
         CreateRepositoryPanel();
         CreateToolPanel();

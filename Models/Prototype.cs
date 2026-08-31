@@ -15,4 +15,8 @@ public class Prototype
     public float OffsetX { get; set; } = 0f;
     public float OffsetY { get; set; } = 0f;
     public bool HasOffset { get; set; } = false;
+    /// <summary>
+    /// Имя drawdepth из компонента Sprite (например "FloorTiles", "Walls").
+    /// </summary>
+    public string? DrawDepth { get; set; }
 }

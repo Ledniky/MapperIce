@@ -24,7 +24,7 @@ public class TileGrid
     }
 
     public void SetTile(int x, int y, TileContent content, string? protoId = null, 
-                        string? roomType = null, int roomUid = -1, string? pipeType = null)
+                        string? roomType = null, int roomUid = -1, string? pipeType = null, int drawDepthOffset = 0)
     {
         if (content == TileContent.Empty)
         {
@@ -40,7 +40,8 @@ public class TileGrid
                 ProtoId = protoId,
                 RoomType = roomType,
                 RoomUid = roomUid,
-                PipeType = pipeType
+                PipeType = pipeType,
+                DrawDepthOffset = drawDepthOffset
             };
             _tiles[(x, y)] = tile;
         }

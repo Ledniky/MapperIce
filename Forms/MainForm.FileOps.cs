@@ -19,7 +19,7 @@ public partial class MainForm
 
         try
         {
-            var loader = new YAMLLoader(_indexer);
+            var loader = new YAMLLoader(_indexer, _drawDepthManager);
             var loadedMap = loader.LoadFromFile(dialog.FileName);
             
             // Определяем смещение UID — все загруженные слои получат новые UID

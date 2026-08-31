@@ -24,6 +24,12 @@ public class TileData
     public bool HasFloorUnder { get; set; } = false;
     public string? FloorProtoUnder { get; set; } = null;
     
+    /// <summary>
+    /// Разрешённый offset drawdepth (рассчитывается при загрузке карты).
+    /// Чем меньше — тем ниже объект на экране.
+    /// </summary>
+    public int DrawDepthOffset { get; set; } = 0;
+    
     public bool IsWall => Content == TileContent.Wall;
     public bool IsFloor => Content == TileContent.Floor;
     public bool IsDoor => Content == TileContent.Door;
@@ -42,7 +48,8 @@ public class TileData
             RoomUid = RoomUid,
             PipeType = PipeType,
             HasFloorUnder = HasFloorUnder,
-            FloorProtoUnder = FloorProtoUnder
+            FloorProtoUnder = FloorProtoUnder,
+            DrawDepthOffset = DrawDepthOffset
         };
     }
 }

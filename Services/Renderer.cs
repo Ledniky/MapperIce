@@ -10,6 +10,7 @@ public class Renderer
     private Bitmap _buffer;
     private readonly object _lock = new();
     private readonly PrototypeIndexer? _indexer;
+    private readonly DrawDepthManager _drawDepthManager;
     private readonly TileBuilder _tileBuilder;
     private readonly PipeBuilder _pipeBuilder;
     private readonly string _rootPath = "";
@@ -82,10 +83,11 @@ public class Renderer
         _selection = selection;
     }
 
-    public Renderer(int width, int height, PrototypeIndexer? indexer, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
+    public Renderer(int width, int height, PrototypeIndexer? indexer, DrawDepthManager? drawDepthManager, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
     {
         _buffer = new Bitmap(Math.Max(1, width), Math.Max(1, height));
         _indexer = indexer;
+        _drawDepthManager = drawDepthManager ?? new DrawDepthManager();
         _tileBuilder = tileBuilder;
         _pipeBuilder = pipeBuilder;
         if (_indexer != null)
@@ -175,44 +177,8 @@ public class Renderer
 
                 DrawGrid(g, tileSize, viewOffset, gridOffset, opacity);
 
-                DrawFloorTilesBatch(g, floorTiles, tileSize, viewOffset, gridOffset, opacity);
-
-                var floorUnderDoors = doorTiles
-                    .Where(t => t.HasFloorUnder && !string.IsNullOrEmpty(t.FloorProtoUnder))
-                    .Select(t => new TileData
-                    {
-                        X = t.X,
-                        Y = t.Y,
-                        Content = TileContent.Floor,
-                        ProtoId = t.FloorProtoUnder ?? "Plating"
-                    })
-                    .ToList();
-                DrawFloorTilesBatch(g, floorUnderDoors, tileSize, viewOffset, gridOffset, opacity);
-
-                var visibleDecals = grid.Decals
-                    .Where(d => IsPointVisible(d.X, d.Y, visibleRect))
-                    .OrderBy(d => d.Y)
-                    .ToList();
-                DrawDecalsBatch(g, visibleDecals, tileSize, viewOffset, gridOffset, opacity);
-
-                DrawWallTilesBatch(g, wallTiles, tileGrid, tileSize, viewOffset, gridOffset, opacity);
-
-                DrawDoorTilesBatch(g, doorTiles, tileSize, viewOffset, gridOffset);
-
-                var firelocks = grid.Entities.OfType<FirelockEntity>()
-                    .Where(f => IsPointVisible(f.X, f.Y, visibleRect))
-                    .OrderBy(f => f.Y)
-                    .ToList();
-                DrawFirelocksBatch(g, firelocks, tileSize, viewOffset, gridOffset);
-
-                var genericEntities = grid.Entities
-                    .Where(e => e is not PipeEntity && e is not FirelockEntity &&
-                                e is not AirAlarmEntity && e is not FireAlarmEntity)
-                    .Where(e => IsPointVisible(e.X, e.Y, visibleRect))
-                    .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
-                    .OrderBy(e => e.Y)
-                    .ToList();
-                DrawGenericEntitiesBatch(g, genericEntities, tileSize, viewOffset, gridOffset);
+                // Объединённый рендеринг: все элементы сортируются по Y + DrawDepthOffset
+                DrawRenderLayer(g, tileGrid, grid, tileSize, viewOffset, gridOffset, opacity, visibleRect);
 
                 if (!HideRoomOverlay)
                 {
@@ -843,6 +809,270 @@ public class Renderer
             float cy = (pos.y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
             g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
         }
+    }
+
+    #endregion
+
+    #region Объединённый рендеринг по DrawDepth
+
+    private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
+    {
+        var renderQueue = new List<(double WorldY, int DrawDepthOffset, Action draw)>();
+
+        // Пол
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Floor))
+        {
+            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
+            int dd = tile.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "Plating");
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
+            var t = tile;
+            renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
+        }
+
+        // Пол под дверями
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+        {
+            if (tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))
+            {
+                int dd = 0;
+                if (_indexer != null)
+                {
+                    var ddName = _indexer.GetDrawDepth(tile.FloorProtoUnder);
+                    if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+                }
+                if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
+                var t = tile;
+                renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
+            }
+        }
+
+        // Стены
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
+        {
+            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
+            int dd = tile.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "WallSolid");
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("Walls");
+            var t = tile;
+            renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
+        }
+
+        // Двери
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+        {
+            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
+            int dd = tile.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "Airlock");
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("Doors");
+            var t = tile;
+            renderQueue.Add((t.Y, dd, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
+        }
+
+        // Декали
+        foreach (var decal in grid.Decals)
+        {
+            if (!IsPointVisible(decal.X, decal.Y, visibleRect)) continue;
+            int dd = decal.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(decal.Proto);
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            var d = decal;
+            renderQueue.Add((d.Y, dd, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
+        }
+
+        // Огнешлюзы
+        foreach (var firelock in grid.Entities.OfType<FirelockEntity>())
+        {
+            if (!IsPointVisible(firelock.X, firelock.Y, visibleRect)) continue;
+            int dd = firelock.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(firelock.Proto);
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            var f = firelock;
+            renderQueue.Add((f.Y, dd, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Generic entities (без труб, огнешлюзов, сигнализаций)
+        foreach (var entity in grid.Entities)
+        {
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity) continue;
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            var e = entity;
+            renderQueue.Add((e.Y, e.DrawDepthOffset, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Сортируем: сначала по Y (дальние на экране первыми), затем по DrawDepthOffset
+renderQueue.Sort((a, b) =>
+{
+    int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
+    if (ddComp != 0) return ddComp;
+    return a.WorldY.CompareTo(b.WorldY);
+});
+
+        foreach (var item in renderQueue)
+        {
+            item.draw();
+        }
+    }
+
+    private void DrawSingleTile(Graphics g, float worldX, float worldY, string protoId, int tileSize, PointF viewOffset, PointF gridOffset, bool isFloor, float opacity)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset);
+        var texture = GetOrLoadTexture(protoId);
+        var srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+
+        if (texture != null)
+        {
+            if (isFloor)
+            {
+                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            }
+            else
+            {
+                if (srcRect.Width != srcRect.Height && srcRect.Width > 0 && srcRect.Height > 0)
+                {
+                    float ratio = (float)srcRect.Width / srcRect.Height;
+                    int drawW = tileSize;
+                    int drawH = Math.Max(1, (int)(tileSize / ratio));
+                    int drawX = rect.X + (rect.Width - drawW) / 2;
+                    int drawY = rect.Y + (rect.Height - drawH) / 2;
+                    g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
+                }
+                else
+                {
+                    g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+                }
+            }
+        }
+        else
+        {
+            if (isFloor)
+            {
+                using var brush = new SolidBrush(Color.FromArgb((int)(150 * opacity), 200, 200, 200));
+                g.FillRectangle(brush, rect);
+            }
+            else
+            {
+                using var pen = new Pen(Color.Gray, 1);
+                g.DrawRectangle(pen, rect);
+            }
+        }
+    }
+
+    private void DrawSingleDoor(Graphics g, float worldX, float worldY, string protoId, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset);
+        var texture = GetOrLoadTexture(protoId);
+        var srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+
+        if (texture != null)
+        {
+            if (srcRect.Width != srcRect.Height && srcRect.Width > 0 && srcRect.Height > 0)
+            {
+                float ratio = (float)srcRect.Width / srcRect.Height;
+                int drawW = tileSize;
+                int drawH = Math.Max(1, (int)(tileSize / ratio));
+                int drawX = rect.X + (rect.Width - drawW) / 2;
+                int drawY = rect.Y + (rect.Height - drawH) / 2;
+                g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), srcRect, GraphicsUnit.Pixel);
+            }
+            else
+            {
+                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            }
+        }
+        else
+        {
+            using var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255));
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.DarkBlue, 2);
+            g.DrawRectangle(pen, rect);
+            using var font = new Font("Segoe UI", 14);
+            using var textBrush = new SolidBrush(Color.White);
+            g.DrawString("🚪", font, textBrush, rect.X + 4, rect.Y + 2);
+        }
+    }
+
+    private void DrawSingleDecal(Graphics g, PlacedDecal decal, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        var rect = ToRect(decal.X, decal.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+        float cx = rect.X + tileSize / 2f;
+        float cy = rect.Y + tileSize / 2f;
+
+        WithRotation(g, cx, cy, decal.Rotation, () =>
+        {
+            var tintAttrs = GetDecalTintAttributes(decal.Color);
+            DrawTexturedRect(g, decal.Proto, rect, tintAttrs, (gg, r) =>
+            {
+                var fallbackColor = ParseDecalColor(decal.Color);
+                using var brush = new SolidBrush(Color.FromArgb(
+                    (int)(160 * opacity),
+                    fallbackColor.R, fallbackColor.G, fallbackColor.B));
+                gg.FillRectangle(brush, r);
+            });
+        });
+    }
+
+    private void DrawSingleFirelock(Graphics g, FirelockEntity firelock, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(firelock.X, firelock.Y, tileSize, viewOffset, gridOffset);
+        DrawTexturedRect(g, firelock.Proto, rect, null, (gg, r) =>
+        {
+            Color color = firelock.IsGlass ? Color.FromArgb(150, 100, 200, 255) : Color.FromArgb(200, 200, 100, 100);
+            using var brush = new SolidBrush(color);
+            gg.FillRectangle(brush, r);
+            using var pen = new Pen(Color.Black, 1);
+            gg.DrawRectangle(pen, r);
+
+            using var font = new Font("Segoe UI", tileSize / 3, FontStyle.Bold);
+            using var textBrush = new SolidBrush(Color.White);
+            gg.DrawString("🔥", font, textBrush, r.X + tileSize / 4, r.Y + tileSize / 4);
+        });
+    }
+
+    private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        if (_indexer != null)
+        {
+            var proto = _indexer.FindPrototype(protoId);
+            if (proto?.IsStructure == true && _indexer.GetStateDirections(protoId) < 4)
+                rotation = 0f;
+        }
+
+        DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
+        {
+            using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+            gg.FillRectangle(brush, r);
+            using var pen = new Pen(Color.Black, 1);
+            gg.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
+
+            if (tileSize > 16)
+            {
+                using var font = new Font("Segoe UI", 6);
+                using var textBrush = new SolidBrush(Color.White);
+                string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
+            }
+        }, rotation);
     }
 
     #endregion

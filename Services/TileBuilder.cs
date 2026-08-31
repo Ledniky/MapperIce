@@ -7,6 +7,7 @@ public class TileBuilder
 {
     private readonly RoomTypeManager _roomTypeManager;
     private readonly DoorUpdater _doorUpdater;
+    private readonly DrawDepthManager _drawDepthManager;
     
     private static readonly Dictionary<string, int> _wallPriority = new()
     {
@@ -14,10 +15,11 @@ public class TileBuilder
         { "WallReinforced", 1 },
     };
 
-    public TileBuilder(RoomTypeManager roomTypeManager, DoorUpdater doorUpdater)
+    public TileBuilder(RoomTypeManager roomTypeManager, DoorUpdater doorUpdater, DrawDepthManager? drawDepthManager = null)
     {
         _roomTypeManager = roomTypeManager;
         _doorUpdater = doorUpdater;
+        _drawDepthManager = drawDepthManager ?? new DrawDepthManager();
     }
 
     private int GetPriority(string wall) => _wallPriority.GetValueOrDefault(wall, 2);

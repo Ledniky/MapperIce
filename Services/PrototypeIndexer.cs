@@ -572,6 +572,34 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         return results;
     }
 
+    /// <summary>
+    /// Рекурсивно ищет drawdepth по цепочке родителей.
+    /// Если у прототипа drawdepth не задан — ищет у родителя.
+    /// </summary>
+    private string? FindDrawDepthRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+
+        if (!string.IsNullOrEmpty(proto.DrawDepth))
+            return proto.DrawDepth;
+
+        if (!string.IsNullOrEmpty(proto.Parent))
+            return FindDrawDepthRecursive(proto.Parent, depth + 1);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Получает drawdepth для прототипа, рекурсивно ища по цепочке родителей.
+    /// </summary>
+    public string? GetDrawDepth(string protoId)
+    {
+        return FindDrawDepthRecursive(protoId, 0);
+    }
+
     public string? GetFullTexturePath(string id)
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;
