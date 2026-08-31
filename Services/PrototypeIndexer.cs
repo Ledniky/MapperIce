@@ -100,6 +100,7 @@ public void ReindexFromDisk(Repository repo)
         catch { }
     }
 
+    CheckAllStructures();
     SaveCache(repo.Id);
     OnIndexingComplete?.Invoke();
 }
@@ -121,7 +122,7 @@ public void ReindexFromDisk(Repository repo)
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
     
-    private const int CacheFormatVersion = 8;
+    private const int CacheFormatVersion = 14;
 
 private class CacheEnvelope
 {
@@ -294,24 +295,55 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
         var proto = new Prototype { Id = id, FilePath = filePath, Type = type };
 
-        // Ищем parent — поддерживаем и однострочный формат ("parent: X"), и YAML-список
-        // множественного наследования ("parent:\n  - X\n  - Y"). Раньше на списочном
-        // формате "\s*" перепрыгивал через перенос строки и захватывал сам "-" как id
-        // родителя — цепочка поиска спрайта/state дальше шла на несуществующий
-        // прототип "-" и обрывалась (сюда попадает MedievalBaseChair и все дочерние
-        // стулья от него — отсюда розовые заглушки вместо спрайтов).
-        // Множественное наследование берём только по первому родителю в списке —
-        // этого достаточно для поиска спрайта/state по цепочке.
-        var parentMatch = Regex.Match(block, @"parent:[ \t]*([^\s\-][^\s]*)");
-        if (parentMatch.Success)
+        // Ищем parent — поддерживаем:
+        // 1. Однострочный: "parent: X"
+        // 2. Массив в строке: "parent: [Parent1, Parent2]"
+        // 3. Множественный список: "parent:\n  - X\n  - Y"
+        // Собираем ВСЕХ родителей для проверки на BaseStructure.
+        
+        // Сначала проверяем формат с квадратными скобками: parent: [A, B, C]
+        var arrayParentMatch = Regex.Match(block, @"parent:\s*\[\s*([^\]]+)\]");
+        if (arrayParentMatch.Success)
         {
-            proto.Parent = parentMatch.Groups[1].Value;
+            var parents = arrayParentMatch.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var p in parents)
+            {
+                if (!string.IsNullOrEmpty(p))
+                {
+                    proto.Parents.Add(p);
+                }
+            }
+            if (proto.Parents.Count > 0)
+                proto.Parent = proto.Parents[0];
         }
         else
         {
-            var parentListMatch = Regex.Match(block, @"parent:\s*\r?\n\s*-\s*([^\s]+)");
-            if (parentListMatch.Success)
-                proto.Parent = parentListMatch.Groups[1].Value;
+            // Однострочный формат: parent: X
+            var parentMatch = Regex.Match(block, @"parent:[ \t]*([^\s\[\-][^\s\[\]]*)");
+            if (parentMatch.Success)
+            {
+                proto.Parent = parentMatch.Groups[1].Value.Trim();
+                proto.Parents.Add(proto.Parent);
+            }
+            else
+            {
+                // Списочный формат: parent:\n  - X\n  - Y — парсим все элементы под parent
+                var parentSectionMatch = Regex.Match(block, @"parent:\s*\r?\n((?:\s+-\s+[^\s]+\r?\n?)*)");
+                if (parentSectionMatch.Success)
+                {
+                    var parentList = Regex.Matches(parentSectionMatch.Groups[1].Value, @"-\s+([^\s]+)");
+                    foreach (Match m in parentList)
+                    {
+                        string parent = m.Groups[1].Value;
+                        if (!string.IsNullOrEmpty(parent))
+                        {
+                            proto.Parents.Add(parent);
+                        }
+                    }
+                    if (proto.Parents.Count > 0)
+                        proto.Parent = proto.Parents[0];
+                }
+            }
         }
 
         // Ищем sprite
@@ -376,6 +408,55 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
     }
 
     /// <summary>
+    /// Проверяет, является ли прототип структурой: ищем BaseStructure в цепочке
+    /// родителей, НО если среди родителей есть BaseStructureDynamic — это не структура.
+    /// </summary>
+    private bool CheckIsStructure(string id)
+    {
+        var visited = new HashSet<string>();
+        var stack = new List<string> { id };
+
+        while (stack.Count > 0)
+        {
+            var current = stack[stack.Count - 1];
+            stack.RemoveAt(stack.Count - 1);
+
+            if (!visited.Add(current)) continue;
+
+            var proto = FindPrototype(current);
+            if (proto == null) continue;
+
+            // Если среди прямых родителей есть BaseStructureDynamic — не структура
+            foreach (var p in proto.Parents)
+            {
+                if (p == "BaseStructureDynamic")
+                    return false;
+            }
+
+            // Если среди прямых родителей есть BaseStructure — это структура
+            if (proto.Parents.Contains("BaseStructure"))
+                return true;
+
+            // Иначе идем дальше по цепочке родителей
+            foreach (var p in proto.Parents)
+                stack.Add(p);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Второй проход после загрузки всех прототипов — устанавливает IsStructure для каждого.
+    /// </summary>
+    private void CheckAllStructures()
+    {
+        foreach (var proto in _prototypes.Values)
+        {
+            proto.IsStructure = CheckIsStructure(proto.Id);
+        }
+    }
+
+    /// <summary>
     /// Отступ спрайта (Sprite.offset), заданный для южной (rotation=0) ориентации.
     /// Ищет по цепочке родителей, как и FindStateRecursive — если у конкретного
     /// прототипа offset не переопределён, наследуется от родителя.
@@ -383,6 +464,57 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
     public (float x, float y) GetSpriteOffset(string id)
     {
         return FindOffsetRecursive(id, 0);
+    }
+
+    /// <summary>
+    /// Возвращает число направлений (directions) для иконного состояния прототипа,
+    /// прочитанное из meta.json. Ищет state и path рекурсивно по цепочке родителей.
+    /// Если meta.json нет или состояние не найдено — 1.
+    /// </summary>
+    public int GetStateDirections(string protoId)
+    {
+        string? state = FindStateRecursive(protoId, 0);
+        if (string.IsNullOrEmpty(state))
+            state = "closed";
+
+        string? path = FindPathRecursive(protoId, 0);
+        if (string.IsNullOrEmpty(path)) return 1;
+
+        path = path.Replace("/", "\\").TrimStart('\\');
+        if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(9);
+
+        string metaPath = "";
+        if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
+        {
+            metaPath = Path.Combine(_rootPath, "Resources", "Textures", path, "meta.json");
+        }
+        else
+        {
+            metaPath = Path.Combine(_rootPath, "Resources", "Textures", path + ".rsi", "meta.json");
+        }
+
+        try
+        {
+            if (!File.Exists(metaPath)) return 1;
+            var json = File.ReadAllText(metaPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("states", out var statesArr)) return 1;
+
+            foreach (var stateElem in statesArr.EnumerateArray())
+            {
+                if (!stateElem.TryGetProperty("name", out var nameEl)) continue;
+                string name = nameEl.GetString() ?? "";
+                if (name != state) continue;
+
+                if (stateElem.TryGetProperty("directions", out var dirEl))
+                    return dirEl.GetInt32();
+                return 1;
+            }
+        }
+        catch { }
+
+        return 1;
     }
 
     private (float x, float y) FindOffsetRecursive(string id, int depth)

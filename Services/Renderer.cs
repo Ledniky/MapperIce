@@ -1623,6 +1623,16 @@ public class Renderer
         float cx = rect.X + tileSize / 2f;
         float cy = rect.Y + tileSize / 2f;
 
+        // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
+        // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)
+        float previewRotation = _previewEntityRotation;
+        if (_indexer != null)
+        {
+            var proto = _indexer.FindPrototype(_previewEntityProto);
+            if (proto?.IsStructure == true && _indexer.GetStateDirections(_previewEntityProto) < 4)
+                previewRotation = 0f;
+        }
+
         ImageAttributes? tint = !string.IsNullOrEmpty(_previewDecalColor)
         ? GetDecalTintAttributes(_previewDecalColor)
         : null;
@@ -1636,7 +1646,7 @@ public class Renderer
             gg.FillRectangle(brush, r);
             using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
             gg.DrawRectangle(pen, r);
-        }, _previewEntityRotation);
+        }, previewRotation);
     }
 
     private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
@@ -1691,6 +1701,16 @@ public class Renderer
 
             var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
+            // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
+            // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)
+            float rotation = entity.Rotation;
+            if (_indexer != null)
+            {
+                var proto = _indexer.FindPrototype(protoId);
+                if (proto?.IsStructure == true && _indexer.GetStateDirections(protoId) < 4)
+                    rotation = 0f;
+            }
+
             DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
             {
                 using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
@@ -1705,7 +1725,7 @@ public class Renderer
                     string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                     gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                 }
-            }, entity.Rotation);
+            }, rotation);
         }
     }
 

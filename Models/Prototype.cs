@@ -9,7 +9,9 @@ public class Prototype
     public string? State { get; set; }
     public string FilePath { get; set; } = "";
     public string? Parent { get; set; }
+    public List<string> Parents { get; set; } = new();
     public List<string> Components { get; set; } = new();
+    public bool IsStructure { get; set; } = false;
     public float OffsetX { get; set; } = 0f;
     public float OffsetY { get; set; } = 0f;
     public bool HasOffset { get; set; } = false;
