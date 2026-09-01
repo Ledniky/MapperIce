@@ -141,7 +141,7 @@ public class RoomTypeManager
     }
 
     public void CreateCustomType(string pack, string name, string category, string wallProto, string floorProto,
-        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
+        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "")
     {
         if (_types.ContainsKey(name))
         {
@@ -158,6 +158,7 @@ public class RoomTypeManager
             FloorProto = floorProto,
             DoorProto = doorProto,
             GlassDoorProto = glassDoorProto,
+            Description = description,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -171,7 +172,7 @@ public class RoomTypeManager
     }
 
     public void EditCustomType(string oldName, string newName, string pack, string category, string wallProto,
-        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0)
+        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "")
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
@@ -193,6 +194,7 @@ public class RoomTypeManager
             FloorProto = floorProto,
             DoorProto = doorProto,
             GlassDoorProto = glassDoorProto,
+            Description = description,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority

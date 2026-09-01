@@ -20,6 +20,7 @@ public static class YAMLGenerator
             throw new ArgumentNullException(nameof(tileBuilder));
 
         var tileGrid = tileBuilder.BuildFromRooms(grid);
+        var isStatic = grid.IsStaticGrid;
 
         var sb = new StringBuilder();
 
@@ -69,69 +70,206 @@ public static class YAMLGenerator
         // ==================== ENTITIES ====================
         sb.AppendLine("entities:");
 
-        // === MAP ENTITY ===
-        sb.AppendLine("- proto: \"\"");
-        sb.AppendLine("  entities:");
-        sb.AppendLine("  - uid: 1");
-        sb.AppendLine("    components:");
-        sb.AppendLine("    - type: MetaData");
-        sb.AppendLine("      name: Map Entity");
-        sb.AppendLine("    - type: Transform");
-        sb.AppendLine("    - type: Map");
-        sb.AppendLine("      mapPaused: True");
-        sb.AppendLine("    - type: GridTree");
-        sb.AppendLine("    - type: Broadphase");
-        sb.AppendLine("    - type: OccluderTree");
-
-        // === GRID ENTITY ===
-        sb.AppendLine("  - uid: 2");
-        sb.AppendLine("    components:");
-        sb.AppendLine("    - type: MetaData");
-        sb.AppendLine("      name: grid");
-        sb.AppendLine("    - type: Transform");
-        sb.AppendLine("      pos: 0,0");
-        sb.AppendLine("      parent: 1");
-        sb.AppendLine("    - type: MapGrid");
-        sb.AppendLine("      chunks:");
-
-        var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
-        foreach (var chunk in chunks)
+        if (isStatic)
         {
-            sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
-            sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
-            sb.AppendLine($"          tiles: {chunk.Value}");
-            sb.AppendLine($"          version: 7");
-        }
+            // === СТАТИЧНЫЙ ГРИД (станция) ===
+            sb.AppendLine("- proto: \"\"");
+            sb.AppendLine("  entities:");
+            sb.AppendLine("  - uid: 1");
+            sb.AppendLine("    components:");
+            sb.AppendLine("    - type: MetaData");
+            sb.AppendLine("      name: " + (grid.Name ?? "Map Entity"));
+            sb.AppendLine("    - type: Transform");
+            sb.AppendLine("    - type: BecomesStation");
+            sb.AppendLine("      id: " + (grid.Name ?? "Station"));
+            sb.AppendLine("    - type: Map");
+            sb.AppendLine("      mapPaused: True");
+            sb.AppendLine("    - type: GridTree");
+            sb.AppendLine("    - type: Broadphase");
+            sb.AppendLine("    - type: OccluderTree");
+            sb.AppendLine("    - type: MapGrid");
+            sb.AppendLine("      chunks:");
 
-        sb.AppendLine("    - type: Broadphase");
-        sb.AppendLine("    - type: Physics");
-        sb.AppendLine("      bodyStatus: InAir");
-        sb.AppendLine("      fixedRotation: False");
-        sb.AppendLine("      bodyType: Dynamic");
-        sb.AppendLine("    - type: Fixtures");
-        sb.AppendLine("      fixtures: {}");
-        sb.AppendLine("    - type: OccluderTree");
-        sb.AppendLine("    - type: SpreaderGrid");
-        sb.AppendLine("    - type: Shuttle");
-        sb.AppendLine("      dampingModifiers:");
-        sb.AppendLine("        Cruise: 0.0075");
-        sb.AppendLine("        Dampen: 0.25");
-        sb.AppendLine("        Anchor: 2");
-        sb.AppendLine("        None: 0.25");
-        sb.AppendLine("      dampingModifier: 0.25");
-        sb.AppendLine("    - type: ImplicitRoof");
-        sb.AppendLine("    - type: FTLDrive");
-        sb.AppendLine("    - type: GridPathfinding");
-        sb.AppendLine("    - type: Gravity");
-        sb.AppendLine("      gravityShakeSound: !type:SoundPathSpecifier");
-        sb.AppendLine("        path: /Audio/Effects/alert.ogg");
-        GenerateDecalsGrid(sb, grid);
-        sb.AppendLine("    - type: GridAtmosphere");
-        sb.AppendLine("      version: 2");
-        sb.AppendLine("      data:");
-        sb.AppendLine("        chunkSize: 4");
-        sb.AppendLine("    - type: GasTileOverlay");
-        sb.AppendLine("    - type: RadiationGridResistance");
+            var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
+            foreach (var chunk in chunks)
+            {
+                sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
+                sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
+                sb.AppendLine($"          tiles: {chunk.Value}");
+                sb.AppendLine($"          version: 7");
+            }
+
+            sb.AppendLine("    - type: SpreaderGrid");
+            sb.AppendLine("    - type: GridPathfinding");
+            sb.AppendLine("    - type: Gravity");
+            sb.AppendLine("      inherent: True");
+            sb.AppendLine("      enabled: True");
+            sb.AppendLine("    - type: DecalGrid");
+            sb.AppendLine("      chunkCollection:");
+            sb.AppendLine("        version: 2");
+
+            if (grid.Decals != null && grid.Decals.Count > 0)
+            {
+                sb.AppendLine("        nodes:");
+                var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
+                foreach (var decal in grid.Decals)
+                {
+                    var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
+                    if (!byProtoColorRotation.ContainsKey(key))
+                        byProtoColorRotation[key] = new List<PlacedDecal>();
+                    byProtoColorRotation[key].Add(decal);
+                }
+                foreach (var group in byProtoColorRotation)
+                {
+                    sb.AppendLine("        - node:");
+                    if (group.Key.rotation != 0)
+                    {
+                        float exportAngle = -group.Key.rotation;
+                        float fullCircle = (float)(Math.PI * 2);
+                        exportAngle %= fullCircle;
+                        if (exportAngle < 0) exportAngle += fullCircle;
+                        string angleStr = exportAngle.ToString("0.0000000000000000").Replace(',', '.');
+                        sb.AppendLine($"            angle: {angleStr} rad");
+                    }
+                    if (group.Key.cleanable)
+                        sb.AppendLine("            cleanable: True");
+                    sb.AppendLine($"            color: '{group.Key.color}'");
+                    sb.AppendLine($"            id: {group.Key.proto}");
+                    sb.AppendLine("          decals:");
+                    int localId = 0;
+                    foreach (var decal in group.Value)
+                    {
+                        float posX = decal.X - 0.5f;
+                        float posY = -(decal.Y - 0.5f);
+                        sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
+                        localId++;
+                    }
+                }
+            }
+            else
+            {
+                sb.AppendLine("        nodes: []");
+            }
+
+            sb.AppendLine("    - type: Roof");
+            sb.AppendLine("      data:");
+            sb.AppendLine("        0,1: 0");
+            sb.AppendLine("    - type: MapAtmosphere");
+            sb.AppendLine("      space: False");
+            sb.AppendLine("      mixture:");
+            sb.AppendLine("        volume: 2500");
+            sb.AppendLine("        immutable: True");
+            sb.AppendLine("        temperature: 293.15");
+            sb.AppendLine("        moles:");
+            sb.AppendLine("          Oxygen: 21.82478");
+            sb.AppendLine("          Nitrogen: 82.10312");
+            sb.AppendLine("    - type: RadiationGridResistance");
+            sb.AppendLine("    - type: ExplosionAirtightGrid");
+            sb.AppendLine("    - type: NavMap");
+        }
+        else
+        {
+            // === ДИНАМИЧНЫЙ ГРИД (шаттл) ===
+            sb.AppendLine("- proto: \"\"");
+            sb.AppendLine("  entities:");
+            sb.AppendLine("  - uid: 1");
+            sb.AppendLine("    components:");
+            sb.AppendLine("    - type: MetaData");
+            sb.AppendLine("      name: Map Entity");
+            sb.AppendLine("    - type: Transform");
+            sb.AppendLine("    - type: Map");
+            sb.AppendLine("      mapPaused: True");
+            sb.AppendLine("    - type: GridTree");
+            sb.AppendLine("    - type: Broadphase");
+            sb.AppendLine("    - type: OccluderTree");
+            sb.AppendLine("  - uid: 2");
+            sb.AppendLine("    components:");
+            sb.AppendLine("    - type: MetaData");
+            sb.AppendLine("      name: grid");
+            sb.AppendLine("    - type: Transform");
+            sb.AppendLine("      pos: 0,0");
+            sb.AppendLine("      parent: 1");
+            sb.AppendLine("    - type: MapGrid");
+            sb.AppendLine("      chunks:");
+
+            var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
+            foreach (var chunk in chunks)
+            {
+                sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
+                sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
+                sb.AppendLine($"          tiles: {chunk.Value}");
+                sb.AppendLine($"          version: 7");
+            }
+
+            sb.AppendLine("    - type: Broadphase");
+            sb.AppendLine("    - type: Physics");
+            sb.AppendLine("      bodyStatus: InAir");
+            sb.AppendLine("      fixedRotation: False");
+            sb.AppendLine("      bodyType: Dynamic");
+            sb.AppendLine("    - type: Fixtures");
+            sb.AppendLine("      fixtures: {{}}");
+            sb.AppendLine("    - type: OccluderTree");
+            sb.AppendLine("    - type: SpreaderGrid");
+            sb.AppendLine("    - type: Shuttle");
+            sb.AppendLine("      dampingModifier: 0.25");
+            sb.AppendLine("    - type: ImplicitRoof");
+            sb.AppendLine("    - type: GridPathfinding");
+            sb.AppendLine("    - type: Gravity");
+            sb.AppendLine("      gravityShakeSound: !type:SoundPathSpecifier");
+            sb.AppendLine("        path: /Audio/Effects/alert.ogg");
+            sb.AppendLine("    - type: DecalGrid");
+            sb.AppendLine("      chunkCollection:");
+            sb.AppendLine("        version: 2");
+
+            if (grid.Decals != null && grid.Decals.Count > 0)
+            {
+                sb.AppendLine("        nodes:");
+                var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
+                foreach (var decal in grid.Decals)
+                {
+                    var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
+                    if (!byProtoColorRotation.ContainsKey(key))
+                        byProtoColorRotation[key] = new List<PlacedDecal>();
+                    byProtoColorRotation[key].Add(decal);
+                }
+                foreach (var group in byProtoColorRotation)
+                {
+                    sb.AppendLine("        - node:");
+                    if (group.Key.rotation != 0)
+                    {
+                        float exportAngle = -group.Key.rotation;
+                        float fullCircle = (float)(Math.PI * 2);
+                        exportAngle %= fullCircle;
+                        if (exportAngle < 0) exportAngle += fullCircle;
+                        string angleStr = exportAngle.ToString("0.0000000000000000").Replace(',', '.');
+                        sb.AppendLine($"            angle: {angleStr} rad");
+                    }
+                    if (group.Key.cleanable)
+                        sb.AppendLine("            cleanable: True");
+                    sb.AppendLine($"            color: '{group.Key.color}'");
+                    sb.AppendLine($"            id: {group.Key.proto}");
+                    sb.AppendLine("          decals:");
+                    int localId = 0;
+                    foreach (var decal in group.Value)
+                    {
+                        float posX = decal.X - 0.5f;
+                        float posY = -(decal.Y - 0.5f);
+                        sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
+                        localId++;
+                    }
+                }
+            }
+            else
+            {
+                sb.AppendLine("        nodes: []");
+            }
+
+            sb.AppendLine("    - type: GridAtmosphere");
+            sb.AppendLine("      version: 2");
+            sb.AppendLine("      data:");
+            sb.AppendLine("        chunkSize: 4");
+            sb.AppendLine("    - type: GasTileOverlay");
+        }
 
         int uid = 3;
 

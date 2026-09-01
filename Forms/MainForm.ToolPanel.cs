@@ -46,18 +46,66 @@ public partial class MainForm
         _toolPanel.Controls.Add(title);
         y += 35 + 2;
 
-        _typeLabel = new Label
+        // === ВЫБОР ТИПА КОМНАТЫ (ComboBox с ToolTip) ===
+        _roomTypeCombo = new ComboBox
         {
-            Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}",
             Location = new Point(leftMargin, y),
             Width = contentWidth,
             Height = 25,
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.DarkGray,
-            Font = new Font("Arial", 8)
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Arial", 9),
+            BackColor = Color.White,
+            ForeColor = Color.Black
         };
-        _toolPanel.Controls.Add(_typeLabel);
-        y += 25 + 2;
+        _roomTypeCombo.DataSource = _roomTypeManager.GetAllTypeNames().OrderBy(n => n).ToList();
+        _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+        _roomTypeCombo.SelectedIndexChanged += (s, e) =>
+        {
+            if (_roomTypeCombo.SelectedItem != null)
+            {
+                _roomTypeManager.SelectType(_roomTypeCombo.SelectedItem.ToString()!);
+                if (_currentRoom != null)
+                {
+                    _roomTypeManager.ApplyTypeToRoom(_currentRoom);
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+        };
+        _roomTypeCombo.MouseHover += (s, e) =>
+        {
+            var roomType = _roomTypeManager.GetRoomType(_roomTypeCombo.SelectedItem?.ToString());
+            if (roomType != null && !string.IsNullOrEmpty(roomType.Description))
+            {
+                _roomTypeTooltip.SetToolTip(_roomTypeCombo, roomType.Description);
+            }
+            else
+            {
+                _roomTypeTooltip.SetToolTip(_roomTypeCombo, "");
+            }
+        };
+        _roomTypeCombo.MouseLeave += (s, e) =>
+        {
+            _roomTypeTooltip.SetToolTip(_roomTypeCombo, "");
+        };
+        _toolPanel.Controls.Add(_roomTypeCombo);
+        y += 25 + 4;
+
+        // Подписываемся на изменение типа извне (например, из диалога RoomTypeDialog)
+        _roomTypeManager.OnTypeChanged += () =>
+        {
+            if (_roomTypeCombo.InvokeRequired)
+            {
+                _roomTypeCombo.Invoke(new Action(() =>
+                {
+                    _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+                }));
+            }
+            else
+            {
+                _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+            }
+        };
 
         // === КОМНАТЫ ===
         // Строка 1: большая кнопка "Создать комнату" + маленькая шестерёнка настроек
@@ -545,6 +593,39 @@ public partial class MainForm
                     _decalInheritanceForm.Show(this);
                 };
         _toolPanel.Controls.Add(_btnDecalInheritance);
+        y += 40 + 2;
+
+
+        // === НАСТРОЙКИ ПРОЕКТА ===
+        var projectSettingsPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        _btnProjectSettings = new Button
+        {
+            Text = "⚙ Настройки проекта",
+            Location = new Point(0, 0),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(10, 0, 0, 0)
+        };
+        _btnProjectSettings.Click += (s, e) => ShowProjectSettingsDialog();
+        projectSettingsPanel.Controls.Add(_btnProjectSettings);
+
+        projectSettingsPanel.Resize += (s, e) =>
+        {
+            _btnProjectSettings.Width = projectSettingsPanel.Width - 4;
+        };
+
+        _toolPanel.Controls.Add(projectSettingsPanel);
         y += 40 + 2;
 
 

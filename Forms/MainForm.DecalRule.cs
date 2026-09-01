@@ -555,7 +555,7 @@ public partial class MainForm
         _editingDecalAreaApplyCallback = onChanged;
         _toolManager.ResetTool();
         _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
-        _typeLabel.Text = "Область декалей: тащите жёлтые угловые квадраты (шаг 1 тайл). Внутри — сдвиг всей области. ESC — закрыть.";
+        // Статус удалён — тип комнаты теперь в ComboBox
         Render();
     }
 

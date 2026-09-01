@@ -44,11 +44,46 @@ public class YAMLLoader
         var grid = new Grid { Uid = 1, Name = "Слой 1" };
         map.AddGrid(grid);
 
+        // Определяем, статичный ли это грид (станция) или динамичный (шаттл)
+        grid.IsStaticGrid = DetectStaticGrid(doc);
+
         ParseTilemap(doc, grid);
         ParseEntities(doc, grid);
         ParseDecals(doc, grid);
 
         return map;
+    }
+
+    private bool DetectStaticGrid(Dictionary<object, object> doc)
+    {
+        // Статичный грид определяется по наличию BecomesStation или MapAtmosphere
+        // в любой сущности. Динамичный — по наличию MapGrid с Physics/Shuttle.
+        if (!doc.TryGetValue("entities", out var entitiesObj)) return false;
+        var entitiesList = (List<object>)entitiesObj;
+
+        foreach (var entityGroup in entitiesList)
+        {
+            var group = (Dictionary<object, object>)entityGroup;
+            if (!group.TryGetValue("entities", out var entities)) continue;
+            var entityList = (List<object>)entities;
+
+            foreach (var entityObj in entityList)
+            {
+                var entity = (Dictionary<object, object>)entityObj;
+                if (!entity.TryGetValue("components", out var compsObj)) continue;
+                var components = (List<object>)compsObj;
+
+                foreach (var compObj in components)
+                {
+                    var comp = (Dictionary<object, object>)compObj;
+                    if (!comp.TryGetValue("type", out var typeObj)) continue;
+                    var typeStr = typeObj.ToString();
+                    if (typeStr == "BecomesStation") return true;
+                    if (typeStr == "MapAtmosphere") return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void ParseTilemap(Dictionary<object, object> doc, Grid grid)

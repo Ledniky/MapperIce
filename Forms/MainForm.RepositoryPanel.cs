@@ -245,7 +245,7 @@ public partial class MainForm
             if (valid && _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 _protoToPlace = id;
-                _typeLabel.Text = $"Размещение: {_protoToPlace}  (клик — поставить)";
+                // Статус удалён — тип комнаты теперь в ComboBox
             }
         };
 

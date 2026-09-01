@@ -346,49 +346,9 @@ public partial class MainForm
                     int minY = Math.Min(_lastClickTile.Value.y, tileY);
                     int maxY = Math.Max(_lastClickTile.Value.y, tileY);
 
-                    _selectedObjects = GatherObjectsInRect(minX, minY, maxX, maxY);
-                    _lastClickTile = (tileX, tileY);
-                    _renderer.SetSelection(_selectedObjects);
-                    _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
-                    Render();
-                    return;
-                }
-
-                if (ctrlHeld)
-                {
-                    if (hit != null)
-                    {
-                        if (!_selectedObjects.Contains(hit))
-                            _selectedObjects.Add(hit);
-
-                        _lastClickTile = (tileX, tileY);
-                        _renderer.SetSelection(_selectedObjects);
-                        _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
-                        Render();
-                        return;
-                    }
-
-                    // CTRL + клик по пустому месту — начинаем протягивание рамки в АДДИТИВНОМ режиме
-                    _isBoxSelecting = true;
-                    _boxSelectAdditive = true;
-                    _boxStartScreen = e.Location;
-                    _boxEndScreen = e.Location;
-                    _lastClickTile = (tileX, tileY);
-                    Render();
-                    return;
-                }
-
-                // Без модификаторов
-                if (hit != null)
-                {
-                    if (!_selectedObjects.Contains(hit))
-                    {
-                        _selectedObjects = new List<object> { hit };
-                    }
-
-                    _lastClickTile = (tileX, tileY);
-                    _renderer.SetSelection(_selectedObjects);
-                    _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+                _selectedObjects = GatherObjectsInRect(minX, minY, maxX, maxY);
+                _renderer.SetSelection(_selectedObjects);
+                // Статус удалён — тип комнаты теперь в ComboBox
 
                     BeginMoveDrag(e.Location);
                     Render();
@@ -484,7 +444,7 @@ public partial class MainForm
             if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
-                _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (колесо — вращение, CTRL+колесо — зум)";
+                // Статус удалён — тип комнаты теперь в ComboBox
             }
 
             Render();
@@ -686,7 +646,7 @@ public partial class MainForm
                 {
                     _selectedObjects.Clear();
                     _renderer.SetSelection(_selectedObjects);
-                    _typeLabel.Text = "Перемещение: выделено 0";
+                    // Статус удалён — тип комнаты теперь в ComboBox
                 }
                 Render();
                 return;
@@ -716,7 +676,7 @@ public partial class MainForm
             }
 
             _renderer.SetSelection(_selectedObjects);
-            _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}";
+            // Статус удалён — тип комнаты теперь в ComboBox
             Render();
             return;
         }

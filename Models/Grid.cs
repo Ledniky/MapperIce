@@ -14,6 +14,12 @@ public class Grid
     public Color Color { get; set; } = Color.Blue;
 
     /// <summary>
+    /// true — статичный грид (станция, BecomesStation, без Physics/Shuttle).
+    /// false — динамичный грид (шаттл, с Physics, Shuttle, FTLDrive).
+    /// </summary>
+    public bool IsStaticGrid { get; set; } = false;
+
+    /// <summary>
     /// Автоматическое смещение по Y для данного слоя относительно слоя с индексом 1 (нулевого в списке).
     /// Формула: индекс 0,1 → 0; индекс 2 → 0.6; индекс 3 → 1.2; индекс 4 → 1.8 и т.д.
     /// </summary>
@@ -31,6 +37,7 @@ public class Grid
             Position = Position,
             IsVisible = IsVisible,
             Color = Color,
+            IsStaticGrid = IsStaticGrid,
             Rooms = Rooms.ToList(),
             Entities = Entities.ToList(),
             Tiles = Tiles.ToList(),

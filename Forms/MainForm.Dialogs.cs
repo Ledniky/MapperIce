@@ -553,7 +553,7 @@ public partial class MainForm
     {
         string mode = _deleteSettings.DeleteAll ? "Всё" :
                       _deleteSettings.DeletePipes ? "Трубы" : "Ничего";
-        _typeLabel.Text = $"Удаление области: {mode}";
+        // Статус удалён — тип комнаты теперь в ComboBox
     }
 
 
@@ -1047,5 +1047,40 @@ public partial class MainForm
 
         _moveSettingsForm.FormClosed += (s, e) => { _moveSettingsForm = null; };
         _moveSettingsForm.Show(this);
+    }
+
+
+    private void ShowProjectSettingsDialog()
+    {
+        if (_projectSettingsForm != null && !_projectSettingsForm.IsDisposed)
+        {
+            _projectSettingsForm.Close();
+            _projectSettingsForm = null;
+            return;
+        }
+
+        if (_map.ActiveGrid == null)
+        {
+            MessageBox.Show("Нет активного слоя для настроек", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _projectSettingsForm = new ProjectSettingsDialog(
+            _map.ActiveGrid,
+            _indexer,
+            _drawDepthManager,
+            _tileBuilder,
+            _pipeLayers,
+            _alarmSettings,
+            () =>
+            {
+                // Применяем изменения: перерисовываем, обновляем tilegrid
+                UpdateTileGrid();
+                Render();
+                SaveState();
+            });
+
+        _projectSettingsForm.FormClosed += (s, e) => { _projectSettingsForm = null; };
+        _projectSettingsForm.Show(this);
     }
 }

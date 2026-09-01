@@ -19,6 +19,7 @@ public abstract class CommandRoomType : RoomType
 public class Command : CommandRoomType
 {
     public override string Name => "Command";
+    public override string Description => "Комната командования. Основной командный отсек для координации действий экипажа.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 51, 77, 109);
@@ -29,6 +30,7 @@ public class Command : CommandRoomType
 public class EVA : CommandRoomType
 {
     public override string Name => "EVA";
+    public override string Description => "Внешняя космическая комната. Шлюз для выхода в открытый космос и внешних работ.";
     public override string DoorProto => "AirlockEVALocked";
     public override string GlassDoorProto => "AirlockEVAGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 80, 150, 200);
@@ -39,6 +41,7 @@ public class EVA : CommandRoomType
 public class Vault : CommandRoomType
 {
     public override string Name => "Vault";
+    public override string Description => "Хранилище. Укреплённое помещение с высокосекьюрными дверями для хранения ценных ресурсов.";
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "HighSecCommandLocked";
     public override string GlassDoorProto => "HighSecCommandLocked";
@@ -54,6 +57,7 @@ public class Vault : CommandRoomType
 public class Captain : CommandRoomType
 {
     public override string Name => "Captain";
+    public override string Description => "Капитанская каюта. Личные покои капитана станции с максимальной защитой.";
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
@@ -65,6 +69,7 @@ public class Captain : CommandRoomType
 public class HeadOfPersonnel : CommandRoomType
 {
     public override string Name => "HeadOfPersonnel";
+    public override string Description => "Кабинет начальника кадров. Офис руководителя отдела кадров и управления персоналом.";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
@@ -75,6 +80,7 @@ public class HeadOfPersonnel : CommandRoomType
 public class Bridge : CommandRoomType
 {
     public override string Name => "Bridge";
+    public override string Description => "Мостик. Центральная командная точка управления станцией с полным обзором.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 51, 77, 109);

@@ -19,6 +19,7 @@ public abstract class ScienceRoomType : RoomType
 public class Science : ScienceRoomType
 {
     public override string Name => "Science";
+    public override string Description => "Научная комната. Основной лабораторный отсек для научных исследований и экспериментов.";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 211, 129, 201);
@@ -33,6 +34,7 @@ public class Science : ScienceRoomType
 public class ResearchDirector : ScienceRoomType
 {
     public override string Name => "ResearchDirector";
+    public override string Description => "Кабинет директора по науке. Офис руководителя научного отдела станции.";
     public override string DoorProto => "AirlockResearchDirectorLocked";
     public override string GlassDoorProto => "AirlockResearchDirectorGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);

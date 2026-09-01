@@ -136,7 +136,8 @@ public partial class MainForm
                     PositionX = grid.Position.X,
                     PositionY = grid.Position.Y,
                     IsVisible = grid.IsVisible,
-                    Color = $"{grid.Color.A},{grid.Color.R},{grid.Color.G},{grid.Color.B}"
+                    Color = $"{grid.Color.A},{grid.Color.R},{grid.Color.G},{grid.Color.B}",
+                    IsStaticGrid = grid.IsStaticGrid
                 };
 
                 // Комнаты и двери
@@ -291,7 +292,8 @@ public partial class MainForm
                     Name = gridData.Name,
                     Position = new PointF(gridData.PositionX, gridData.PositionY),
                     IsVisible = gridData.IsVisible,
-                    Color = ParseColor(gridData.Color)
+                    Color = ParseColor(gridData.Color),
+                    IsStaticGrid = gridData.IsStaticGrid
                 };
 
                 // Комнаты

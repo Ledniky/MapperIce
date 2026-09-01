@@ -25,6 +25,7 @@ public class GridData
     public List<DoorData> LooseDoors { get; set; } = new();
     public bool IsVisible { get; set; } = true;
     public string Color { get; set; } = "255,0,0,255";
+    public bool IsStaticGrid { get; set; } = false;
 }
 
 public class RoomGridData

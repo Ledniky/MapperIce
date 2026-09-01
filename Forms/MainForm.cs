@@ -37,6 +37,7 @@ public partial class MainForm : Form
 
     private PictureBox _canvas = null!;
     private Panel _toolPanel = null!;
+    private ComboBox _roomTypeCombo = null!;
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
     private Button _btnRoomSettings = null!;
@@ -60,9 +61,9 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _iconRedrawTimer; private TextBox _searchBox = null!;
     private ComboBox _filterCombo = null!;
     private string _currentFilter = "all";
+    private ToolTip _roomTypeTooltip = null!;
 
     private Form? _roomTypeForm = null;
-    private Label _typeLabel = null!;
     private CancellationTokenSource? _searchCts;
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
@@ -118,6 +119,8 @@ public partial class MainForm : Form
     private string _decalColor = "#FFFFFFFF";
     private bool _decalCleanable = false;
     private readonly DrawDepthManager _drawDepthManager = new();
+    private Form? _projectSettingsForm = null;
+    private Button? _btnProjectSettings;
     // ===== Интерактивное редактирование ручной области декалей на канвасе =====
     private ManualDecalArea? _editingDecalArea = null;
     private Room? _editingDecalAreaRoom = null;
@@ -200,6 +203,7 @@ public partial class MainForm : Form
 
         UpdateRepoSelector();
         LoadDoorIcons();
+        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };
         SaveState();
         UpdateBuffer();
     }
@@ -309,15 +313,17 @@ public partial class MainForm : Form
     private void CreateMenu()
     {
         var menu = new MenuStrip();
+        menu.BackColor = Color.FromArgb(240, 240, 240);
+        menu.Font = new Font("Arial", 9);
 
         var fileMenu = new ToolStripMenuItem("Файл");
         fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
         fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
-        // Кнопка "Сбросить вид" справа от "Файл"
         var resetBtn = new ToolStripMenuItem("↺ Сбросить вид", null, (s, e) =>
         {
             _scale = 1.0f;
@@ -372,73 +378,50 @@ public partial class MainForm : Form
         {
             case ToolManager.Tool.CreateRoom:
                 _btnCreateRoom.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
                 break;
             case ToolManager.Tool.SubtractRoom:
                 _btnSubtractRoom.BackColor = Color.LightBlue;
-                _typeLabel.Text = "✂️ Вычесть из комнаты";
                 break;
             case ToolManager.Tool.RestoreRoom:
                 _btnRestoreRoom.BackColor = Color.LightBlue;
-                _typeLabel.Text = "🔨 Восстановить область";
                 break;
             case ToolManager.Tool.Delete:
                 _btnDelete.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Удаление (клик по объекту)";
                 break;
             case ToolManager.Tool.DeleteArea:
                 _btnDeleteArea.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Удаление области (выделите прямоугольник)";
                 break;
             case ToolManager.Tool.DeleteSettings:
                 _btnDeleteSettings.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Настройки удаления";
                 break;
             case ToolManager.Tool.Door:
                 _btnAirlock.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Дверь: Airlock";
                 break;
             case ToolManager.Tool.DoorGlass:
                 _btnAirlockGlass.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Дверь: AirlockGlass";
                 break;
             case ToolManager.Tool.PipeDistra:
                 _btnPipeDistra.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Труба: Distra";
                 break;
             case ToolManager.Tool.PipeWaste:
                 _btnPipeWaste.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Труба: Waste";
                 break;
             case ToolManager.Tool.PipeNormal:
                 _btnPipeNormal.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Труба: Normal";
                 break;
             case ToolManager.Tool.AirAlarm:
                 if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
-                float airDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
-                _typeLabel.Text = $"Воздушная сигнализация: {airDegrees:F0}° (СКМ для вращения)";
                 break;
             case ToolManager.Tool.FireAlarm:
                 if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
-                float fireDegrees = _currentAlarmRotation * 180 / (float)Math.PI;
-                _typeLabel.Text = $"Пожарная сигнализация: {fireDegrees:F0}° (СКМ для вращения)";
                 break;
             case ToolManager.Tool.PlacePrototype:
-                float protoDegrees = _currentEntityRotation * 180 / (float)Math.PI;
-                _typeLabel.Text = $"Размещение: {_protoToPlace}  {protoDegrees:F0}° (CTRL+колесо — вращение)";
                 break;
             case ToolManager.Tool.Move:
                 if (_btnMove != null) _btnMove.BackColor = Color.LightBlue;
-                _typeLabel.Text = $"Перемещение: выделено {_selectedObjects.Count}  (ЛКМ — выбрать, CTRL — добавить, SHIFT — область)";
                 break;
             case ToolManager.Tool.DecalRule:
                 if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.LightBlue;
-                _typeLabel.Text = "Decal Rule: кликните по комнате, чтобы настроить узор";
-                break;
-
-            default:
-                _typeLabel.Text = $"Комната: {_roomTypeManager.SelectedType}, ур: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
                 break;
         }
 
@@ -553,7 +536,6 @@ public partial class MainForm : Form
 
     private void UpdateTypeLabel()
     {
-        if (_typeLabel != null)
-            _typeLabel.Text = $"Тип: {_roomTypeManager.SelectedType}  Приоритет: {_roomTypeManager.GetPriorityForType(_roomTypeManager.SelectedType)}";
+        // Больше не используется — тип комнаты выбирается через ComboBox
     }
 }
