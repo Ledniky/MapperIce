@@ -231,28 +231,19 @@ public class Renderer
                     }
                 }
 
-                var airAlarms = grid.Entities.OfType<AirAlarmEntity>()
+                // Собираем сигнализации для стрелок — они теперь внутри DrawRenderLayer,
+                // но стрелки рисуются отдельно, поэтому фильтруем заново
+                var visibleAlarmsForArrows = grid.Entities
+                    .OfType<MapEntity>()
+                    .Where(e => e is AirAlarmEntity or FireAlarmEntity)
                     .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
-                    .OrderBy(a => a.Y)
                     .ToList();
-                var fireAlarms = grid.Entities.OfType<FireAlarmEntity>()
-                    .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
-                    .OrderBy(a => a.Y)
-                    .ToList();
-
-                DrawAlarmsBatch(g, airAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100));
-                DrawAlarmsBatch(g, fireAlarms.Cast<MapEntity>().ToList(), tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100));
+                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, gridOffset);
 
                 if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
                 {
                     DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, gridOffset, visibleRect);
                 }
-
-                // Рисуем стрелки направления у существующих сигнализаций — переиспользуем
-                // уже отфильтрованные по видимой области airAlarms/fireAlarms (см. выше),
-                // а не сканируем весь grid.Entities заново
-                var visibleAlarmsForArrows = airAlarms.Cast<MapEntity>().Concat(fireAlarms).ToList();
-                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, gridOffset);
             }
 
 
@@ -817,7 +808,8 @@ public class Renderer
 
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
     {
-        var renderQueue = new List<(double WorldY, int DrawDepthOffset, Action draw)>();
+        var renderQueue = new List<(double WorldY, int DrawDepthOffset, int InsertOrder, Action draw)>();
+        int _insertCounter = 0;
 
         // Пол
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Floor))
@@ -831,7 +823,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
             var t = tile;
-            renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
+            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
         }
 
         // Пол под дверями
@@ -847,7 +839,7 @@ public class Renderer
                 }
                 if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
                 var t = tile;
-                renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
+                renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
             }
         }
 
@@ -863,7 +855,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Walls");
             var t = tile;
-            renderQueue.Add((t.Y, dd, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
+            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
         }
 
         // Двери
@@ -878,7 +870,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Doors");
             var t = tile;
-            renderQueue.Add((t.Y, dd, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
         }
 
         // Декали
@@ -892,7 +884,7 @@ public class Renderer
                 if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
             }
             var d = decal;
-            renderQueue.Add((d.Y, dd, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
+            renderQueue.Add((d.Y, dd, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
         }
 
         // Огнешлюзы
@@ -906,19 +898,55 @@ public class Renderer
                 if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
             }
             var f = firelock;
-            renderQueue.Add((f.Y, dd, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((f.Y, dd, _insertCounter++, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
         }
 
-        // Generic entities (без труб, огнешлюзов, сигнализаций)
+        // Сигнализации (AirAlarm / FireAlarm) — теперь внутри общей сортировки
+        foreach (var entity in grid.Entities.OfType<AirAlarmEntity>())
+        {
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            int dd = entity.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(entity.Proto);
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
+            var a = entity;
+            renderQueue.Add((a.Y, dd, _insertCounter++, () => DrawSingleAlarm(g, a, tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100))));
+        }
+        foreach (var entity in grid.Entities.OfType<FireAlarmEntity>())
+        {
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            int dd = entity.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(entity.Proto);
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
+            var f = entity;
+            renderQueue.Add((f.Y, dd, _insertCounter++, () => DrawSingleAlarm(g, f, tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100))));
+        }
+
+        // Generic entities (без труб)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity) continue;
+            if (entity is PipeEntity) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            int dd = entity.DrawDepthOffset;
+            if (dd == 0 && _indexer != null)
+            {
+                var ddName = _indexer.GetDrawDepth(entity.Proto);
+                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+            }
+            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
             var e = entity;
-            renderQueue.Add((e.Y, e.DrawDepthOffset, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((e.Y, dd, _insertCounter++, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
         }
 
-        // Сортируем: сначала по Y (дальние на экране первыми), затем по DrawDepthOffset
+        // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
+        // затем внутри одного слоя по Y (меньше Y = дальше на экране = заднее)
 renderQueue.Sort((a, b) =>
 {
     int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
@@ -1073,6 +1101,47 @@ renderQueue.Sort((a, b) =>
                 gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
             }
         }, rotation);
+    }
+
+    private void DrawSingleAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
+    {
+        var rect = ToRect(entity.X, entity.Y, tileSize, viewOffset, gridOffset);
+
+        float rotation = entity switch
+        {
+            AirAlarmEntity a => a.Rotation,
+            FireAlarmEntity f => f.Rotation,
+            _ => 0f
+        };
+
+        float cx = rect.X + rect.Width / 2f;
+        float cy = rect.Y + rect.Height / 2f;
+
+        Image? texture = GetOrLoadTexture(protoId);
+        if (texture != null)
+        {
+            WithRotation(g, cx, cy, rotation, () =>
+            {
+                var srcRect = GetSourceRect(protoId, texture);
+                g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+            });
+        }
+        else
+        {
+            using var brush = new SolidBrush(bgColor);
+            g.FillRectangle(brush, rect);
+            using var pen = new Pen(Color.Black, 1);
+            g.DrawRectangle(pen, rect);
+
+            string icon = protoId == "AirAlarm" ? "🔊" : "🔥";
+            using var font = new Font("Segoe UI", tileSize / 2, FontStyle.Bold);
+            using var textBrush = new SolidBrush(Color.Black);
+            g.DrawString(icon, font, textBrush, rect.X + tileSize / 4, rect.Y + tileSize / 4);
+
+            using var arrowPen = new Pen(Color.Red, 2);
+            float radius = tileSize / 2 - 4;
+            g.DrawLine(arrowPen, cx, cy, cx + (float)Math.Cos(rotation) * radius, cy + (float)Math.Sin(rotation) * radius);
+        }
     }
 
     #endregion

@@ -122,7 +122,7 @@ public void ReindexFromDisk(Repository repo)
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
     
-    private const int CacheFormatVersion = 14;
+    private const int CacheFormatVersion = 15;
 
 private class CacheEnvelope
 {
@@ -396,6 +396,18 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
             proto.OffsetX = float.Parse(offsetMatch.Groups[1].Value, CultureInfo.InvariantCulture);
             proto.OffsetY = float.Parse(offsetMatch.Groups[2].Value, CultureInfo.InvariantCulture);
             proto.HasOffset = true;
+        }
+
+        // Ищем drawdepth — обычно задаётся на компоненте Sprite ("drawdepth: WallTops"
+        // и т.п.), поэтому ищем по всему блоку без привязки к отступу, как и sprite/rsi/state.
+        // Это имя ЗАТЕМ резолвится в числовой offset через DrawDepthManager.GetOffset(name)
+        // в Renderer — без этого поля весь per-prototype drawdepth молча игнорировался,
+        // и объекты сортировались только по фолбэк-слою контента (FloorTiles/Walls/Doors)
+        // + Y, а generic-сущности/декали/огнешлюзы все попадали в один и тот же слой Objects.
+        var drawDepthMatch = Regex.Match(block, @"drawdepth:\s*(\S+)");
+        if (drawDepthMatch.Success)
+        {
+            proto.DrawDepth = drawDepthMatch.Groups[1].Value;
         }
 
         return proto;

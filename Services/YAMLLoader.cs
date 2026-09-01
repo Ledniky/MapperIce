@@ -253,31 +253,58 @@ public class YAMLLoader
                 // это не относится, тут только импорт готовой игровой карты.
                 if (proto.Contains("Firelock"))
                 {
-                    grid.Entities.Add(new FirelockEntity
+                    var firelock = new FirelockEntity
                     {
                         X = structuralX,
                         Y = structuralY,
                         Proto = proto,
                         IsGlass = proto.Contains("Glass")
-                    });
+                    };
+                    if (_indexer != null)
+                    {
+                        var drawDepthName = _indexer.GetDrawDepth(proto);
+                        if (!string.IsNullOrEmpty(drawDepthName))
+                        {
+                            firelock.DrawDepthOffset = _drawDepthManager.GetOffset(drawDepthName);
+                        }
+                    }
+                    grid.Entities.Add(firelock);
                 }
                 else if (proto == "AirAlarm" || proto.Contains("AirAlarm"))
                 {
-                    grid.Entities.Add(new AirAlarmEntity
+                    var airAlarm = new AirAlarmEntity
                     {
                         X = structuralX,
                         Y = structuralY,
                         Rotation = rotation
-                    });
+                    };
+                    if (_indexer != null)
+                    {
+                        var drawDepthName = _indexer.GetDrawDepth(proto);
+                        if (!string.IsNullOrEmpty(drawDepthName))
+                        {
+                            airAlarm.DrawDepthOffset = _drawDepthManager.GetOffset(drawDepthName);
+                        }
+                    }
+                    grid.Entities.Add(airAlarm);
                 }
                 else if (proto == "FireAlarm" || proto.Contains("FireAlarm"))
                 {
-                    grid.Entities.Add(new FireAlarmEntity
+                    var fireAlarm = new FireAlarmEntity
                     {
                         X = structuralX,
                         Y = structuralY,
                         Rotation = rotation
-                    });
+                    };
+                    if (_indexer != null)
+                    {
+                        var drawDepthName = _indexer.GetDrawDepth(proto);
+                        if (!string.IsNullOrEmpty(drawDepthName))
+                        {
+                            fireAlarm.DrawDepthOffset = _drawDepthManager.GetOffset(drawDepthName);
+                        }
+                    }
+                    grid.Entities.Add(fireAlarm);
                 }
                 else
                 {
