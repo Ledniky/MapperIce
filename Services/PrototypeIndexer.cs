@@ -586,7 +586,8 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
     /// <summary>
     /// Рекурсивно ищет drawdepth по цепочке родителей.
-    /// Если у прототипа drawdepth не задан — ищет у родителя.
+    /// Если у прототипа drawdepth не задан — ищет у ВСЕХ родителей
+    /// (поддерживаем массив parent: [A, B]).
     /// </summary>
     private string? FindDrawDepthRecursive(string id, int depth)
     {
@@ -598,8 +599,13 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         if (!string.IsNullOrEmpty(proto.DrawDepth))
             return proto.DrawDepth;
 
-        if (!string.IsNullOrEmpty(proto.Parent))
-            return FindDrawDepthRecursive(proto.Parent, depth + 1);
+        // Ищем drawdepth у ВСЕХ родителей (поддерживаем массив parent: [A, B])
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindDrawDepthRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
+        }
 
         return null;
     }
