@@ -258,8 +258,17 @@ public partial class MainForm
 
                     else
                     {
+                        // Firelock — специальный тип, создаём FirelockEntity, а не MapEntity
+                        bool isFirelock = _protoToPlace == "Firelock" || _protoToPlace == "FirelockGlass";
+
                         float finalX, finalY;
-                        if (_snapEntityToCenter)
+                        if (isFirelock)
+                        {
+                            var firelockTilePos = GetTilePosition(e.Location);
+                            finalX = firelockTilePos.x;
+                            finalY = firelockTilePos.y;
+                        }
+                        else if (_snapEntityToCenter)
                         {
                             var centerTile = GetTilePosition(e.Location);
                             finalX = centerTile.x + _centerOffset.X;
@@ -272,7 +281,20 @@ public partial class MainForm
                             finalY = precise.y;
                         }
 
-                        grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation });
+                        if (isFirelock)
+                        {
+                            grid.Entities.Add(new FirelockEntity
+                            {
+                                X = finalX,
+                                Y = finalY,
+                                Proto = _protoToPlace,
+                                IsGlass = _protoToPlace == "FirelockGlass"
+                            });
+                        }
+                        else
+                        {
+                            grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation });
+                        }
                     }
 
                     SaveState();
@@ -432,7 +454,14 @@ public partial class MainForm
             if (!string.IsNullOrEmpty(_protoToPlace))
             {
                 float previewX, previewY;
-                if (_snapEntityToCenter)
+                bool isFirelock = _protoToPlace == "Firelock" || _protoToPlace == "FirelockGlass";
+                if (isFirelock)
+                {
+                    var centerTile = GetTilePosition(_lastMousePosition);
+                    previewX = centerTile.x;
+                    previewY = centerTile.y;
+                }
+                else if (_snapEntityToCenter)
                 {
                     var centerTile = GetTilePosition(_lastMousePosition);
                     previewX = centerTile.x + _centerOffset.X;
@@ -553,7 +582,14 @@ public partial class MainForm
         if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))
         {
             float previewX, previewY;
-            if (_snapEntityToCenter)
+            bool isFirelock = _protoToPlace == "Firelock" || _protoToPlace == "FirelockGlass";
+            if (isFirelock)
+            {
+                var tilePos = GetTilePosition(e.Location);
+                previewX = tilePos.x;
+                previewY = tilePos.y;
+            }
+            else if (_snapEntityToCenter)
             {
                 var centerTile = GetTilePosition(e.Location);
                 previewX = centerTile.x + _centerOffset.X;

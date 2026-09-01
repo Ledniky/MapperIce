@@ -7,6 +7,8 @@ public class DoorUpdater
 {
     private readonly RoomTypeManager _roomTypeManager;
 
+    private static int FloorToInt(float v) => (int)Math.Floor(v);
+
     public DoorUpdater(RoomTypeManager roomTypeManager)
     {
         _roomTypeManager = roomTypeManager;
@@ -80,7 +82,7 @@ public class DoorUpdater
     private void AddFirelock(Grid grid, int x, int y, string doorType)
     {
         if (grid == null) return;
-        if (grid.Entities.OfType<FirelockEntity>().Any(e => (int)e.X == x && (int)e.Y == y))
+        if (grid.Entities.OfType<FirelockEntity>().Any(e => FloorToInt(e.X) == x && FloorToInt(e.Y) == y))
             return;
 
         string firelockType = doorType.Contains("Glass") ? "FirelockGlass" : "Firelock";
@@ -123,7 +125,7 @@ public class DoorUpdater
     private void RemoveFirelockAt(Grid grid, int x, int y)
     {
         var firelock = grid.Entities.OfType<FirelockEntity>()
-            .FirstOrDefault(f => (int)f.X == x && (int)f.Y == y);
+            .FirstOrDefault(f => FloorToInt(f.X) == x && FloorToInt(f.Y) == y);
         if (firelock != null)
             grid.Entities.Remove(firelock);
     }

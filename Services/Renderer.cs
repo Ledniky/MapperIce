@@ -929,10 +929,13 @@ public class Renderer
             renderQueue.Add((f.Y, dd, _insertCounter++, () => DrawSingleAlarm(g, f, tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100))));
         }
 
-        // Generic entities (без труб)
+        // Generic entities (без труб, огнешлюзов и сигнализаций — у них свои
+        // отдельные циклы выше в этом же методе с другим якорем позиционирования
+        // (top-left, а не центр тайла); без этого исключения та же сущность
+        // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
             if (dd == 0 && _indexer != null)

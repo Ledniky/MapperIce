@@ -229,9 +229,8 @@ public class YAMLLoader
                 // "gridY = -posY" (как было раньше) не была верной инверсией НИ для одного
                 // из типов и давала системный сдвиг ровно на 1 тайл.
 
-                // Труба/ферлок/сигнализация хранят X,Y как ЦЕЛЫЙ индекс тайла (левый
-                // верхний угол клетки) — при экспорте к ним прибавляется +0.5
-                // (GeneratePipesGrouped/GenerateFirelocksGrouped/GenerateAlarmsGrouped),
+                // Пожарные шлюзы и сигнализации хранят X,Y как ЦЕЛЫЙ индекс тайла —
+                // при экспорте к ним прибавляется +0.5 (GenerateFirelocksGrouped и т.п.),
                 // здесь эту половину тайла вычитаем обратно.
                 float structuralX = posX - 0.5f;
                 float structuralY = -posY + 0.5f;
