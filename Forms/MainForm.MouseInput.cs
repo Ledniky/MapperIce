@@ -175,7 +175,8 @@ public partial class MainForm
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
-                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal)
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ||
+                     _toolManager.CurrentTool == ToolManager.Tool.PipeUtil)
             {
                 if (!_pipeBuilder.IsDrawing)
                 {
@@ -188,12 +189,40 @@ public partial class MainForm
                     {
                         ToolManager.Tool.PipeDistra => "Distra",
                         ToolManager.Tool.PipeWaste => "Waste",
+                        ToolManager.Tool.PipeUtil => "Util",
                         _ => "Normal"
                     };
                     _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
                     SaveState();
                     UpdateTileGrid();
                     Render();
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeUtilSettings)
+            {
+                // Клик по трубе утилизации — меняем направление стрелки
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var utilPipe = grid.Entities.OfType<PipeEntity>()
+                    .FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY && p.PipeType == "Util");
+
+                if (utilPipe != null)
+                {
+                    // Считаем соседей
+                    var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
+                    var neighbors = utilPipes.Count(p =>
+                        p.X == utilPipe.X + 1 || p.X == utilPipe.X - 1 ||
+                        p.Y == utilPipe.Y + 1 || p.Y == utilPipe.Y - 1);
+
+                    if (neighbors == 3 || neighbors == 4)
+                    {
+                        utilPipe.UtilArrowRotation = (utilPipe.UtilArrowRotation + 1) % 4;
+                        SaveState();
+                        UpdateTileGrid();
+                        Render();
+                    }
                 }
             }
 

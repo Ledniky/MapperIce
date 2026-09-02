@@ -301,7 +301,6 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Distra",
-            ImageAlign = ContentAlignment.MiddleCenter,
             Text = "D",
             Padding = new Padding(0)
         };
@@ -321,7 +320,6 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Normal",
-            ImageAlign = ContentAlignment.MiddleCenter,
             Text = "N",
             Padding = new Padding(0)
         };
@@ -341,7 +339,6 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Waste",
-            ImageAlign = ContentAlignment.MiddleCenter,
             Text = "W",
             Padding = new Padding(0)
         };
@@ -378,6 +375,77 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(pipePanel);
+        y += 40 + 2;
+
+        // === УТИЛИЗАЦИЯ ===
+        var utilLabel = new Label
+        {
+            Text = "Утилизация:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(utilLabel);
+        y += 20 + 2;
+
+        var utilPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        int utilButtonWidth = utilPanel.Width / 2;
+
+        _btnPipeUtil = new Button
+        {
+            Location = new Point(0, 0),
+            Width = utilButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Util",
+            Text = "U",
+            Padding = new Padding(0)
+        };
+        _btnPipeUtil.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Util";
+            _toolManager.SetTool(ToolManager.Tool.PipeUtil);
+        };
+        utilPanel.Controls.Add(_btnPipeUtil);
+
+        _btnUtilSettings = new Button
+        {
+            Text = "🔧",
+            Location = new Point(utilButtonWidth, 0),
+            Width = utilButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 14),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnUtilSettings.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.PipeUtilSettings);
+        };
+        utilPanel.Controls.Add(_btnUtilSettings);
+
+        utilPanel.Resize += (s, e) =>
+        {
+            int bw = utilPanel.Width / 2;
+            _btnPipeUtil.Width = bw - 1;
+            _btnUtilSettings.Location = new Point(bw, 0);
+            _btnUtilSettings.Width = bw - 1;
+        };
+
+        _toolPanel.Controls.Add(utilPanel);
         y += 40 + 2;
 
         // === СИГНАЛИЗАЦИЯ ===

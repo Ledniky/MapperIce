@@ -13,6 +13,7 @@ public class PipeSettings
     {
         ["Distra"] = new PipeSettings { Layer = "Distra", Color = Color.FromArgb(255, 0, 85, 204), DisplayName = "Distra", HasColor = true },
         ["Waste"] = new PipeSettings { Layer = "Waste", Color = Color.FromArgb(255, 153, 0, 0), DisplayName = "Waste", HasColor = true },
-        ["Normal"] = new PipeSettings { Layer = "Normal", Color = Color.White, DisplayName = "Normal", HasColor = false }
+        ["Normal"] = new PipeSettings { Layer = "Normal", Color = Color.White, DisplayName = "Normal", HasColor = false },
+        ["Util"] = new PipeSettings { Layer = "Util", Color = Color.FromArgb(255, 100, 180, 50), DisplayName = "Утилизация", HasColor = true }
     };
 }

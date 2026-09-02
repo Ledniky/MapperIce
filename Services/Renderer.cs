@@ -217,6 +217,9 @@ public class Renderer
                         .ToList();
                     DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, gridOffset);
 
+                    // Стрелки направления потока — рисуем ДО точек, чтобы были сзади
+                    DrawPipeFlowArrows(g, allPipes, tileSize, viewOffset, gridOffset);
+
                     if (allPipes.Count > 0)
                     {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
@@ -713,6 +716,65 @@ public class Renderer
         {
             cached.brush.Dispose();
             cached.pen.Dispose();
+        }
+    }
+
+    private void DrawPipeFlowArrows(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
+        if (utilPipes.Count == 0) return;
+
+        // Строим словарь позиций для утилизации
+        var utilDict = new Dictionary<(float x, float y), PipeEntity>();
+        foreach (var p in utilPipes)
+            utilDict[(p.X, p.Y)] = p;
+
+        foreach (var pipe in utilPipes)
+        {
+            // Считаем соседей
+            var neighbors = 0;
+            var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+            foreach (var (dx, dy) in directions)
+            {
+                if (utilDict.ContainsKey((pipe.X + dx, pipe.Y + dy)))
+                    neighbors++;
+            }
+
+            // Рисуем стрелку только на развилках (3) и перекрёстках (4)
+            if (neighbors != 3 && neighbors != 4) continue;
+
+            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            float arrowSize = tileSize / 2f;
+
+            // Определяем направление стрелки (0=юг, 1=запад, 2=север, 3=восток)
+            float angle = pipe.UtilArrowRotation * (float)(Math.PI / 2);
+            float sin = (float)Math.Sin(angle);
+            float cos = (float)Math.Cos(angle);
+
+            // Форма стрелки — треугольник с выемкой у основания
+            var basePoints = new[]
+            {
+                new PointF(0, -arrowSize),                // наконечник
+                new PointF(-arrowSize * 0.5f, arrowSize * 0.15f),  // левое плечо
+                new PointF(0, arrowSize * 0.1f),          // центр выемки
+                new PointF(arrowSize * 0.5f, arrowSize * 0.15f)    // правое плечо
+            };
+
+            // Поворачиваем и смещаем
+            var points = new PointF[4];
+            for (int i = 0; i < 4; i++)
+            {
+                points[i] = new PointF(
+                    cx + basePoints[i].X * cos - basePoints[i].Y * sin,
+                    cy + basePoints[i].X * sin + basePoints[i].Y * cos
+                );
+            }
+
+            // Заполняем тёмно-зелёным
+            using var arrowBrush = new SolidBrush(Color.FromArgb(220, 30, 60, 5));
+            g.FillPolygon(arrowBrush, points);
         }
     }
 
@@ -1448,6 +1510,7 @@ renderQueue.Sort((a, b) =>
             "Distra" => Color.FromArgb(180, 100, 200, 255),
             "Waste" => Color.FromArgb(180, 255, 150, 150),
             "Normal" => Color.FromArgb(180, 200, 200, 200),
+            "Util" => Color.FromArgb(180, 100, 150, 50),
             _ => Color.FromArgb(180, 150, 150, 150)
         };
     }
@@ -1459,6 +1522,7 @@ renderQueue.Sort((a, b) =>
             "Distra" => Color.FromArgb(200, 100, 200, 255),
             "Waste" => Color.FromArgb(200, 255, 150, 150),
             "Normal" => Color.FromArgb(200, 200, 200, 200),
+            "Util" => Color.FromArgb(200, 100, 150, 50),
             _ => Color.FromArgb(200, 150, 150, 150)
         };
     }

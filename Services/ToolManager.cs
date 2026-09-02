@@ -19,6 +19,8 @@ public class ToolManager
         PipeDistra,
         PipeWaste,
         PipeNormal,
+        PipeUtil,
+        PipeUtilSettings,
         AirAlarm,
         FireAlarm,
         PlacePrototype,

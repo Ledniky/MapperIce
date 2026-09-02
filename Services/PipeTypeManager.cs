@@ -54,6 +54,19 @@ public class PipeTypeManager
             Color = Color.FromArgb(200, 200, 200, 200),
             IconPath = "GasPipeStraight"
         };
+
+        _pipeTypes["Util"] = new PipeType
+        {
+            Name = "Util",
+            DisplayName = "Утилизация",
+            ProtoStraight = "GasPipeWasteStraight",
+            ProtoBend = "GasPipeWasteBend",
+            ProtoTJunction = "GasPipeWasteTJunction",
+            ProtoFourway = "GasPipeWasteFourway",
+            ProtoCap = "GasPipeWasteCap",
+            Color = Color.FromArgb(200, 150, 220, 100),
+            IconPath = "GasPipeWasteStraight"
+        };
     }
 
     public PipeType GetPipeType(string? typeName = null)

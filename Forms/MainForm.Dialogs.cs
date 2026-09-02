@@ -167,6 +167,103 @@ public partial class MainForm
         _pipeSettingsForm.Show(this);
     }
 
+    private void ShowUtilSettingsDialog()
+    {
+        if (_utilSettingsForm != null && !_utilSettingsForm.IsDisposed)
+        {
+            _utilSettingsForm.Close();
+            _utilSettingsForm = null;
+            return;
+        }
+
+        _utilSettingsForm = new Form
+        {
+            Text = "Настройки утилизации",
+            Size = new Size(350, 200),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _utilSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 3,
+            ColumnCount = 2,
+            AutoSize = true
+        };
+
+        panel.Controls.Add(new Label { Text = "Параметр", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
+        panel.Controls.Add(new Label { Text = "Значение", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
+
+        // Цвет
+        var utilLayer = _pipeLayers.ContainsKey("Util") ? _pipeLayers["Util"] : PipeSettings.DefaultLayers["Util"];
+        var btnColor = new Button
+        {
+            BackColor = utilLayer.Color,
+            Width = 80,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            Tag = "Util"
+        };
+        btnColor.Click += (s, e) =>
+        {
+            if (ArgbColorPickerDialog.Pick(this, utilLayer.Color, out var picked))
+            {
+                utilLayer.Color = picked;
+                btnColor.BackColor = picked;
+                UpdatePipeButtonColors();
+                Render();
+            }
+        };
+        panel.Controls.Add(new Label { Text = "Цвет", AutoSize = true, Font = new Font("Arial", 9) }, 0, 1);
+        panel.Controls.Add(btnColor, 1, 1);
+
+        // Кнопки
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) => _utilSettingsForm?.Close();
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) =>
+        {
+            if (PipeSettings.DefaultLayers.TryGetValue("Util", out var defaultSettings))
+            {
+                utilLayer.Color = defaultSettings.Color;
+                btnColor.BackColor = defaultSettings.Color;
+                UpdatePipeButtonColors();
+                Render();
+            }
+            _utilSettingsForm?.Close();
+        };
+        btnPanel.Controls.Add(btnCancel);
+
+        _utilSettingsForm.Controls.Add(panel);
+        _utilSettingsForm.Controls.Add(btnPanel);
+
+        _utilSettingsForm.FormClosed += (s, e) => { _utilSettingsForm = null; };
+        _utilSettingsForm.Show(this);
+    }
+
 
     private void UpdatePipeButtonColors()
     {

@@ -49,6 +49,8 @@ public partial class MainForm : Form
     private Button _btnPipeDistra = null!;
     private Button _btnPipeWaste = null!;
     private Button _btnPipeNormal = null!;
+    private Button _btnPipeUtil = null!;
+    private Button _btnUtilSettings = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -69,6 +71,7 @@ public partial class MainForm : Form
     private bool _showPipeOverlay = true;
     private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
     private Form? _pipeSettingsForm = null;
+    private Form? _utilSettingsForm = null;
     private Button _btnPipeSettings = null!;
     private bool _snapToGrid = true;
     private Dictionary<string, AlarmSettings> _alarmSettings = new(AlarmSettings.DefaultAlarms);
@@ -348,9 +351,11 @@ public partial class MainForm : Form
         _btnDeleteSettings.BackColor = Color.White;
         _btnAirlock.BackColor = Color.White;
         _btnAirlockGlass.BackColor = Color.White;
-        _btnPipeDistra.BackColor = Color.White;
-        _btnPipeWaste.BackColor = Color.White;
-        _btnPipeNormal.BackColor = Color.White;
+        if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.White;
+        if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.White;
+        if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
+        if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
+        if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
@@ -401,13 +406,19 @@ public partial class MainForm : Form
                 _btnAirlockGlass.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.PipeDistra:
-                _btnPipeDistra.BackColor = Color.LightBlue;
+                if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.PipeWaste:
-                _btnPipeWaste.BackColor = Color.LightBlue;
+                if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.PipeNormal:
-                _btnPipeNormal.BackColor = Color.LightBlue;
+                if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PipeUtil:
+                if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PipeUtilSettings:
+                if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.AirAlarm:
                 if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
@@ -431,7 +442,8 @@ public partial class MainForm : Form
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule => Cursors.Hand,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
-            ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal => Cursors.Help,
+            ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
+            ToolManager.Tool.PipeUtilSettings => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
             _ => Cursors.Default
         };
@@ -529,6 +541,7 @@ public partial class MainForm : Form
             ToolManager.Tool.PipeDistra => "Distra",
             ToolManager.Tool.PipeWaste => "Waste",
             ToolManager.Tool.PipeNormal => "Normal",
+            ToolManager.Tool.PipeUtil => "Util",
             _ => "Distra"
         };
     }
