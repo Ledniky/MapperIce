@@ -144,7 +144,13 @@ private void SaveCache(string repoId)
 
         var json = JsonSerializer.Serialize(envelope);
         var path = GetCachePath(repoId);
-        File.WriteAllText(path, json);
+
+        // Та же защита от обрезанного файла при аварийном завершении/перезагрузке,
+        // что и в RepositoryManager.Save() — см. комментарий там
+        var tempPath = path + ".tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, path, overwrite: true);
+
         System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов, {_palettes.Count} палитр)");
     }
     catch (Exception ex)
@@ -152,8 +158,6 @@ private void SaveCache(string repoId)
         System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА сохранения кэша для repoId={repoId}: {ex}");
     }
 }
-
-
 
     private bool TryLoadCache(string repoId)
     {

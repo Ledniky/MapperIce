@@ -107,7 +107,17 @@ public class RepositoryManager
             };
 
             var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_configPath, json);
+
+            // Пишем во временный файл и атомарно переименовываем поверх целевого.
+            // File.WriteAllText в целевой файл напрямую уязвим: если процесс
+            // прервётся (сбой питания, принудительная перезагрузка, краш) ровно
+            // в момент записи, repositories.json останется наполовину написанным
+            // и невалидным JSON — при следующем запуске Load() не сможет его
+            // распарсить и откатится к пустому списку репозиториев.
+            // File.Move(..., overwrite: true) на одном томе атомарен на уровне ОС.
+            var tempPath = _configPath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _configPath, overwrite: true);
         }
         catch { }
     }
