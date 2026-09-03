@@ -21,6 +21,7 @@ public class ToolManager
         PipeNormal,
         PipeUtil,
         PipeUtilSettings,
+        UtilWrenches,
         AirAlarm,
         FireAlarm,
         PlacePrototype,

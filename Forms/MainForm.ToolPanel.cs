@@ -399,7 +399,7 @@ public partial class MainForm
             BackColor = Color.Transparent
         };
 
-        int utilButtonWidth = utilPanel.Width / 2;
+        int utilButtonWidth = utilPanel.Width / 3;
 
         _btnPipeUtil = new Button
         {
@@ -437,12 +437,31 @@ public partial class MainForm
         };
         utilPanel.Controls.Add(_btnUtilSettings);
 
+        _btnUtilWrenches = new Button
+        {
+            Text = "🔧🔧",
+            Location = new Point(utilButtonWidth * 2, 0),
+            Width = utilButtonWidth - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 14),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnUtilWrenches.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.UtilWrenches);
+        };
+        utilPanel.Controls.Add(_btnUtilWrenches);
+
         utilPanel.Resize += (s, e) =>
         {
-            int bw = utilPanel.Width / 2;
+            int bw = utilPanel.Width / 3;
             _btnPipeUtil.Width = bw - 1;
             _btnUtilSettings.Location = new Point(bw, 0);
             _btnUtilSettings.Width = bw - 1;
+            _btnUtilWrenches.Location = new Point(bw * 2, 0);
+            _btnUtilWrenches.Width = bw - 1;
         };
 
         _toolPanel.Controls.Add(utilPanel);

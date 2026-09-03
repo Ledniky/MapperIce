@@ -631,12 +631,9 @@ public class Renderer
     {
         if (pipes.Count == 0) return;
 
-        // Кэш цветов/пер по типу трубы
+        // Кэш цветов/пер по итоговому цвету ребра
         var penCache = new Dictionary<string, Pen>();
         using var fallbackPen = new Pen(Color.Gray, 2);
-
-        // Собираем все трубы в один плоский список и сортируем по Y — трубы ниже рисуются первыми
-        var sortedPipes = pipes.OrderBy(p => p.Y).ToList();
 
         // Для каждого типа трубы строим словарь позиций (нужен для поиска соседей)
         var pipeDicts = new Dictionary<string, Dictionary<(float x, float y), PipeEntity>>();
@@ -650,30 +647,45 @@ public class Renderer
             dict[(pipe.X, pipe.Y)] = pipe;
         }
 
-        foreach (var pipe in sortedPipes)
+        // Каждое ребро между двумя соседними трубами рисуем РОВНО ОДИН РАЗ.
+        // Раньше перебирались все 4 направления у КАЖДОЙ трубы, и одно и то же
+        // соединение рисовалось дважды — по разу с каждого конца, каждый раз
+        // своим пером. Итоговый видимый цвет зависел от того, кто из двух узлов
+        // рисуется позже в порядке сортировки по Y (тот и оказывался "сверху"),
+        // а не от того, какой узел реально покрашен — отсюда несимметричная
+        // подкраска (сверху/слева видно синий, снизу/справа остаётся зелёный).
+        // Проверяя соседей только вправо и вниз, каждое ребро посещается один раз
+        // суммарно по всем трубам — дублирования больше нет в принципе.
+        var forwardDirections = new[] { (1, 0), (0, 1) };
+
+        foreach (var pipe in pipes)
         {
-            if (!penCache.TryGetValue(pipe.PipeType, out var pen))
-            {
-                pen?.Dispose();
-                var color = GetPipeColor(pipe.PipeType);
-                pen = new Pen(color, Math.Max(2, tileSize / 10));
-                penCache[pipe.PipeType] = pen;
-            }
-
-            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-
             var pipeDict = pipeDicts[pipe.PipeType];
-            var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-            foreach (var (dx, dy) in directions)
+            foreach (var (dx, dy) in forwardDirections)
             {
                 var key = (pipe.X + dx, pipe.Y + dy);
-                if (pipeDict.ContainsKey(key))
+                if (!pipeDict.TryGetValue(key, out var neighbor)) continue;
+
+                // Цвет ребра: если хоть у одного из двух узлов задан пользовательский
+                // CustomColor — используем его (покрашенный узел приоритетнее дефолтного
+                // цвета типа трубы), иначе — обычный цвет типа
+                var edgeColor = pipe.CustomColor ?? neighbor.CustomColor ?? GetPipeColor(pipe.PipeType);
+                bool hasCustom = pipe.CustomColor.HasValue || neighbor.CustomColor.HasValue;
+                var cacheKey = hasCustom
+                    ? $"{pipe.PipeType}|{edgeColor.ToArgb()}"
+                    : pipe.PipeType;
+
+                if (!penCache.TryGetValue(cacheKey, out var pen))
                 {
-                    float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                    float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-                    g.DrawLine(pen, cx, cy, nx, ny);
+                    pen = new Pen(edgeColor, Math.Max(2, tileSize / 10));
+                    penCache[cacheKey] = pen;
                 }
+
+                float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                g.DrawLine(pen, cx, cy, nx, ny);
             }
         }
 
@@ -681,6 +693,8 @@ public class Renderer
             p?.Dispose();
     }
 
+
+    
     private void DrawPipeDotsBatch(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (pipes.Count == 0) return;
@@ -695,13 +709,17 @@ public class Renderer
 
         foreach (var pipe in sortedPipes)
         {
-            if (!brushCache.TryGetValue(pipe.PipeType, out var cached))
+            var cacheKey = pipe.CustomColor.HasValue
+                ? $"{pipe.PipeType}|{pipe.CustomColor.Value.ToArgb()}"
+                : pipe.PipeType;
+
+            if (!brushCache.TryGetValue(cacheKey, out var cached))
             {
-                var color = GetPipeDotColor(pipe.PipeType);
+                var color = pipe.CustomColor ?? GetPipeDotColor(pipe.PipeType);
                 var brush = new SolidBrush(color);
                 var borderPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1);
                 cached = (brush, borderPen);
-                brushCache[pipe.PipeType] = cached;
+                brushCache[cacheKey] = cached;
             }
 
             float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
@@ -740,8 +758,9 @@ public class Renderer
                     neighbors++;
             }
 
-            // Рисуем стрелку только на развилках (3) и перекрёстках (4)
-            if (neighbors != 3 && neighbors != 4) continue;
+            // Рисуем стрелку ТОЛЬКО на развилках (ровно 3 соседа) — перекрёстки
+            // (4 соседа) больше не должны получать стрелку/подкраску
+            if (neighbors != 3) continue;
 
             float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
@@ -772,10 +791,17 @@ public class Renderer
                 );
             }
 
-            // Заполняем тёмно-зелёным
-            using var arrowBrush = new SolidBrush(Color.FromArgb(220, 30, 60, 5));
+            // Стрелка красится в цвет самой трубы (CustomColor, если задан
+            // пользователем), а не в фиксированный зелёный — иначе перекрашенная
+            // в другой цвет Util-труба на стыках выглядела бы "смешанной" с
+            // исходным зелёным из-за наложения непрозрачной зелёной стрелки поверх
+            var arrowColor = pipe.CustomColor ?? Color.FromArgb(220, 30, 60, 5);
+            using var arrowBrush = new SolidBrush(arrowColor);
             g.FillPolygon(arrowBrush, points);
         }
+    
+    
+    
     }
 
     /// <summary>

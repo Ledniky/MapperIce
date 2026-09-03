@@ -211,16 +211,51 @@ public partial class MainForm
                 if (utilPipe != null)
                 {
                     // Считаем соседей
-var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
-var neighbors = utilPipes.Count(p =>
-    (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
-    (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
-    (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
-    (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
-    
+                    var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
+                    var neighbors = utilPipes.Count(p =>
+                        (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
+                        (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
+                        (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
+                        (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
+                    
                     if (neighbors == 3 || neighbors == 4)
                     {
                         utilPipe.UtilArrowRotation = (utilPipe.UtilArrowRotation + 1) % 4;
+                        SaveState();
+                        UpdateTileGrid();
+                        Render();
+                    }
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.UtilWrenches)
+            {
+                // Клик по развилке утилизации — переключить тёмно-синий цвет
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var utilPipe = grid.Entities.OfType<PipeEntity>()
+                    .FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY && p.PipeType == "Util");
+
+                if (utilPipe != null)
+                {
+                    var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
+                    var neighbors = utilPipes.Count(p =>
+                        (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
+                        (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
+                        (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
+                        (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
+
+                    if (neighbors == 3 || neighbors == 4)
+                    {
+                        if (utilPipe.CustomColor.HasValue)
+                        {
+                            utilPipe.CustomColor = null;
+                        }
+                        else
+                        {
+                            utilPipe.CustomColor = Color.FromArgb(255, 20, 20, 120); // тёмно-синий
+                        }
                         SaveState();
                         UpdateTileGrid();
                         Render();

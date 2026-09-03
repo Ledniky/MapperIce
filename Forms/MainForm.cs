@@ -51,6 +51,7 @@ public partial class MainForm : Form
     private Button _btnPipeNormal = null!;
     private Button _btnPipeUtil = null!;
     private Button _btnUtilSettings = null!;
+    private Button _btnUtilWrenches = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -356,6 +357,7 @@ public partial class MainForm : Form
         if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
         if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
         if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.White;
+        if (_btnUtilWrenches != null) _btnUtilWrenches.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
@@ -420,6 +422,9 @@ public partial class MainForm : Form
             case ToolManager.Tool.PipeUtilSettings:
                 if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.UtilWrenches:
+                if (_btnUtilWrenches != null) _btnUtilWrenches.BackColor = Color.LightBlue;
+                break;
             case ToolManager.Tool.AirAlarm:
                 if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
                 break;
@@ -444,6 +449,7 @@ public partial class MainForm : Form
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
+            ToolManager.Tool.UtilWrenches => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
             _ => Cursors.Default
         };
