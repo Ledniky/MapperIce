@@ -211,11 +211,13 @@ public partial class MainForm
                 if (utilPipe != null)
                 {
                     // Считаем соседей
-                    var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
-                    var neighbors = utilPipes.Count(p =>
-                        p.X == utilPipe.X + 1 || p.X == utilPipe.X - 1 ||
-                        p.Y == utilPipe.Y + 1 || p.Y == utilPipe.Y - 1);
-
+var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
+var neighbors = utilPipes.Count(p =>
+    (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
+    (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
+    (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
+    (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
+    
                     if (neighbors == 3 || neighbors == 4)
                     {
                         utilPipe.UtilArrowRotation = (utilPipe.UtilArrowRotation + 1) % 4;
