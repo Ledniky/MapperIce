@@ -220,7 +220,49 @@ public partial class MainForm
                     
                     if (neighbors == 3 || neighbors == 4)
                     {
-                        utilPipe.UtilArrowRotation = (utilPipe.UtilArrowRotation + 1) % 4;
+                        // Определяем допустимые направления:
+                        // Т-образный узел (3 соседа) — стрелка циклится только вдоль
+                        // основной оси (два направления, где по 2 соседа), не вбок
+                        // (к ответвлению). Перекресток (4 соседа) — все 4 направления.
+                        int[] validRots;
+
+                        if (neighbors == 3)
+                        {
+                            int top = utilPipes.Count(p => p.X == utilPipe.X && p.Y == utilPipe.Y - 1);
+                            int bottom = utilPipes.Count(p => p.X == utilPipe.X && p.Y == utilPipe.Y + 1);
+                            int left = utilPipes.Count(p => p.X == utilPipe.X - 1 && p.Y == utilPipe.Y);
+                            int right = utilPipes.Count(p => p.X == utilPipe.X + 1 && p.Y == utilPipe.Y);
+
+                            if (top + bottom == 2)
+                            {
+                                // Основная ось — вертикальная (0=юг, 2=север)
+                                validRots = new[] { 0, 2 };
+                            }
+                            else
+                            {
+                                // Основная ось — горизонтальная (1=запад, 3=восток)
+                                validRots = new[] { 1, 3 };
+                            }
+                        }
+                        else
+                        {
+                            // Перекресток — все 4 направления
+                            validRots = new[] { 0, 1, 2, 3 };
+                        }
+
+                        // Если текущее направление недопустимо (например, после изменения сети),
+                        // сбрасываем на первое допустимое
+                        if (!validRots.Contains(utilPipe.UtilArrowRotation))
+                        {
+                            utilPipe.UtilArrowRotation = validRots[0];
+                        }
+                        else
+                        {
+                            // Циклически переключаем на следующее допустимое направление
+                            int idx = Array.IndexOf(validRots, utilPipe.UtilArrowRotation);
+                            utilPipe.UtilArrowRotation = validRots[(idx + 1) % validRots.Length];
+                        }
+
                         SaveState();
                         UpdateTileGrid();
                         Render();
