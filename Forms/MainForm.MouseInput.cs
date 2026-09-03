@@ -239,14 +239,20 @@ public partial class MainForm
 
                 if (utilPipe != null)
                 {
-                    var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
-                    var neighbors = utilPipes.Count(p =>
-                        (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
-                        (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
-                        (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
-                        (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
+                    // Используем GetPipes как в Renderer — строим словарь позиций
+                    var allPipes = _pipeBuilder.GetPipes(grid);
+                    var utilDict = new Dictionary<(int x, int y), PipeEntity>();
+                    foreach (var p in allPipes.Where(p => p.PipeType == "Util"))
+                        utilDict[((int)p.X, (int)p.Y)] = p;
 
-                    if (neighbors == 3 || neighbors == 4)
+                    int neighbors = 0;
+                    foreach (var (dx, dy) in new[] { (0, -1), (0, 1), (-1, 0), (1, 0) })
+                    {
+                        if (utilDict.ContainsKey(((int)utilPipe.X + dx, (int)utilPipe.Y + dy)))
+                            neighbors++;
+                    }
+
+                    if (neighbors == 3)
                     {
                         if (utilPipe.CustomColor.HasValue)
                         {

@@ -758,9 +758,8 @@ public class Renderer
                     neighbors++;
             }
 
-            // Рисуем стрелку ТОЛЬКО на развилках (ровно 3 соседа) — перекрёстки
-            // (4 соседа) больше не должны получать стрелку/подкраску
-            if (neighbors != 3) continue;
+            // Рисуем стрелку на развилках (3) и перекрёстках (4)
+            if (neighbors != 3 && neighbors != 4) continue;
 
             float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
