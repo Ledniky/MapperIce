@@ -210,46 +210,42 @@ public partial class MainForm
 
                 if (utilPipe != null)
                 {
-                    // Считаем соседей
+                    // Считаем соседей по каждому конкретному направлению — нужны для
+                    // построения списка допустимых направлений стрелки индивидуально
+                    // для зелёного и синего узла (см. ниже)
                     var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util").ToList();
-                    var neighbors = utilPipes.Count(p =>
-                        (p.X == utilPipe.X + 1 && p.Y == utilPipe.Y) ||
-                        (p.X == utilPipe.X - 1 && p.Y == utilPipe.Y) ||
-                        (p.Y == utilPipe.Y + 1 && p.X == utilPipe.X) ||
-                        (p.Y == utilPipe.Y - 1 && p.X == utilPipe.X));
-                    
-                    if (neighbors == 3 || neighbors == 4)
+                    bool hasTop = utilPipes.Any(p => p.X == utilPipe.X && p.Y == utilPipe.Y - 1);
+                    bool hasBottom = utilPipes.Any(p => p.X == utilPipe.X && p.Y == utilPipe.Y + 1);
+                    bool hasLeft = utilPipes.Any(p => p.X == utilPipe.X - 1 && p.Y == utilPipe.Y);
+                    bool hasRight = utilPipes.Any(p => p.X == utilPipe.X + 1 && p.Y == utilPipe.Y);
+
+                    // Кодировка UtilArrowRotation (сверено с формулой поворота в
+                    // Renderer.DrawPipeFlowArrows): 0 = север (вверх), 1 = восток (вправо),
+                    // 2 = юг (вниз), 3 = запад (влево)
+                    var validRots = new List<int>();
+
+                    if (utilPipe.CustomColor.HasValue)
                     {
-                        // Определяем допустимые направления:
-                        // Т-образный узел (3 соседа) — стрелка циклится только вдоль
-                        // основной оси (два направления, где по 2 соседа), не вбок
-                        // (к ответвлению). Перекресток (4 соседа) — все 4 направления.
-                        int[] validRots;
+                        // Синий узел (перекрашен кнопкой "🔧🔧") — стрелка может указывать
+                        // ТОЛЬКО "напролёт": вдоль оси, где сосед есть одновременно и
+                        // спереди, и сзади. В сторону одиночного ответвления стрелка
+                        // указывать не может.
+                        if (hasTop && hasBottom) { validRots.Add(0); validRots.Add(2); }
+                        if (hasLeft && hasRight) { validRots.Add(1); validRots.Add(3); }
+                    }
+                    else
+                    {
+                        // Зелёный узел (обычный, без перекраски) — стрелка может смотреть
+                        // в сторону ЛЮБОГО реально существующего соседа, без ограничения
+                        // на "сквозную" ось.
+                        if (hasTop) validRots.Add(0);
+                        if (hasRight) validRots.Add(1);
+                        if (hasBottom) validRots.Add(2);
+                        if (hasLeft) validRots.Add(3);
+                    }
 
-                        if (neighbors == 3)
-                        {
-                            int top = utilPipes.Count(p => p.X == utilPipe.X && p.Y == utilPipe.Y - 1);
-                            int bottom = utilPipes.Count(p => p.X == utilPipe.X && p.Y == utilPipe.Y + 1);
-                            int left = utilPipes.Count(p => p.X == utilPipe.X - 1 && p.Y == utilPipe.Y);
-                            int right = utilPipes.Count(p => p.X == utilPipe.X + 1 && p.Y == utilPipe.Y);
-
-                            if (top + bottom == 2)
-                            {
-                                // Основная ось — вертикальная (0=юг, 2=север)
-                                validRots = new[] { 0, 2 };
-                            }
-                            else
-                            {
-                                // Основная ось — горизонтальная (1=запад, 3=восток)
-                                validRots = new[] { 1, 3 };
-                            }
-                        }
-                        else
-                        {
-                            // Перекресток — все 4 направления
-                            validRots = new[] { 0, 1, 2, 3 };
-                        }
-
+                    if (validRots.Count > 0)
+                    {
                         // Если текущее направление недопустимо (например, после изменения сети),
                         // сбрасываем на первое допустимое
                         if (!validRots.Contains(utilPipe.UtilArrowRotation))
@@ -259,8 +255,8 @@ public partial class MainForm
                         else
                         {
                             // Циклически переключаем на следующее допустимое направление
-                            int idx = Array.IndexOf(validRots, utilPipe.UtilArrowRotation);
-                            utilPipe.UtilArrowRotation = validRots[(idx + 1) % validRots.Length];
+                            int idx = validRots.IndexOf(utilPipe.UtilArrowRotation);
+                            utilPipe.UtilArrowRotation = validRots[(idx + 1) % validRots.Count];
                         }
 
                         SaveState();
@@ -268,6 +264,8 @@ public partial class MainForm
                         Render();
                     }
                 }
+            
+            
             }
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.UtilWrenches)
