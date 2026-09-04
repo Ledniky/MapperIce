@@ -399,12 +399,13 @@ public partial class MainForm
             BackColor = Color.Transparent
         };
 
-        int utilButtonWidth = utilPanel.Width / 3;
+        const int utilBtnWidth = 40;
+        const int utilComboGap = 4;
 
         _btnPipeUtil = new Button
         {
             Location = new Point(0, 0),
-            Width = utilButtonWidth - 1,
+            Width = utilBtnWidth,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
@@ -420,48 +421,32 @@ public partial class MainForm
         };
         utilPanel.Controls.Add(_btnPipeUtil);
 
-        _btnUtilSettings = new Button
+        // Выпадающий список остальных инструментов утилизации — раньше это были
+        // две отдельные кнопки (⚙ настройка стрелок / 🔧🔧 перекраска), теперь
+        // они объединены в один ComboBox, чтобы освободить место в строке
+        _utilToolCombo = new ComboBox
         {
-            Text = "🔧",
-            Location = new Point(utilButtonWidth, 0),
-            Width = utilButtonWidth - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Arial", 14),
-            TextAlign = ContentAlignment.MiddleCenter
+            Location = new Point(utilBtnWidth + utilComboGap, (40 - 25) / 2),
+            Width = utilPanel.Width - utilBtnWidth - utilComboGap,
+            Height = 25,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Arial", 9)
         };
-        _btnUtilSettings.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.PipeUtilSettings);
-        };
-        utilPanel.Controls.Add(_btnUtilSettings);
+        foreach (var label in _utilToolMap.Keys)
+            _utilToolCombo.Items.Add(label);
 
-        _btnUtilWrenches = new Button
+        _utilToolCombo.SelectedIndexChanged += (s, e) =>
         {
-            Text = "🔧🔧",
-            Location = new Point(utilButtonWidth * 2, 0),
-            Width = utilButtonWidth - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Arial", 14),
-            TextAlign = ContentAlignment.MiddleCenter
+            if (_utilToolCombo.SelectedItem is string key && _utilToolMap.TryGetValue(key, out var tool))
+            {
+                _toolManager.SetTool(tool);
+            }
         };
-        _btnUtilWrenches.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.UtilWrenches);
-        };
-        utilPanel.Controls.Add(_btnUtilWrenches);
+        utilPanel.Controls.Add(_utilToolCombo);
 
         utilPanel.Resize += (s, e) =>
         {
-            int bw = utilPanel.Width / 3;
-            _btnPipeUtil.Width = bw - 1;
-            _btnUtilSettings.Location = new Point(bw, 0);
-            _btnUtilSettings.Width = bw - 1;
-            _btnUtilWrenches.Location = new Point(bw * 2, 0);
-            _btnUtilWrenches.Width = bw - 1;
+            _utilToolCombo.Width = utilPanel.Width - utilBtnWidth - utilComboGap;
         };
 
         _toolPanel.Controls.Add(utilPanel);

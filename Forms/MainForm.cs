@@ -50,8 +50,15 @@ public partial class MainForm : Form
     private Button _btnPipeWaste = null!;
     private Button _btnPipeNormal = null!;
     private Button _btnPipeUtil = null!;
-    private Button _btnUtilSettings = null!;
-    private Button _btnUtilWrenches = null!;
+    private ComboBox _utilToolCombo = null!;
+    // Ключ — подпись пункта в выпадающем списке, значение — инструмент,
+    // который он активирует (единая точка соответствия строка↔инструмент,
+    // используется и при заполнении списка, и при обработке выбора)
+    private readonly Dictionary<string, ToolManager.Tool> _utilToolMap = new()
+    {
+        { "🔧 Стрелки", ToolManager.Tool.PipeUtilSettings },
+        { "🔧🔧 Перекраска", ToolManager.Tool.UtilWrenches }
+    };
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -356,8 +363,7 @@ public partial class MainForm : Form
         if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.White;
         if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
         if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
-        if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.White;
-        if (_btnUtilWrenches != null) _btnUtilWrenches.BackColor = Color.White;
+        if (_utilToolCombo != null) _utilToolCombo.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
@@ -420,10 +426,18 @@ public partial class MainForm : Form
                 if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.PipeUtilSettings:
-                if (_btnUtilSettings != null) _btnUtilSettings.BackColor = Color.LightBlue;
+                if (_utilToolCombo != null)
+                {
+                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.SelectedItem = "🔧 Стрелки";
+                }
                 break;
             case ToolManager.Tool.UtilWrenches:
-                if (_btnUtilWrenches != null) _btnUtilWrenches.BackColor = Color.LightBlue;
+                if (_utilToolCombo != null)
+                {
+                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.SelectedItem = "🔧🔧 Перекраска";
+                }
                 break;
             case ToolManager.Tool.AirAlarm:
                 if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
