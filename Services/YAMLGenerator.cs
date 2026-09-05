@@ -577,7 +577,7 @@ public static class YAMLGenerator
             int pipeX = (int)pipe.X;
             int pipeY = (int)pipe.Y;
             var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
-            string protoType = GetDisposalProto(neighbors, out _);
+            string protoType = GetDisposalProto(neighbors, pipe.UtilArrowRotation, out _);
 
             if (!pipeProtos.ContainsKey(protoType))
                 pipeProtos[protoType] = new List<PipeEntity>();
@@ -597,19 +597,18 @@ public static class YAMLGenerator
                 float posX = pipe.X + 0.5f;
                 float posY = -pipe.Y + 0.5f;
 
-                // Для джанкшн (3-4 соседа) — по стрелке, для остальных — по соседям
-                int neighborCount = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
-                float rotation;
-                if (neighborCount == 3 || neighborCount == 4)
-                {
-                    rotation = pipe.UtilArrowRotation * (float)(Math.PI / 2);
-                }
-                else
-                {
-                    var neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y);
-                    GetDisposalProto(neighbors, out rotation);
-                }
-
+                // Поворот ВСЕГДА считается по реальной топологии соседей — той же,
+                // которой уже сгруппирован protoGroup (см. GetDisposalProto выше).
+                // UtilArrowRotation сюда сознательно не подставляется: это угол
+                // стрелки-подсказки, которую Renderer.DrawPipeFlowArrows рисует поверх
+                // трубы отдельным треугольником для наглядности в редакторе, а не
+                // поворот самого спрайта DisposalJunction/Flipped/XJunction. Раньше для
+                // развилок и перекрёстков (3-4 соседа) сюда попадал
+                // pipe.UtilArrowRotation * 90°, который почти никогда не совпадал с
+                // реальным поворотом, нужным для стыковки спрайта с фактическими
+                // соседями по сторонам — отсюда и были "неправильные" трубы на экспорте
+                var neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y);
+                GetDisposalProto(neighbors, pipe.UtilArrowRotation, out float rotation);
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
@@ -669,19 +668,36 @@ public static class YAMLGenerator
 
     /// <summary>
     /// Прототип и поворот для ПРОХОДНОГО (не концевого) сегмента сети утилизации.
-    /// DisposalJunction в родном повороте (0 рад) не связан на восток ("- input
-    /// имеет ответвление на запад" из удалить.txt) — поворотом на 90°/180°/270°
-    /// эта "недостающая" сторона переносится на юг/запад/север соответственно,
-    /// так что второй прототип DisposalJunctionFlipped для покрытия всех 4
-    /// вариантов не требуется — везде используется один DisposalJunction.
-    /// ПЕРВЫЙ ЗАХОД: как и с GasPipeBend/GasPipeTJunction, конкретные углы для
-    /// DisposalBend/DisposalJunction не проверены в игре — если развернуты не в
-    /// ту сторону, поправка (обычно +π на нужный case) вносится по результату теста.
+    /// DisposalJunction в родном повороте (0 рад) имеет ответвление на запад
+    /// (слева). DisposalJunctionFlipped — то же самое, но ответвление на восток
+    /// (справа). Поворотом на 90°/180°/270° недостающая сторона переносится
+    /// на юг/запад/север соответственно.
+    /// ПЕРВЫЙ ЗАХОД: конкретные углы для DisposalBend/DisposalJunction не
+    /// проверены в игре — если развернуты не в ту сторону, поправка (обычно +π
+    /// на нужный case) вносится по результату теста.
     /// </summary>
-    private static string GetDisposalProto(List<(int dx, int dy)> neighbors, out float rotation)
+    // Компас-направление для каждого кода UtilArrowRotation. Источник истины —
+    // MainForm.MouseInput.cs (PipeUtilSettings: validRots.Add(0) при hasTop,
+    // Add(1) при hasRight, Add(2) при hasBottom, Add(3) при hasLeft) и
+    // Renderer.DrawPipeFlowArrows (при коде 0 остриё стрелки уходит строго вверх
+    // экрана, что совпадает с hasTop) — ОБА места согласны между собой на
+    // 0=Север,1=Восток,2=Юг,3=Запад. Комментарий в PipeEntity.cs
+    // ("0=юг,1=запад,2=север,3=восток") этому противоречит и устарел/ошибочен —
+    // ориентируемся на реальное поведение кода, а не на текст комментария.
+    private static readonly (int dx, int dy)[] _arrowDirByCode =
+    {
+        (0, -1), // 0 = Север
+        (1, 0),  // 1 = Восток
+        (0, 1),  // 2 = Юг
+        (-1, 0), // 3 = Запад
+    };
+
+    private static string GetDisposalProto(List<(int dx, int dy)> neighbors, int utilArrowRotation, out float rotation)
     {
         rotation = 0f;
 
+        // Прямая труба и изгиб — стрелки тут нет (см. удалить.txt: у DisposalPipe/
+        // Tagger стрелка не описана), выбор пользователя не участвует
         if (neighbors.Count == 2 && IsStraight(neighbors))
         {
             var (dx1, _) = neighbors[0];
@@ -705,19 +721,116 @@ public static class YAMLGenerator
 
         if (neighbors.Count == 3)
         {
-            if (!hasRight) rotation = 0f;
-            else if (!hasLeft) rotation = (float)Math.PI;
-            else if (!hasDown) rotation = (float)(Math.PI / 2);
-            else rotation = (float)(-Math.PI / 2); // !hasUp
+            // Недостающее направление однозначно задаёт всю топологию: opposite(missingDir)
+            // даёт ветку (branch) — это общий комбинаторный факт (из 4 сторон отсутствует
+            // ровно одна, поэтому её пара тоже "непарна" и становится веткой, а оставшиеся
+            // две стороны всегда образуют сквозную (through) ось).
+            (int dx, int dy) missingDir =
+                !hasRight ? (1, 0) :
+                !hasLeft ? (-1, 0) :
+                !hasDown ? (0, 1) :
+                (0, -1); // !hasUp
 
-            return "DisposalJunction";
+            (int dx, int dy) branchDir = (-missingDir.dx, -missingDir.dy);
+
+            // Нативная (rot=0) конфигурация DisposalJunction/Flipped для каждого
+            // missingDir. Стрелка (baseArrowDir) для missingDir=Восток/Запад
+            // подтверждена удалить.txt ("стрелка на юг" у обоих вариантов). Для
+            // missingDir=Юг/Север — ПРОВЕРИТЬ В ИГРЕ, вычислено по циклу вращения
+            // Восток→Юг→Запад→Север→Восток (тот же цикл, на котором строятся и
+            // повороты Junction на ±π/2, унаследованные из старого кода, и формула
+            // GetDisposalYJunctionRotation ниже — важно, чтобы вся тройка вариантов
+            // стрелки для одного узла была согласована по одному и тому же циклу).
+            string baseProto;
+            float baseRotation;
+            (int dx, int dy) baseArrowDir;
+
+            if (missingDir == (1, 0)) // Восток
+            {
+                baseProto = "DisposalJunction";
+                baseRotation = 0f;
+                baseArrowDir = (0, 1); // Юг — подтверждено
+            }
+            else if (missingDir == (-1, 0)) // Запад
+            {
+                baseProto = "DisposalJunctionFlipped";
+                baseRotation = 0f;
+                baseArrowDir = (0, 1); // Юг — подтверждено
+            }
+            else if (missingDir == (0, 1)) // Юг
+            {
+                baseProto = "DisposalJunction";
+                baseRotation = (float)(Math.PI / 2);
+                baseArrowDir = (-1, 0); // Запад — ПРОВЕРИТЬ В ИГРЕ
+            }
+            else // Север
+            {
+                baseProto = "DisposalJunction";
+                baseRotation = (float)(-Math.PI / 2);
+                baseArrowDir = (1, 0); // Восток — ПРОВЕРИТЬ В ИГРЕ
+            }
+
+            var chosenArrowDir = (utilArrowRotation >= 0 && utilArrowRotation < 4)
+                ? _arrowDirByCode[utilArrowRotation]
+                : baseArrowDir;
+
+            if (chosenArrowDir == baseArrowDir)
+            {
+                rotation = baseRotation;
+                return baseProto;
+            }
+
+            var oppositeArrowDir = (-baseArrowDir.dx, -baseArrowDir.dy);
+            if (chosenArrowDir == oppositeArrowDir)
+            {
+                // Второй валидный конец прямой оси. Поворот на π меняет местами
+                // "вход" и "выход" вдоль through-оси, а замена Junction<->Flipped
+                // компенсирует связанный с этим переворот ветки обратно на
+                // нужную (топологически required) сторону
+                rotation = baseRotation + (float)Math.PI;
+                return baseProto == "DisposalJunction" ? "DisposalJunctionFlipped" : "DisposalJunction";
+            }
+
+            // Остаётся единственный оставшийся вариант — chosenArrowDir == branchDir
+            // (стрелка "в сторону ветки"). У DisposalYJunction стрелка стоит именно
+            // на одиночном непарном порте (см. удалить.txt: "стрелка на юг, входы
+            // на западе и востоке" — то есть арроу НЕ на сквозной оси, как у
+            // Junction, а на одиночном), поэтому этот случай закрывается им.
+            rotation = GetDisposalYJunctionRotation(missingDir);
+            return "DisposalYJunction";
         }
 
-        // 4 связи
+
+        // 4 связи — DisposalXJunction. В отличие от Junction/Bend, тут ВСЕ 4 порта
+        // физически заняты независимо от поворота, поэтому поворот ничего не
+        // "ломает" в соединениях — он только двигает нарисованную стрелку.
+        // Выбор пользователя применяется напрямую, без топологических ограничений
+        rotation = (utilArrowRotation >= 0 && utilArrowRotation < 4)
+            ? utilArrowRotation * (float)(Math.PI / 2)
+            : 0f;
         return "DisposalXJunction";
     }
 
-    
+
+    /// <summary>
+    /// Поворот DisposalYJunction для конкретного missingDir. Нативно (rot=0)
+    /// у Y отсутствует Север (арроу — на юге, входы — восток/запад, см.
+    /// удалить.txt). Поворот подбирается так, чтобы "отсутствующая" сторона
+    /// сместилась на нужный missingDir, по циклу Восток→Юг→Запад→Север→Восток —
+    /// тому же, на котором построены и остальные повороты Junction/Flipped
+    /// в GetDisposalProto. ПРОВЕРИТЬ В ИГРЕ для всех значений, кроме Севера
+    /// (Север = нативная ориентация, повторяет то, что описано в удалить.txt).
+    /// </summary>
+    private static float GetDisposalYJunctionRotation((int dx, int dy) missingDir)
+    {
+        if (missingDir == (0, -1)) return 0f;                  // Север (нативно)
+        if (missingDir == (1, 0)) return (float)(Math.PI / 2);   // Восток
+        if (missingDir == (0, 1)) return (float)Math.PI;          // Юг
+        return (float)(-Math.PI / 2);                             // Запад
+    }
+
+
+
     private static void GenerateFirelocksGrouped(
         StringBuilder sb,
         Grid grid,
