@@ -400,6 +400,17 @@ public static class YAMLGenerator
         {
             var pipeList = group.ToList();
 
+            // Util (зелёные трубы) — это не газовая магистраль, а сеть мусоропровода
+            // (DisposalPipe/Bend/Junction/XJunction/Trunk из pipes.yml). Генерируем
+            // её отдельным методом и переходим к следующей группе, минуя весь
+            // GasPipe-специфичный код ниже (суффиксы Alt1/Alt2, AtmosPipeColor,
+            // GasVentPump/Scrubber — этого всего у Disposal-прототипов нет)
+            if (group.Key == "Util")
+            {
+                GenerateDisposalPipesForGroup(sb, pipeList, ref uid);
+                continue;
+            }
+
             string suffix = group.Key switch
             {
                 "Distra" => "Alt2",
@@ -538,6 +549,166 @@ public static class YAMLGenerator
         }
     }
 
+
+    /// <summary>
+    /// Генерирует сеть утилизации (зелёные трубы, PipeType == "Util") как реальные
+    /// DisposalPipe-прототипы из pipes.yml, а не GasPipe*. Концы (1 связь) —
+    /// DisposalTrunk (точка входа/выхода), проходные сегменты группируются по
+    /// итоговому прототипу+повороту так же, как и GasPipe-ветки выше.
+    /// </summary>
+    private static void GenerateDisposalPipesForGroup(
+        StringBuilder sb,
+        List<PipeEntity> pipeList,
+        ref int uid)
+    {
+        var endpoints = new List<PipeEntity>();
+        foreach (var pipe in pipeList)
+        {
+            int neighborCount = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+            if (neighborCount == 1)
+                endpoints.Add(pipe);
+        }
+
+        var pipeProtos = new Dictionary<string, List<PipeEntity>>();
+
+        foreach (var pipe in pipeList)
+        {
+            if (endpoints.Contains(pipe)) continue;
+
+            int pipeX = (int)pipe.X;
+            int pipeY = (int)pipe.Y;
+            var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
+            string protoType = GetDisposalProto(neighbors, out float rotation);
+
+            string key = $"{protoType}_{rotation.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            if (!pipeProtos.ContainsKey(key))
+                pipeProtos[key] = new List<PipeEntity>();
+
+            pipeProtos[key].Add(pipe);
+        }
+
+        foreach (var protoGroup in pipeProtos)
+        {
+            int splitIndex = protoGroup.Key.LastIndexOf('_');
+            string protoName = protoGroup.Key.Substring(0, splitIndex);
+            float rotation = float.Parse(protoGroup.Key.Substring(splitIndex + 1), System.Globalization.CultureInfo.InvariantCulture);
+
+            sb.AppendLine($"- proto: {protoName}");
+            sb.AppendLine("  entities:");
+
+            foreach (var pipe in protoGroup.Value)
+            {
+                float posX = pipe.X + 0.5f;
+                float posY = -pipe.Y + 0.5f;
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (rotation != 0)
+                {
+                    string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                uid++;
+            }
+        }
+
+        if (endpoints.Count > 0)
+        {
+            sb.AppendLine("- proto: DisposalTrunk");
+            sb.AppendLine("  entities:");
+
+            foreach (var endpoint in endpoints)
+            {
+                float posX = endpoint.X + 0.5f;
+                float posY = -endpoint.Y + 0.5f;
+
+                var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
+                float trunkRotation = 0;
+
+                if (neighbors.Count > 0)
+                {
+                    var (dx, dy) = neighbors[0];
+                    if (dx == 1) trunkRotation = (float)(Math.PI / 2);
+                    else if (dx == -1) trunkRotation = (float)(-Math.PI / 2);
+                    else if (dy == 1) trunkRotation = 0;
+                    else if (dy == -1) trunkRotation = (float)Math.PI;
+                }
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (trunkRotation != 0)
+                {
+                    string rotStr = trunkRotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                uid++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Прототип и поворот для ПРОХОДНОГО (не концевого) сегмента сети утилизации.
+    /// DisposalJunction в родном повороте (0 рад) не связан на восток ("- input
+    /// имеет ответвление на запад" из удалить.txt) — поворотом на 90°/180°/270°
+    /// эта "недостающая" сторона переносится на юг/запад/север соответственно,
+    /// так что второй прототип DisposalJunctionFlipped для покрытия всех 4
+    /// вариантов не требуется — везде используется один DisposalJunction.
+    /// ПЕРВЫЙ ЗАХОД: как и с GasPipeBend/GasPipeTJunction, конкретные углы для
+    /// DisposalBend/DisposalJunction не проверены в игре — если развернуты не в
+    /// ту сторону, поправка (обычно +π на нужный case) вносится по результату теста.
+    /// </summary>
+    private static string GetDisposalProto(List<(int dx, int dy)> neighbors, out float rotation)
+    {
+        rotation = 0f;
+
+        if (neighbors.Count == 2 && IsStraight(neighbors))
+        {
+            var (dx1, _) = neighbors[0];
+            rotation = dx1 != 0 ? (float)(Math.PI / 2) : 0f;
+            return "DisposalPipe";
+        }
+
+        bool hasUp = neighbors.Any(n => n.dy == -1);
+        bool hasDown = neighbors.Any(n => n.dy == 1);
+        bool hasLeft = neighbors.Any(n => n.dx == -1);
+        bool hasRight = neighbors.Any(n => n.dx == 1);
+
+        if (neighbors.Count == 2)
+        {
+            if (hasRight && hasUp) rotation = (float)Math.PI;
+            else if (hasRight && hasDown) rotation = (float)(Math.PI / 2);
+            else if (hasLeft && hasUp) rotation = (float)(-Math.PI / 2);
+            else if (hasLeft && hasDown) rotation = 0f;
+            return "DisposalBend";
+        }
+
+        if (neighbors.Count == 3)
+        {
+            if (!hasRight) rotation = 0f;
+            else if (!hasLeft) rotation = (float)Math.PI;
+            else if (!hasDown) rotation = (float)(Math.PI / 2);
+            else rotation = (float)(-Math.PI / 2); // !hasUp
+
+            return "DisposalJunction";
+        }
+
+        // 4 связи
+        return "DisposalXJunction";
+    }
+
+    
     private static void GenerateFirelocksGrouped(
         StringBuilder sb,
         Grid grid,
