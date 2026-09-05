@@ -432,7 +432,7 @@ public partial class MainForm
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 34, // реальная высота поля = ItemHeight + рамка; подберите под 40px при необходимости
-            Font = new Font("Arial", 9)
+            Font = new Font("Arial", 12)
         };
         foreach (var label in _utilToolMap.Keys)
             _utilToolCombo.Items.Add(label);

@@ -206,8 +206,6 @@ public static class YAMLGenerator
             sb.AppendLine("      bodyStatus: InAir");
             sb.AppendLine("      fixedRotation: False");
             sb.AppendLine("      bodyType: Dynamic");
-            sb.AppendLine("    - type: Fixtures");
-            sb.AppendLine("      fixtures: {{}}");
             sb.AppendLine("    - type: OccluderTree");
             sb.AppendLine("    - type: SpreaderGrid");
             sb.AppendLine("    - type: Shuttle");
