@@ -567,6 +567,7 @@ public static class YAMLGenerator
                 endpoints.Add(pipe);
         }
 
+        // Группировка по прототипу (без ротации — ротация определяется индивидуально)
         var pipeProtos = new Dictionary<string, List<PipeEntity>>();
 
         foreach (var pipe in pipeList)
@@ -576,20 +577,17 @@ public static class YAMLGenerator
             int pipeX = (int)pipe.X;
             int pipeY = (int)pipe.Y;
             var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
-            string protoType = GetDisposalProto(neighbors, out float rotation);
+            string protoType = GetDisposalProto(neighbors, out _);
 
-            string key = $"{protoType}_{rotation.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-            if (!pipeProtos.ContainsKey(key))
-                pipeProtos[key] = new List<PipeEntity>();
+            if (!pipeProtos.ContainsKey(protoType))
+                pipeProtos[protoType] = new List<PipeEntity>();
 
-            pipeProtos[key].Add(pipe);
+            pipeProtos[protoType].Add(pipe);
         }
 
         foreach (var protoGroup in pipeProtos)
         {
-            int splitIndex = protoGroup.Key.LastIndexOf('_');
-            string protoName = protoGroup.Key.Substring(0, splitIndex);
-            float rotation = float.Parse(protoGroup.Key.Substring(splitIndex + 1), System.Globalization.CultureInfo.InvariantCulture);
+            string protoName = protoGroup.Key;
 
             sb.AppendLine($"- proto: {protoName}");
             sb.AppendLine("  entities:");
@@ -598,6 +596,19 @@ public static class YAMLGenerator
             {
                 float posX = pipe.X + 0.5f;
                 float posY = -pipe.Y + 0.5f;
+
+                // Для джанкшн (3-4 соседа) — по стрелке, для остальных — по соседям
+                int neighborCount = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                float rotation;
+                if (neighborCount == 3 || neighborCount == 4)
+                {
+                    rotation = pipe.UtilArrowRotation * (float)(Math.PI / 2);
+                }
+                else
+                {
+                    var neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y);
+                    GetDisposalProto(neighbors, out rotation);
+                }
 
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
@@ -626,9 +637,9 @@ public static class YAMLGenerator
                 float posX = endpoint.X + 0.5f;
                 float posY = -endpoint.Y + 0.5f;
 
+                // Для DisposalTrunk — по направлению к соседу
                 var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
                 float trunkRotation = 0;
-
                 if (neighbors.Count > 0)
                 {
                     var (dx, dy) = neighbors[0];
