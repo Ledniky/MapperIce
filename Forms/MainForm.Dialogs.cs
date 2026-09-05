@@ -199,13 +199,14 @@ public partial class MainForm
             AutoSize = true
         };
 
-        panel.Controls.Add(new Label { Text = "Текст маркера:", Font = new Font("Arial", 9), AutoSize = true }, 0, 0);
+        panel.Controls.Add(new Label { Text = "тег фильтрации:", Font = new Font("Arial", 9), AutoSize = true }, 0, 0);
 
         var txtBox = new TextBox
         {
             Text = pipe.FilterLabel ?? "",
             Font = new Font("Arial", 10),
-            Height = 28
+            Height = 28,
+            Width = 300
         };
         panel.Controls.Add(txtBox, 0, 1);
 

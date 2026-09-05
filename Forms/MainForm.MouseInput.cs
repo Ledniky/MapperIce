@@ -355,15 +355,14 @@ public partial class MainForm
             else if (_toolManager.CurrentTool == ToolManager.Tool.UtilNodeLabel)
             {
                 // Клик по синему узлу утилизации (перекрашен через 🔧🔧 Фильтр,
-                // CustomColor задан) — открываем тот же диалог ввода строки, что
-                // и по ПКМ на квадрате-маркере, и пишем текст в FilterLabel
-                // этого же узла
+                // CustomColor задан) или по синему квадрату (HasFilterMarker) —
+                // открываем тот же диалог ввода строки и пишем текст в FilterLabel
                 var grid = _map.ActiveGrid;
                 if (grid == null) return;
 
                 var utilPipe = grid.Entities.OfType<PipeEntity>()
                     .FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY &&
-                                         p.PipeType == "Util" && p.CustomColor.HasValue);
+                                         p.PipeType == "Util" && (p.CustomColor.HasValue || p.HasFilterMarker));
 
                 if (utilPipe != null)
                 {
