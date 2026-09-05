@@ -399,7 +399,7 @@ public partial class MainForm
             BackColor = Color.Transparent
         };
 
-        const int utilBtnWidth = 40;
+        const int utilBtnWidth = 48;
         const int utilComboGap = 4;
 
         _btnPipeUtil = new Button
@@ -426,14 +426,30 @@ public partial class MainForm
         // они объединены в один ComboBox, чтобы освободить место в строке
         _utilToolCombo = new ComboBox
         {
-            Location = new Point(utilBtnWidth + utilComboGap, (40 - 25) / 2),
+            Location = new Point(utilBtnWidth + utilComboGap, 0),
             Width = utilPanel.Width - utilBtnWidth - utilComboGap,
-            Height = 25,
+            Height = 40,
             DropDownStyle = ComboBoxStyle.DropDownList,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 34, // реальная высота поля = ItemHeight + рамка; подберите под 40px при необходимости
             Font = new Font("Arial", 9)
         };
         foreach (var label in _utilToolMap.Keys)
             _utilToolCombo.Items.Add(label);
+
+        // При OwnerDrawFixed текст сам по себе не рисуется — приходится отрисовывать его вручную,
+        // зато именно благодаря OwnerDraw высота поля перестаёт зависеть от размера шрифта
+        _utilToolCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string text = _utilToolCombo.Items[e.Index].ToString() ?? "";
+                TextRenderer.DrawText(e.Graphics, text, _utilToolCombo.Font, e.Bounds, _utilToolCombo.ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
+        };
 
         _utilToolCombo.SelectedIndexChanged += (s, e) =>
         {

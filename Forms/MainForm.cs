@@ -56,8 +56,8 @@ public partial class MainForm : Form
     // используется и при заполнении списка, и при обработке выбора)
     private readonly Dictionary<string, ToolManager.Tool> _utilToolMap = new()
     {
-        { "🔧 Стрелки", ToolManager.Tool.PipeUtilSettings },
-        { "🔧🔧 Перекраска", ToolManager.Tool.UtilWrenches }
+        { "🔧 Направление", ToolManager.Tool.PipeUtilSettings },
+        { "🔧🔧 Фильтр", ToolManager.Tool.UtilWrenches }
     };
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
