@@ -76,6 +76,8 @@ public partial class MainForm
 
         foreach (var layer in _pipeLayers.Keys)
         {
+            if (layer == "Util") continue; // Утилизация — в отдельном диалоге, не здесь
+
             var settings = _pipeLayers[layer];
 
             panel.Controls.Add(new Label { Text = settings.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
@@ -165,6 +167,86 @@ public partial class MainForm
 
         _pipeSettingsForm.FormClosed += (s, e) => { _pipeSettingsForm = null; };
         _pipeSettingsForm.Show(this);
+    }
+
+    private void ShowFilterLabelDialog(PipeEntity pipe)
+    {
+        if (_filterLabelForm != null && !_filterLabelForm.IsDisposed)
+        {
+            _filterLabelForm.Close();
+            _filterLabelForm = null;
+            return;
+        }
+
+        _filterLabelForm = new Form
+        {
+            Text = "Настройка маркера фильтра",
+            Size = new Size(350, 160),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _filterLabelForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 3,
+            ColumnCount = 1,
+            AutoSize = true
+        };
+
+        panel.Controls.Add(new Label { Text = "Текст маркера:", Font = new Font("Arial", 9), AutoSize = true }, 0, 0);
+
+        var txtBox = new TextBox
+        {
+            Text = pipe.FilterLabel ?? "",
+            Font = new Font("Arial", 10),
+            Height = 28
+        };
+        panel.Controls.Add(txtBox, 0, 1);
+
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 28,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) =>
+        {
+            pipe.FilterLabel = string.IsNullOrWhiteSpace(txtBox.Text) ? null : txtBox.Text;
+            SaveState();
+            UpdateTileGrid();
+            Render();
+            _filterLabelForm?.Close();
+        };
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 28,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnCancel.Click += (s, e) => _filterLabelForm?.Close();
+        btnPanel.Controls.Add(btnCancel);
+
+        _filterLabelForm.Controls.Add(panel);
+        _filterLabelForm.Controls.Add(btnPanel);
+
+        _filterLabelForm.FormClosed += (s, e) => { _filterLabelForm = null; };
+        txtBox.SelectAll();
+        txtBox.Focus();
+        _filterLabelForm.Show(this);
     }
 
     private void ShowUtilSettingsDialog()

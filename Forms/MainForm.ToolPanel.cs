@@ -456,6 +456,7 @@ public partial class MainForm
             if (_utilToolCombo.SelectedItem is string key && _utilToolMap.TryGetValue(key, out var tool))
             {
                 _toolManager.SetTool(tool);
+                // Для инструментов сброс не нужен — SetActiveTool сам подсветит пункт
             }
         };
         utilPanel.Controls.Add(_utilToolCombo);

@@ -57,7 +57,8 @@ public partial class MainForm : Form
     private readonly Dictionary<string, ToolManager.Tool> _utilToolMap = new()
     {
         { "🔧 Направление", ToolManager.Tool.PipeUtilSettings },
-        { "🔧🔧 Фильтр", ToolManager.Tool.UtilWrenches }
+        { "🔧🔧 Фильтр", ToolManager.Tool.UtilWrenches },
+        { "⚙ Настройки", ToolManager.Tool.UtilNodeLabel }
     };
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
@@ -74,6 +75,7 @@ public partial class MainForm : Form
     private ToolTip _roomTypeTooltip = null!;
 
     private Form? _roomTypeForm = null;
+    private Form? _filterLabelForm = null;
     private CancellationTokenSource? _searchCts;
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
@@ -429,14 +431,21 @@ public partial class MainForm : Form
                 if (_utilToolCombo != null)
                 {
                     _utilToolCombo.BackColor = Color.LightBlue;
-                    _utilToolCombo.SelectedItem = "🔧 Стрелки";
+                    _utilToolCombo.SelectedItem = "🔧 Направление";
                 }
                 break;
             case ToolManager.Tool.UtilWrenches:
                 if (_utilToolCombo != null)
                 {
                     _utilToolCombo.BackColor = Color.LightBlue;
-                    _utilToolCombo.SelectedItem = "🔧🔧 Перекраска";
+                    _utilToolCombo.SelectedItem = "🔧🔧 Фильтр";
+                }
+                break;
+            case ToolManager.Tool.UtilNodeLabel:
+                if (_utilToolCombo != null)
+                {
+                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.SelectedItem = "⚙ Настройки";
                 }
                 break;
             case ToolManager.Tool.AirAlarm:
@@ -464,6 +473,7 @@ public partial class MainForm : Form
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
             ToolManager.Tool.UtilWrenches => Cursors.Help,
+            ToolManager.Tool.UtilNodeLabel => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
             _ => Cursors.Default
         };

@@ -223,6 +223,7 @@ public class Renderer
                     if (allPipes.Count > 0)
                     {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
+                        DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
                     }
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
@@ -734,6 +735,35 @@ public class Renderer
         {
             cached.brush.Dispose();
             cached.pen.Dispose();
+        }
+    }
+
+    private void DrawFilterMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var markedPipes = pipes.Where(p => p.HasFilterMarker).ToList();
+        if (markedPipes.Count == 0) return;
+
+        float squareSize = tileSize / 2f;
+
+        foreach (var pipe in markedPipes)
+        {
+            // Квадрат рисуется прямо поверх узла, по центру клетки
+            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            using var brush = new SolidBrush(Color.FromArgb(200, 30, 30, 200)); // синий с прозрачностью
+            g.FillRectangle(brush, cx - squareSize / 2, cy - squareSize / 2, squareSize, squareSize);
+
+            // Рисуем текст маркера
+            if (!string.IsNullOrEmpty(pipe.FilterLabel))
+            {
+                using var textBrush = new SolidBrush(Color.White);
+                var font = new Font("Arial", Math.Max(7f, squareSize / 4f));
+                var textSize = g.MeasureString(pipe.FilterLabel, font);
+                g.DrawString(pipe.FilterLabel, font, textBrush,
+                    cx - textSize.Width / 2,
+                    cy - textSize.Height / 2);
+            }
         }
     }
 

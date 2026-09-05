@@ -29,6 +29,21 @@ public partial class MainForm
                 Render();
                 return;
             }
+
+            // ПКМ по синему квадрату — открыть диалог ввода строки
+            var grid = _map.ActiveGrid;
+            if (grid != null)
+            {
+                var tilePos = GetTilePosition(e.Location);
+                var markedPipe = grid.Entities.OfType<PipeEntity>()
+                    .FirstOrDefault(p => (int)p.X == tilePos.x && (int)p.Y == tilePos.y && p.HasFilterMarker);
+                if (markedPipe != null)
+                {
+                    ShowFilterLabelDialog(markedPipe);
+                    return;
+                }
+            }
+
             _isPanning = true;
             _panStart = new PointF(e.Location.X, e.Location.Y);
             Cursor = Cursors.SizeAll;
@@ -306,10 +321,57 @@ public partial class MainForm
                         UpdateTileGrid();
                         Render();
                     }
+                    else if (neighbors == 2)
+                    {
+                        // Проверяем, что соседи по противоположным сторонам
+                        var oppPairs = new[]
+                        {
+                            ((0, -1), (0, 1)),  // север-юг
+                            ((-1, 0), (1, 0))   // запад-восток
+                        };
+                        bool isStraight = false;
+                        foreach (var (d1, d2) in oppPairs)
+                        {
+                            bool has1 = utilDict.ContainsKey(((int)utilPipe.X + d1.Item1, (int)utilPipe.Y + d1.Item2));
+                            bool has2 = utilDict.ContainsKey(((int)utilPipe.X + d2.Item1, (int)utilPipe.Y + d2.Item2));
+                            if (has1 && has2)
+                            {
+                                isStraight = true;
+                                break;
+                            }
+                        }
+
+                        if (isStraight)
+                        {
+                            utilPipe.HasFilterMarker = !utilPipe.HasFilterMarker;
+                            SaveState();
+                            UpdateTileGrid();
+                            Render();
+                        }
+                    }
                 }
             }
 
+            else if (_toolManager.CurrentTool == ToolManager.Tool.UtilNodeLabel)
+            {
+                // Клик по синему узлу утилизации (перекрашен через 🔧🔧 Фильтр,
+                // CustomColor задан) — открываем тот же диалог ввода строки, что
+                // и по ПКМ на квадрате-маркере, и пишем текст в FilterLabel
+                // этого же узла
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
 
+                var utilPipe = grid.Entities.OfType<PipeEntity>()
+                    .FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY &&
+                                         p.PipeType == "Util" && p.CustomColor.HasValue);
+
+                if (utilPipe != null)
+                {
+                    ShowFilterLabelDialog(utilPipe);
+                }
+            }
+
+            
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 if (!string.IsNullOrEmpty(_protoToPlace))
