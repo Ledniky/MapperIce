@@ -217,6 +217,9 @@ public class Renderer
                         .ToList();
                     DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, gridOffset);
 
+                    // Маркеры фильтра — рисуем первыми, чтобы стрелка и точка трубы были поверх
+                    DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
+
                     // Стрелки направления потока — рисуем ДО точек, чтобы были сзади
                     DrawPipeFlowArrows(g, allPipes, tileSize, viewOffset, gridOffset);
 
@@ -224,9 +227,6 @@ public class Renderer
                     {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
                     }
-
-                    // Маркеры фильтра — рисуем последними, чтобы были поверх точек и стрелок
-                    DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
                     {
@@ -753,7 +753,7 @@ public class Renderer
             float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-            using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
+using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
             g.FillRectangle(brush, cx - squareSize / 2, cy - squareSize / 2, squareSize, squareSize);
 
             // Рисуем текст маркера
