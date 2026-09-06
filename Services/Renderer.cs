@@ -223,8 +223,10 @@ public class Renderer
                     if (allPipes.Count > 0)
                     {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
-                        DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
                     }
+
+                    // Маркеры фильтра — рисуем последними, чтобы были поверх точек и стрелок
+                    DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
                     {
@@ -751,7 +753,7 @@ public class Renderer
             float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-            using var brush = new SolidBrush(Color.FromArgb(200, 30, 30, 200)); // синий с прозрачностью
+            using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
             g.FillRectangle(brush, cx - squareSize / 2, cy - squareSize / 2, squareSize, squareSize);
 
             // Рисуем текст маркера

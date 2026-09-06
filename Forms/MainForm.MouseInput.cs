@@ -285,7 +285,7 @@ public partial class MainForm
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.UtilWrenches)
             {
-                // Клик по развилке утилизации — переключить тёмно-синий цвет
+                // Клик по развилке утилизации — переключить охровый цвет
                 var grid = _map.ActiveGrid;
                 if (grid == null) return;
 
@@ -315,7 +315,7 @@ public partial class MainForm
                         }
                         else
                         {
-                            utilPipe.CustomColor = Color.FromArgb(255, 20, 20, 120); // тёмно-синий
+                            utilPipe.CustomColor = Color.FromArgb(255, 200, 200, 100); // охровый
                         }
                         SaveState();
                         UpdateTileGrid();
