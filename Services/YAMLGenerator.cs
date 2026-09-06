@@ -665,6 +665,39 @@ public static class YAMLGenerator
                 uid++;
             }
         }
+
+        // DisposalTagger — маркеры фильтра (синий квадрат в редакторе)
+        var markedPipes = pipeList.Where(p => p.HasFilterMarker).ToList();
+        if (markedPipes.Count > 0)
+        {
+            sb.AppendLine("- proto: DisposalTagger");
+            sb.AppendLine("  entities:");
+
+            foreach (var pipe in markedPipes)
+            {
+                float posX = pipe.X + 0.5f;
+                float posY = -pipe.Y + 0.5f;
+
+                // UtilArrowRotation: 0=Север, 1=Восток, 2=Юг, 3=Запад → в радианы
+                // Экспорт зеркалит Y — инвертируем поворот
+                float taggerRotation = -(pipe.UtilArrowRotation * (float)(Math.PI / 2));
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (taggerRotation != 0)
+                {
+                    string rotStr = taggerRotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+
+                uid++;
+            }
+        }
     }
 
     /// <summary>
@@ -826,9 +859,9 @@ public static class YAMLGenerator
         // 4 связи — DisposalXJunction. В отличие от Junction/Bend, тут ВСЕ 4 порта
         // физически заняты независимо от поворота, поэтому поворот ничего не
         // "ломает" в соединениях — он только двигает нарисованную стрелку.
-        // Выбор пользователя применяется напрямую, без топологических ограничений
+        // Экспорт зеркалит Y (как в GetDisposalProto), поэтому угол нужно негировать
         rotation = (utilArrowRotation >= 0 && utilArrowRotation < 4)
-            ? utilArrowRotation * (float)(Math.PI / 2)
+            ? -(utilArrowRotation * (float)(Math.PI / 2))
             : 0f;
         return "DisposalXJunction";
     }
@@ -1092,6 +1125,11 @@ public static class YAMLGenerator
         count += grid.Entities.OfType<FirelockEntity>().Count();
         count += grid.Entities.OfType<AirAlarmEntity>().Count();
         count += grid.Entities.OfType<FireAlarmEntity>().Count();
+
+        // DisposalTagger — маркеры фильтра на трубах утилизации
+        var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util" && p.HasFilterMarker);
+        count += utilPipes.Count();
+
         count += grid.Entities
         .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                     e is not AirAlarmEntity && e is not FireAlarmEntity)
