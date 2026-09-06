@@ -666,8 +666,8 @@ public static class YAMLGenerator
             }
         }
 
-        // DisposalTagger — маркеры фильтра (синий квадрат в редакторе)
-        var markedPipes = pipeList.Where(p => p.HasFilterMarker).ToList();
+        // DisposalTagger — маркеры фильтра (трубы с FilterLabel или HasFilterMarker)
+        var markedPipes = pipeList.Where(p => p.HasFilterMarker || !string.IsNullOrEmpty(p.FilterLabel)).ToList();
         if (markedPipes.Count > 0)
         {
             sb.AppendLine("- proto: DisposalTagger");
@@ -694,6 +694,13 @@ public static class YAMLGenerator
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
                 sb.AppendLine($"      parent: 2");
+
+                // Тег фильтрации — текст, который отображается на маркере
+                if (!string.IsNullOrEmpty(pipe.FilterLabel))
+                {
+                    sb.AppendLine($"    - type: DisposalTaggerComponent");
+                    sb.AppendLine($"      tag: \"{pipe.FilterLabel}\"");
+                }
 
                 uid++;
             }
@@ -778,11 +785,15 @@ public static class YAMLGenerator
 
             (int dx, int dy) branchDir = (-missingDir.dx, -missingDir.dy);
 
-            // Синий узел — это DisposalRouter, а не DisposalJunction
+            // Узел утилизации с 3 связями.
+            // Синий цвет (isBlue) или наличие жёлтой стрелки (utilArrowRotation 0-3)
+            // → DisposalRouter. Иначе → DisposalJunction.
             bool isBlue = IsDisposalRouterBlue(customColor);
+            bool hasArrow = utilArrowRotation >= 0 && utilArrowRotation < 4;
+            bool isRouter = isBlue || hasArrow;
 
-            // Нативная (rot=0) конфигурация Router/Flipped (синий) или
-            // Junction/Flipped (обычный) для каждого missingDir. Стрелка
+            // Нативная (rot=0) конфигурация Router/Flipped или
+            // Junction/Flipped для каждого missingDir. Стрелка
             // (baseArrowDir) для missingDir=Восток/Запад подтверждена удалить.txt
             // ("стрелка на юг" у обоих вариантов). Для missingDir=Юг/Север —
             // ПРОВЕРИТЬ В ИГРЕ, вычислено по циклу вращения Восток→Юг→Запад→
@@ -797,19 +808,19 @@ public static class YAMLGenerator
 
             if (missingDir == (1, 0)) // Восток
             {
-                baseProto = isBlue ? "DisposalRouter" : "DisposalJunction";
+                baseProto = isRouter ? "DisposalRouter" : "DisposalJunction";
                 baseRotation = 0f;
                 baseArrowDir = (0, 1); // Юг — подтверждено
             }
             else if (missingDir == (-1, 0)) // Запад
             {
-                baseProto = isBlue ? "DisposalSignalRouterFlipped" : "DisposalJunctionFlipped";
+                baseProto = isRouter ? "DisposalRouterFlipped" : "DisposalJunctionFlipped";
                 baseRotation = 0f;
                 baseArrowDir = (0, 1); // Юг — подтверждено
             }
             else if (missingDir == (0, 1)) // Юг
             {
-                baseProto = isBlue ? "DisposalRouter" : "DisposalJunction";
+                baseProto = isRouter ? "DisposalRouter" : "DisposalJunction";
                 // Экспорт зеркалит Y (см. YAMLGenerator.GenerateDecalsGrid: exportAngle = -rotation) —
                 // тот же принцип применён здесь: направление branch/arrow посчитано верно по
                 // экранному повороту (+90° CW), но в игру нужно отдавать НЕГИРОВАННЫЙ угол
@@ -818,7 +829,7 @@ public static class YAMLGenerator
             }
             else // Север
             {
-                baseProto = isBlue ? "DisposalRouter" : "DisposalJunction";
+                baseProto = isRouter ? "DisposalRouter" : "DisposalJunction";
                 baseRotation = (float)(Math.PI / 2);
                 baseArrowDir = (1, 0); // Восток
             }
@@ -841,8 +852,8 @@ public static class YAMLGenerator
                 // (или Junction<->Flipped) компенсирует связанный с этим переворот
                 // ветки обратно на нужную (топологически required) сторону
                 rotation = baseRotation + (float)Math.PI;
-                return baseProto == "DisposalRouter" ? "DisposalSignalRouterFlipped" :
-                       baseProto == "DisposalSignalRouterFlipped" ? "DisposalRouter" :
+                return baseProto == "DisposalRouter" ? "DisposalRouterFlipped" :
+                       baseProto == "DisposalRouterFlipped" ? "DisposalRouter" :
                        baseProto == "DisposalJunction" ? "DisposalJunctionFlipped" : "DisposalJunction";
             }
 
