@@ -760,14 +760,17 @@ public static class YAMLGenerator
             else if (missingDir == (0, 1)) // Юг
             {
                 baseProto = "DisposalJunction";
-                baseRotation = (float)(Math.PI / 2);
-                baseArrowDir = (-1, 0); // Запад — ПРОВЕРИТЬ В ИГРЕ
+                // Экспорт зеркалит Y (см. YAMLGenerator.GenerateDecalsGrid: exportAngle = -rotation) —
+                // тот же принцип применён здесь: направление branch/arrow посчитано верно по
+                // экранному повороту (+90° CW), но в игру нужно отдавать НЕГИРОВАННЫЙ угол
+                baseRotation = (float)(-Math.PI / 2);
+                baseArrowDir = (-1, 0); // Запад
             }
             else // Север
             {
                 baseProto = "DisposalJunction";
-                baseRotation = (float)(-Math.PI / 2);
-                baseArrowDir = (1, 0); // Восток — ПРОВЕРИТЬ В ИГРЕ
+                baseRotation = (float)(Math.PI / 2);
+                baseArrowDir = (1, 0); // Восток
             }
 
             var chosenArrowDir = (utilArrowRotation >= 0 && utilArrowRotation < 4)
@@ -823,10 +826,13 @@ public static class YAMLGenerator
     /// </summary>
     private static float GetDisposalYJunctionRotation((int dx, int dy) missingDir)
     {
+        // Тот же принцип негации экспортного угла, что и в GetDisposalProto (см. комментарий
+        // там): 0 и π самосогласованы при смене знака, поэтому Север/Юг не трогаем — только
+        // Восток/Запад были записаны "сырым" (не экспортным) значением поворота
         if (missingDir == (0, -1)) return 0f;                  // Север (нативно)
-        if (missingDir == (1, 0)) return (float)(Math.PI / 2);   // Восток
+        if (missingDir == (1, 0)) return (float)(-Math.PI / 2);  // Восток
         if (missingDir == (0, 1)) return (float)Math.PI;          // Юг
-        return (float)(-Math.PI / 2);                             // Запад
+        return (float)(Math.PI / 2);                              // Запад
     }
 
 
