@@ -580,6 +580,15 @@ public static class YAMLGenerator
             var neighbors = GetNeighbors(pipeList, pipeX, pipeY);
             string protoType = GetDisposalProto(neighbors, pipe.UtilArrowRotation, pipe.CustomColor, out _);
 
+            // Прямая труба (2 соседа, DisposalPipe) с заданным тегом фильтрации —
+            // это физически прототип DisposalTagger (см. удалить.txt: "тоже что и
+            // DisposalPipe, но если под синим квадратом"), а не DisposalPipe + отдельная
+            // сущность поверх. Развилки/роутеры сюда не попадают — у них тег хранится
+            // не сменой прототипа, а полем tags на самом DisposalRouter (см. ниже)
+            bool isMarked = pipe.HasFilterMarker || !string.IsNullOrEmpty(pipe.FilterLabel);
+            if (isMarked && protoType == "DisposalPipe")
+                protoType = "DisposalTagger";
+
             if (!pipeProtos.ContainsKey(protoType))
                 pipeProtos[protoType] = new List<PipeEntity>();
 
@@ -622,6 +631,32 @@ public static class YAMLGenerator
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
                 sb.AppendLine($"      parent: 2");
+
+                // Тег фильтрации. У DisposalRouter/RouterFlipped это список tags —
+                // сущности, чьи теги совпадают с этим списком, роутер отправляет вбок
+                // (см. как_должно_генерироватся.yml: - type: DisposalRouter / tags: - sec).
+                // FilterLabel может содержать несколько тегов через запятую.
+                bool isRouterProto = protoName == "DisposalRouter" || protoName == "DisposalRouterFlipped";
+                if (isRouterProto && !string.IsNullOrEmpty(pipe.FilterLabel))
+                {
+                    var tags = pipe.FilterLabel
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (tags.Length > 0)
+                    {
+                        sb.AppendLine($"    - type: DisposalRouter");
+                        sb.AppendLine($"      tags:");
+                        foreach (var t in tags)
+                            sb.AppendLine($"      - {t}");
+                    }
+                }
+                // ПРОВЕРИТЬ В ИГРЕ: имя компонента/поля для DisposalTagger не подтверждено
+                // эталонным файлом (там был только пример для Router) — предполагается по
+                // аналогии с pipes.yml, где компонент называется так же, как сам прототип
+                else if (protoName == "DisposalTagger" && !string.IsNullOrEmpty(pipe.FilterLabel))
+                {
+                    sb.AppendLine($"    - type: DisposalTagger");
+                    sb.AppendLine($"      tag: \"{pipe.FilterLabel}\"");
+                }
 
                 uid++;
             }
@@ -667,44 +702,10 @@ public static class YAMLGenerator
         }
 
         // DisposalTagger — маркеры фильтра (трубы с FilterLabel или HasFilterMarker)
-        var markedPipes = pipeList.Where(p => p.HasFilterMarker || !string.IsNullOrEmpty(p.FilterLabel)).ToList();
-        if (markedPipes.Count > 0)
-        {
-            sb.AppendLine("- proto: DisposalTagger");
-            sb.AppendLine("  entities:");
-
-            foreach (var pipe in markedPipes)
-            {
-                float posX = pipe.X + 0.5f;
-                float posY = -pipe.Y + 0.5f;
-
-                // UtilArrowRotation: 0=Север, 1=Восток, 2=Юг, 3=Запад → в радианы
-                // Экспорт зеркалит Y — инвертируем поворот
-                float taggerRotation = -(pipe.UtilArrowRotation * (float)(Math.PI / 2));
-
-                sb.AppendLine($"  - uid: {uid}");
-                sb.AppendLine($"    components:");
-                sb.AppendLine($"    - type: Transform");
-
-                if (taggerRotation != 0)
-                {
-                    string rotStr = taggerRotation.ToString("0.000000000000000").Replace(',', '.');
-                    sb.AppendLine($"      rot: {rotStr} rad");
-                }
-
-                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
-
-                // Тег фильтрации — текст, который отображается на маркере
-                if (!string.IsNullOrEmpty(pipe.FilterLabel))
-                {
-                    sb.AppendLine($"    - type: DisposalTaggerComponent");
-                    sb.AppendLine($"      tag: \"{pipe.FilterLabel}\"");
-                }
-
-                uid++;
-            }
-        }
+                // Тег фильтрации теперь пишется прямо на уже созданной сущности —
+        // для DisposalPipe→DisposalTagger подмена прототипа сделана в цикле сборки
+        // pipeProtos выше, для DisposalRouter/RouterFlipped компонент tags дописывается
+        // в основном цикле генерации сущностей выше. Отдельной сущности здесь больше нет.
     }
 
     /// <summary>
@@ -1137,9 +1138,8 @@ public static class YAMLGenerator
         count += grid.Entities.OfType<AirAlarmEntity>().Count();
         count += grid.Entities.OfType<FireAlarmEntity>().Count();
 
-        // DisposalTagger — маркеры фильтра на трубах утилизации
-        var utilPipes = grid.Entities.OfType<PipeEntity>().Where(p => p.PipeType == "Util" && p.HasFilterMarker);
-        count += utilPipes.Count();
+        // DisposalTagger больше не отдельная сущность — тег переиспользует
+        // уже посчитанную выше сущность трубы/роутера, дополнительный счёт не нужен
 
         count += grid.Entities
         .Where(e => e is not PipeEntity && e is not FirelockEntity &&
