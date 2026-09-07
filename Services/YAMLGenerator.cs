@@ -664,15 +664,14 @@ public static class YAMLGenerator
 
         if (endpoints.Count > 0)
         {
-            sb.AppendLine("- proto: DisposalTrunk");
-            sb.AppendLine("  entities:");
-
+            // DisposalTrunk — для всех концов
+            var endpointToTrunkUid = new Dictionary<(int x, int y), int>();
             foreach (var endpoint in endpoints)
             {
                 float posX = endpoint.X + 0.5f;
                 float posY = -endpoint.Y + 0.5f;
+                var key = ((int)endpoint.X, (int)endpoint.Y);
 
-                // Для DisposalTrunk — по направлению к соседу
                 var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
                 float trunkRotation = 0;
                 if (neighbors.Count > 0)
@@ -684,6 +683,10 @@ public static class YAMLGenerator
                     else if (dy == -1) trunkRotation = (float)Math.PI;
                 }
 
+                endpointToTrunkUid[key] = uid;
+
+                sb.AppendLine($"- proto: DisposalTrunk");
+                sb.AppendLine("  entities:");
                 sb.AppendLine($"  - uid: {uid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
@@ -698,6 +701,59 @@ public static class YAMLGenerator
                 sb.AppendLine($"      parent: 2");
 
                 uid++;
+            }
+
+            // DisposalUnit — child'и DisposalTrunk для концов с DisposalUnit
+            var disposalEndpoints = endpoints.Where(e => e.EndpointType == EndpointType.DisposalUnit).ToList();
+            if (disposalEndpoints.Count > 0)
+            {
+                sb.AppendLine("- proto: DisposalUnit");
+                sb.AppendLine("  entities:");
+
+                foreach (var endpoint in disposalEndpoints)
+                {
+                    float posX = endpoint.X + 0.5f;
+                    float posY = -endpoint.Y + 0.5f;
+                    var key = ((int)endpoint.X, (int)endpoint.Y);
+
+                    sb.AppendLine($"  - uid: {uid}");
+                    sb.AppendLine($"    components:");
+                    sb.AppendLine($"    - type: Transform");
+                    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                    sb.AppendLine($"      parent: {endpointToTrunkUid[key]}");
+
+                    uid++;
+                }
+            }
+
+            // MailingUnit — child'и DisposalTrunk для концов с MailingUnit
+            var mailingEndpoints = endpoints.Where(e => e.EndpointType == EndpointType.MailingUnit).ToList();
+            if (mailingEndpoints.Count > 0)
+            {
+                sb.AppendLine("- proto: MailingUnit");
+                sb.AppendLine("  entities:");
+
+                foreach (var endpoint in mailingEndpoints)
+                {
+                    float posX = endpoint.X + 0.5f;
+                    float posY = -endpoint.Y + 0.5f;
+                    var key = ((int)endpoint.X, (int)endpoint.Y);
+
+                    sb.AppendLine($"  - uid: {uid}");
+                    sb.AppendLine($"    components:");
+                    sb.AppendLine($"    - type: Transform");
+                    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                    sb.AppendLine($"      parent: {endpointToTrunkUid[key]}");
+
+                    if (!string.IsNullOrEmpty(endpoint.FilterLabel))
+                    {
+                        var tag = endpoint.FilterLabel.Trim(',', ' ', '\t', '\r', '\n');
+                        sb.AppendLine($"    - type: MailingUnit");
+                        sb.AppendLine($"      tag: {tag}");
+                    }
+
+                    uid++;
+                }
             }
         }
 

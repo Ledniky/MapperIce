@@ -226,6 +226,7 @@ public class Renderer
                     if (allPipes.Count > 0)
                     {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
+                        DrawEndpointMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
                     }
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
@@ -737,6 +738,62 @@ public class Renderer
         {
             cached.brush.Dispose();
             cached.pen.Dispose();
+        }
+    }
+
+    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
+        if (utilPipes.Count == 0) return;
+
+        var utilDict = new Dictionary<(int x, int y), PipeEntity>();
+        foreach (var p in utilPipes)
+            utilDict[((int)p.X, (int)p.Y)] = p;
+
+        float markerSize = tileSize / 3f;
+
+        foreach (var pipe in utilPipes)
+        {
+            int neighbors = 0;
+            var pipeX = (int)pipe.X;
+            var pipeY = (int)pipe.Y;
+            foreach (var (dx, dy) in new[] { (0, -1), (0, 1), (-1, 0), (1, 0) })
+            {
+                if (utilDict.ContainsKey((pipeX + dx, pipeY + dy)))
+                    neighbors++;
+            }
+
+            if (neighbors != 1) continue;
+
+            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            Color markerColor;
+            if (pipe.EndpointType == EndpointType.MailingUnit)
+            {
+                markerColor = Color.FromArgb(255, 200, 200, 100); // охровый/жёлтый
+            }
+            else
+            {
+                markerColor = Color.FromArgb(255, 100, 200, 100); // зелёный
+            }
+
+            using var brush = new SolidBrush(markerColor);
+            g.FillEllipse(brush, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
+            using var pen = new Pen(Color.FromArgb(255, 255, 255, 255), 1);
+            g.DrawEllipse(pen, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
+
+            // Рисуем тег на MailingUnit
+            if (pipe.EndpointType == EndpointType.MailingUnit && !string.IsNullOrEmpty(pipe.FilterLabel))
+            {
+                var tag = pipe.FilterLabel.TrimEnd(',');
+                using var textBrush = new SolidBrush(Color.White);
+                var font = new Font("Arial", Math.Max(7f, markerSize / 3f));
+                var textSize = g.MeasureString(tag, font);
+                g.DrawString(tag, font, textBrush,
+                    cx - textSize.Width / 2,
+                    cy - textSize.Height / 2);
+            }
         }
     }
 

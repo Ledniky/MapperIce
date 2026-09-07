@@ -321,6 +321,16 @@ public partial class MainForm
                         UpdateTileGrid();
                         Render();
                     }
+                    else if (neighbors == 1)
+                    {
+                        // Конец трубы — переключить тип: DisposalUnit ↔ MailingUnit
+                        utilPipe.EndpointType = utilPipe.EndpointType == EndpointType.MailingUnit
+                            ? EndpointType.DisposalUnit
+                            : EndpointType.MailingUnit;
+                        SaveState();
+                        UpdateTileGrid();
+                        Render();
+                    }
                     else if (neighbors == 2)
                     {
                         // Проверяем, что соседи по противоположным сторонам
@@ -354,15 +364,12 @@ public partial class MainForm
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.UtilNodeLabel)
             {
-                // Клик по синему узлу утилизации (перекрашен через 🔧🔧 Фильтр,
-                // CustomColor задан) или по синему квадрату (HasFilterMarker) —
-                // открываем тот же диалог ввода строки и пишем текст в FilterLabel
                 var grid = _map.ActiveGrid;
                 if (grid == null) return;
 
                 var utilPipe = grid.Entities.OfType<PipeEntity>()
                     .FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY &&
-                                         p.PipeType == "Util" && (p.CustomColor.HasValue || p.HasFilterMarker));
+                                         p.PipeType == "Util");
 
                 if (utilPipe != null)
                 {
