@@ -169,6 +169,12 @@ public partial class MainForm
         _pipeSettingsForm.Show(this);
     }
 
+    // Стандартные теги фильтрации мусоропровода SS14
+    private static readonly string[] _defaultFilterTags =
+    {
+        "SEC, ", "MED, ", "ENG, ", "CMD, ", "SUP, ", "RND, ", "SRV, "
+    };
+
     private void ShowFilterLabelDialog(PipeEntity pipe)
     {
         if (_filterLabelForm != null && !_filterLabelForm.IsDisposed)
@@ -181,7 +187,7 @@ public partial class MainForm
         _filterLabelForm = new Form
         {
             Text = "Настройка маркера фильтра",
-            Size = new Size(350, 160),
+            Size = new Size(380, 200),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -194,21 +200,66 @@ public partial class MainForm
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(10),
-            RowCount = 3,
+            RowCount = 4,
             ColumnCount = 1,
             AutoSize = true
         };
 
         panel.Controls.Add(new Label { Text = "тег фильтрации:", Font = new Font("Arial", 9), AutoSize = true }, 0, 0);
 
-        var txtBox = new TextBox
+        // ComboBox как основное поле ввода с автоподсказками
+        var tagCombo = new ComboBox
         {
+            DropDownStyle = ComboBoxStyle.DropDown,
             Text = pipe.FilterLabel ?? "",
             Font = new Font("Arial", 10),
             Height = 28,
-            Width = 300
+            Width = 300,
+            DropDownHeight = 250
         };
-        panel.Controls.Add(txtBox, 0, 1);
+        foreach (var tag in _defaultFilterTags)
+            tagCombo.Items.Add(tag);
+
+        // Автоподсказка: при вводе показываем совпадающие теги и подсвечиваем остаток
+        tagCombo.TextChanged += (s, e) =>
+        {
+            var cb = (ComboBox)s;
+            string text = cb.Text;
+            if (!string.IsNullOrEmpty(text))
+            {
+                var matches = _defaultFilterTags
+                    .Where(t => t.StartsWith(text, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                cb.DroppedDown = matches.Length > 0;
+                if (matches.Length > 0)
+                {
+                    cb.SelectionStart = text.Length;
+                    cb.SelectionLength = matches[0].Length - text.Length;
+                }
+            }
+            else
+            {
+                cb.DroppedDown = false;
+            }
+        };
+
+        // При потере фокуса — снять выделение подсказки
+        tagCombo.LostFocus += (s, e) =>
+        {
+            var cb = (ComboBox)s;
+            cb.SelectionLength = 0;
+        };
+
+        panel.Controls.Add(tagCombo, 0, 1);
+
+        var hintLabel = new Label
+        {
+            Text = "Введите тег или выберите из подсказок",
+            Font = new Font("Arial", 7),
+            ForeColor = Color.Gray,
+            AutoSize = true
+        };
+        panel.Controls.Add(hintLabel, 0, 2);
 
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
 
@@ -222,7 +273,7 @@ public partial class MainForm
         };
         btnOk.Click += (s, e) =>
         {
-            pipe.FilterLabel = string.IsNullOrWhiteSpace(txtBox.Text) ? null : txtBox.Text;
+            pipe.FilterLabel = string.IsNullOrWhiteSpace(tagCombo.Text) ? null : tagCombo.Text;
             SaveState();
             UpdateTileGrid();
             Render();
@@ -245,8 +296,8 @@ public partial class MainForm
         _filterLabelForm.Controls.Add(btnPanel);
 
         _filterLabelForm.FormClosed += (s, e) => { _filterLabelForm = null; };
-        txtBox.SelectAll();
-        txtBox.Focus();
+        tagCombo.SelectAll();
+        tagCombo.Focus();
         _filterLabelForm.Show(this);
     }
 
