@@ -477,18 +477,20 @@ public static class YAMLGenerator
                         sb.AppendLine($"      rot: {rotStr} rad");
                     }
 
+                    // ПРОВЕРИТЬ В ИГРЕ: DisposalUnit — самостоятельная мебель на тайле,
+                    // а не дочерняя сущность трубы. parent: {trunkUid} с теми же мировыми
+                    // pos, что и у трансформа трубы, задваивал бы смещение (родитель уже
+                    // стоит в этой точке грида, а не в 0,0) — поэтому здесь, как и у
+                    // остальных сущностей карты, parent: 2 (сам грид)
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
                     sb.AppendLine($"      parent: 2");
-
-                    if (hasColor)
-                    {
-                        sb.AppendLine($"    - type: AtmosPipeColor");
-                        sb.AppendLine($"      color: '{hexColor}'");
-                    }
 
                     uid++;
                 }
             }
+
+            // MailingUnit — для концов с MailingUnit, самостоятельная мебель на той же клетке
+
 
             // Генерируем вентиляции
             if (endpoints.Count > 0)
@@ -664,13 +666,13 @@ public static class YAMLGenerator
 
         if (endpoints.Count > 0)
         {
-            // DisposalTrunk — для всех концов
-            var endpointToTrunkUid = new Dictionary<(int x, int y), int>();
+            // DisposalTrunk — сама труба-вход/выход, на той же клетке будет
+            // отдельная мебель DisposalUnit/MailingUnit (см. ниже), связи через
+            // Transform.parent между ними нет — их роднит только совпадение позиции
             foreach (var endpoint in endpoints)
             {
                 float posX = endpoint.X + 0.5f;
                 float posY = -endpoint.Y + 0.5f;
-                var key = ((int)endpoint.X, (int)endpoint.Y);
 
                 var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
                 float trunkRotation = 0;
@@ -682,8 +684,6 @@ public static class YAMLGenerator
                     else if (dy == 1) trunkRotation = 0;
                     else if (dy == -1) trunkRotation = (float)Math.PI;
                 }
-
-                endpointToTrunkUid[key] = uid;
 
                 sb.AppendLine($"- proto: DisposalTrunk");
                 sb.AppendLine("  entities:");
@@ -714,13 +714,15 @@ public static class YAMLGenerator
                 {
                     float posX = endpoint.X + 0.5f;
                     float posY = -endpoint.Y + 0.5f;
-                    var key = ((int)endpoint.X, (int)endpoint.Y);
 
+                    // ВАЖНО: в отличие от DisposalUnit, MailingUnit не поддерживает
+                    // поворот — попытка задать rot вызывает ошибку в консоли игры,
+                    // поэтому rot здесь сознательно не пишется никогда
                     sb.AppendLine($"  - uid: {uid}");
                     sb.AppendLine($"    components:");
                     sb.AppendLine($"    - type: Transform");
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: {endpointToTrunkUid[key]}");
+                    sb.AppendLine($"      parent: 2");
 
                     uid++;
                 }
@@ -735,16 +737,19 @@ public static class YAMLGenerator
 
                 foreach (var endpoint in mailingEndpoints)
                 {
-                    float posX = endpoint.X + 0.5f;
+                                        float posX = endpoint.X + 0.5f;
                     float posY = -endpoint.Y + 0.5f;
-                    var key = ((int)endpoint.X, (int)endpoint.Y);
 
+                    // ВАЖНО: в отличие от DisposalUnit, MailingUnit не поддерживает
+                    // поворот — попытка задать rot вызывает ошибку в консоли игры,
+                    // поэтому rot здесь сознательно не пишется никогда
                     sb.AppendLine($"  - uid: {uid}");
                     sb.AppendLine($"    components:");
                     sb.AppendLine($"    - type: Transform");
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: {endpointToTrunkUid[key]}");
+                    sb.AppendLine($"      parent: 2");
 
+                    // Пишем тег внутрь MailingUnit
                     if (!string.IsNullOrEmpty(endpoint.FilterLabel))
                     {
                         var tag = endpoint.FilterLabel.Trim(',', ' ', '\t', '\r', '\n');
