@@ -7,6 +7,7 @@ namespace MapperIce.Forms;
 
 public partial class MainForm
 {
+    private System.Windows.Forms.Timer? _searchDebounceTimer;
 
     // === ПАНЕЛЬ РЕПОЗИТОРИЕВ ===
     private void CreateRepositoryPanel()
@@ -74,7 +75,22 @@ public partial class MainForm
             Text = "Поиск прототипов...",
             Enabled = false
         };
-        _searchBox.KeyUp += (s, e) => UpdatePrototypeList(_searchBox.Text);
+
+        // Раньше поиск запускался на КАЖДОЕ нажатие клавиши, из-за чего почти
+        // никогда не повторялся один и тот же текст запроса — _searchCache в
+        // PrototypeIndexer фактически никогда не попадал в hit. Debounce ждёт
+        // паузу в наборе (200мс) и запускает поиск один раз, а не на каждую букву.
+        _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 200 };
+        _searchDebounceTimer.Tick += (s, e) =>
+        {
+            _searchDebounceTimer!.Stop();
+            UpdatePrototypeList(_searchBox.Text);
+        };
+        _searchBox.KeyUp += (s, e) =>
+        {
+            _searchDebounceTimer!.Stop();
+            _searchDebounceTimer.Start();
+        };
         _searchBox.Enter += (s, e) => { if (_searchBox.Text == "Поиск прототипов...") _searchBox.Text = ""; };
         _searchBox.Leave += (s, e) => { if (string.IsNullOrWhiteSpace(_searchBox.Text)) _searchBox.Text = "Поиск прототипов..."; };
         searchPanel.Controls.Add(_searchBox);
