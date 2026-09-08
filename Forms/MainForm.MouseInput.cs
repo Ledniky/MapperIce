@@ -191,24 +191,21 @@ public partial class MainForm
             else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
             {
                 var grid = _map.ActiveGrid;
-                // Ищем комнату, на периметре которой находится клетка
+                // Ищем любую комнату, на периметре которой находится стена
                 var room = grid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
+                {
+                    bool isOnEdge = tileX == r.X || tileX == r.X + r.Width - 1 ||
+                                    tileY == r.Y || tileY == r.Y + r.Height - 1;
+                    return isOnEdge && _tileGrid.IsWall(tileX, tileY);
+                });
 
                 if (room != null)
                 {
-                    bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
-                                    tileY == room.Y || tileY == room.Y + room.Height - 1;
-
-                    if (isOnEdge && _tileGrid.IsWall(tileX, tileY))
-                    {
-                        // Удаляем стену — ставим Empty
-                        _tileGrid.SetTile(tileX, tileY, TileContent.Empty);
-                        UpdateTileGrid();
-                        SaveState();
-                        Render();
-                    }
+                    // Удаляем стену — создаём проход
+                    _tileGrid.SetTile(tileX, tileY, TileContent.Empty);
+                    UpdateTileGrid();
+                    SaveState();
+                    Render();
                 }
             }
 

@@ -285,7 +285,7 @@ public partial class MainForm
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
-            Text = "🚪",
+            Text = "▢",
             Font = new Font("Arial", 14)
         };
         _btnPassage.Click += (s, e) =>
