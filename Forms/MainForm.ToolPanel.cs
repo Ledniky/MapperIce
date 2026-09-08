@@ -268,6 +268,60 @@ public partial class MainForm
         _toolPanel.Controls.Add(doorPanel);
         y += 40 + 2;
 
+        // ПРОХОДЫ
+        var passagePanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        _btnPassage = new Button
+        {
+            Location = new Point(0, 0),
+            Width = (passagePanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Text = "🚪",
+            Font = new Font("Arial", 14)
+        };
+        _btnPassage.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Passage);
+        };
+        passagePanel.Controls.Add(_btnPassage);
+
+        _btnRestoreWall = new Button
+        {
+            Location = new Point((passagePanel.Width / 2) + 1, 0),
+            Width = (passagePanel.Width / 2) - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Text = "🧱",
+            Font = new Font("Arial", 14)
+        };
+        _btnRestoreWall.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.RestoreWall);
+        };
+        passagePanel.Controls.Add(_btnRestoreWall);
+
+        passagePanel.Resize += (s, e) =>
+        {
+            int halfWidth = passagePanel.Width / 2;
+            _btnPassage.Width = halfWidth - 1;
+            _btnRestoreWall.Location = new Point(halfWidth + 1, 0);
+            _btnRestoreWall.Width = halfWidth - 1;
+        };
+
+        _toolPanel.Controls.Add(passagePanel);
+        y += 40 + 2;
+
         // ТРУБЫ
         var pipeLabel = new Label
         {

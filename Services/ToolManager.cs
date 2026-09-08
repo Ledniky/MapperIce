@@ -16,6 +16,8 @@ public class ToolManager
         DeleteSettings,
         Door,
         DoorGlass,
+        Passage,
+        RestoreWall,
         PipeDistra,
         PipeWaste,
         PipeNormal,

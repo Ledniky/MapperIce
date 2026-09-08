@@ -43,34 +43,48 @@ public class PrototypeIndexer
 
         // Сначала пробуем быстро восстановить индекс из кэша на диске,
         // чтобы не пересканировать весь репозиторий заново при каждом запуске
-        if (TryLoadCache(repo.Id))
-        {
-            OnIndexingComplete?.Invoke();
-            return;
-        }
-
-        ReindexFromDisk(repo);
+    if (TryLoadCache(repo.Id))
+    {
+        OnIndexingComplete?.Invoke();
+        return;
     }
+
+    // silent: true — это автоматическая попытка при выборе репозитория на старте,
+    // а не явное действие пользователя, поэтому без блокирующего MessageBox
+    ReindexFromDisk(repo, silent: true);
+}
 
     /// <summary>
     /// Полное пересканирование репозитория с диска (используется кнопкой "Обновить"
     /// и как fallback, если кэша ещё нет или он повреждён)
     /// </summary>
-public void ReindexFromDisk(Repository repo)
+public void ReindexFromDisk(Repository repo, bool silent = false)
 {
+    string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
+
+    // Проверяем доступность папки ДО очистки текущих данных — иначе неудачная
+    // переиндексация (диск не примонтирован после перезагрузки, путь временно
+    // недоступен и т.п.) стирала уже загруженные прототипы, оставляя панель
+    // пустой, хотя валидные данные (например, из дискового кэша) уже были в памяти.
+    if (!Directory.Exists(prototypesPath))
+    {
+        System.Diagnostics.Debug.WriteLine($"[Index] Папка Prototypes не найдена: {prototypesPath}");
+
+        // MessageBox блокирует UI-поток модальным окном. При автоматической
+        // попытке на старте приложения это недопустимо (даёт эффект зависшего
+        // "Поиск..." на панели) — блокирующий диалог оставляем только для
+        // явного ручного нажатия кнопки "Обновить" (silent = false по умолчанию).
+        if (!silent)
+            MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
+        return;
+    }
+
     _rootPath = repo.Path;
     _currentRepoId = repo.Id;
     _currentRepoPath = repo.Path;
     _prototypes.Clear();
     _palettes.Clear();
     ClearSearchCache();
-
-    string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
-    if (!Directory.Exists(prototypesPath))
-    {
-        MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
-        return;
-    }
 
     var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
     int count = 0;

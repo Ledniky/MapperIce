@@ -188,6 +188,53 @@ public partial class MainForm
                 { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
             }
 
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
+            {
+                var grid = _map.ActiveGrid;
+                // Ищем комнату, на периметре которой находится клетка
+                var room = grid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+
+                if (room != null)
+                {
+                    bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
+                                    tileY == room.Y || tileY == room.Y + room.Height - 1;
+
+                    if (isOnEdge && _tileGrid.IsWall(tileX, tileY))
+                    {
+                        // Удаляем стену — ставим Empty
+                        _tileGrid.SetTile(tileX, tileY, TileContent.Empty);
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.RestoreWall)
+            {
+                var grid = _map.ActiveGrid;
+                var room = grid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+
+                if (room != null)
+                {
+                    bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
+                                    tileY == room.Y || tileY == room.Y + room.Height - 1;
+
+                    if (isOnEdge && !_tileGrid.HasTile(tileX, tileY))
+                    {
+                        // Восстанавливаем стену — ставим Wall с прототипом комнаты
+                        _tileGrid.SetTile(tileX, tileY, TileContent.Wall, room.WallProto, room.RoomType, room.GetHashCode());
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                }
+            }
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ||
