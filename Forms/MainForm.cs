@@ -496,6 +496,7 @@ public partial class MainForm : Form
     {
         _renderer.Resize(_canvas.Width, _canvas.Height);
         Render();
+        
     }
 
 

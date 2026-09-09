@@ -206,6 +206,7 @@ public partial class MainForm
                     // уже есть (стадия 1 в BuildFromRooms кладёт пол под все клетки
                     // комнаты, включая границу)
                     room.Passages.Add((tileX, tileY));
+                    RecalculateDecalPatterns();
                     UpdateTileGrid();
                     SaveState();
                     Render();
@@ -229,6 +230,7 @@ public partial class MainForm
                         // Снимаем пометку прохода — TileBuilder сам восстановит
                         // стену на этой границе при следующей пересборке
                         room.Passages.Remove((tileX, tileY));
+                        RecalculateDecalPatterns();
                         UpdateTileGrid();
                         SaveState();
                         Render();

@@ -86,7 +86,10 @@ public class DecalPatternBuilder
     private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
     {
         foreach (var r in grid.Rooms)
+        {
             if (r.Doors.Any(d => d.X == x && d.Y == y)) return true;
+            if (r.Passages.Any(p => p.X == x && p.Y == y)) return true;
+        }
         return grid.LooseDoors.Any(d => d.X == x && d.Y == y);
     }
 
