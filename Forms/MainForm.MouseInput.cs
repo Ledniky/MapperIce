@@ -188,7 +188,7 @@ public partial class MainForm
                 { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
             }
 
-            else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
+                        else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
             {
                 var grid = _map.ActiveGrid;
                 // Ищем любую комнату, на периметре которой находится стена
@@ -199,10 +199,13 @@ public partial class MainForm
                     return isOnEdge && _tileGrid.IsWall(tileX, tileY);
                 });
 
-                if (room != null)
+                if (room != null && !room.Passages.Contains((tileX, tileY)))
                 {
-                    // Удаляем стену — создаём проход
-                    _tileGrid.SetTile(tileX, tileY, TileContent.Empty);
+                    // Помечаем клетку как проход — TileBuilder не будет строить тут
+                    // стену при следующей пересборке TileGrid, а тайл пола под ней
+                    // уже есть (стадия 1 в BuildFromRooms кладёт пол под все клетки
+                    // комнаты, включая границу)
+                    room.Passages.Add((tileX, tileY));
                     UpdateTileGrid();
                     SaveState();
                     Render();
@@ -221,9 +224,18 @@ public partial class MainForm
                     bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
                                     tileY == room.Y || tileY == room.Y + room.Height - 1;
 
-                    if (isOnEdge && !_tileGrid.HasTile(tileX, tileY))
+                    if (isOnEdge && room.Passages.Contains((tileX, tileY)))
                     {
-                        // Восстанавливаем стену — ставим Wall с прототипом комнаты
+                        // Снимаем пометку прохода — TileBuilder сам восстановит
+                        // стену на этой границе при следующей пересборке
+                        room.Passages.Remove((tileX, tileY));
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                    else if (isOnEdge && !_tileGrid.HasTile(tileX, tileY))
+                    {
+                        // Старый случай — клетка на границе вообще без тайла
                         _tileGrid.SetTile(tileX, tileY, TileContent.Wall, room.WallProto, room.RoomType, room.GetHashCode());
                         UpdateTileGrid();
                         SaveState();

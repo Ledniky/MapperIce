@@ -18,6 +18,7 @@ public class Room
     public Color FillColor { get; set; } = Color.FromArgb(100, 230, 230, 230);
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
+    public List<(int X, int Y)> Passages { get; set; } = new();
     public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;    
     public DecalRuleSet AutoDecalRule { get; set; } = new();
     public List<ManualDecalArea> ManualDecalAreas { get; set; } = new();
@@ -65,7 +66,9 @@ public Room Clone()
                 Proto = door.Proto
             });
         }
-        
+
+        clone.Passages = new List<(int X, int Y)>(Passages);
+
         return clone;
     }
     

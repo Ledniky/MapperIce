@@ -114,6 +114,15 @@ private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x,
             }
         }
 
+        var passagePositions = new HashSet<(int x, int y)>();
+        foreach (var room in allRooms)
+        {
+            foreach (var passage in room.Passages)
+            {
+                passagePositions.Add((passage.X, passage.Y));
+            }
+        }
+
 
         // 1. ПОЛ (тайлы) - под всеми занятыми клетками комнаты, кроме вырезанных
         foreach (var room in allRooms)
@@ -147,6 +156,7 @@ foreach (var room in allRooms)
                 {
                     if (room.RemovedCells.Contains((x, y))) continue;
                     if (doorPositions.Contains((x, y))) continue;
+                    if (passagePositions.Contains((x, y))) continue;
 
                     string? wall = GetBoundaryWallProto(room, allRooms, x, y);
                     if (wall != null)
@@ -168,6 +178,7 @@ foreach (var room in allRooms)
                 {
                     if (room.RemovedCells.Contains((x, y))) continue;
                     if (doorPositions.Contains((x, y))) continue;
+                    if (passagePositions.Contains((x, y))) continue;
 
                     var existing = tileGrid.GetTile(x, y);
                     if (existing != null && existing.Content == TileContent.Wall) continue; // уже стена из прямого прохода
