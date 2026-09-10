@@ -127,7 +127,7 @@ public partial class MainForm : Form
     private Button? _btnMagnifier;
     private Panel? _magnifierPanel;
     private Label? _magnifierHeaderLabel;
-    private TextBox? _magnifierTextBox;
+    private FlowLayoutPanel? _magnifierListPanel;
     private Button? _btnMagnifierUnpin;
     private bool _magnifierPinned = false;
     private (int x, int y)? _magnifierPinnedTile = null;

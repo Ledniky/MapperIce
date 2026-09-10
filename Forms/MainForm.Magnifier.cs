@@ -7,7 +7,7 @@ namespace MapperIce.Forms;
 
 public partial class MainForm
 {
-    // ===== Инструмент "Лупа" — окошко с описанием объектов под курсором =====
+    // ===== Инструмент "Лупа" — окошко со списком объектов под курсором =====
 
     private void CreateMagnifierPanel()
     {
@@ -57,27 +57,28 @@ public partial class MainForm
 
         _magnifierPanel.Controls.Add(headerPanel);
 
-        _magnifierTextBox = new TextBox
+        // Список строк — не TextBox, т.к. у каждой строки своя кнопка удаления.
+        // AutoScroll + WrapContents=false + FlowDirection=TopDown даёт вертикальный
+        // список с прокруткой, растущий по одной строке за раз.
+        _magnifierListPanel = new FlowLayoutPanel
         {
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            BorderStyle = BorderStyle.None,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
             BackColor = Color.FromArgb(255, 255, 255, 245),
-            Font = new Font("Consolas", 8.5f)
+            Top = headerPanel.Height,
+            Width = _magnifierPanel.Width,
+            Height = _magnifierPanel.Height - headerPanel.Height
         };
-        _magnifierPanel.Controls.Add(_magnifierTextBox);
-
-        _magnifierTextBox.Top = headerPanel.Height;
-        _magnifierTextBox.Width = _magnifierPanel.Width;
+        _magnifierPanel.Controls.Add(_magnifierListPanel);
 
         _magnifierPanel.Resize += (s, e) =>
         {
-            if (_magnifierTextBox != null)
+            if (_magnifierListPanel != null)
             {
-                _magnifierTextBox.Width = _magnifierPanel.Width;
-                _magnifierTextBox.Height = _magnifierPanel.Height - headerPanel.Height;
+                _magnifierListPanel.Width = _magnifierPanel.Width;
+                _magnifierListPanel.Height = _magnifierPanel.Height - headerPanel.Height;
             }
         };
 
@@ -110,12 +111,67 @@ public partial class MainForm
         _magnifierPanel.Location = new Point(
             Math.Max(0, _canvas.Width - _magnifierPanel.Width - rightMargin),
             Math.Max(0, _canvas.Height - _magnifierPanel.Height - 10));
+    }
 
-        if (_magnifierTextBox != null)
+    /// <summary>
+    /// Добавляет одну строку в список: текст слева (обрезается многоточием, если
+    /// не помещается) и маленькая кнопка "✕" справа. deleteAction — null, если для
+    /// этого типа объекта нет прямого удаления (см. пол/стена ниже — они выводятся
+    /// из границ комнаты, а не хранятся как отдельный объект, поэтому кнопки нет).
+    /// </summary>
+    private void AddMagnifierRow(string text, Action? deleteAction)
+    {
+        if (_magnifierListPanel == null) return;
+
+        int rowWidth = Math.Max(50, _magnifierListPanel.ClientSize.Width - 4);
+
+        var row = new Panel
         {
-            _magnifierTextBox.Top = 22;
-            _magnifierTextBox.Width = _magnifierPanel.Width;
+            Width = rowWidth,
+            Height = 20,
+            Margin = new Padding(1)
+        };
+
+        var label = new Label
+        {
+            Text = text,
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Consolas", 8.5f)
+        };
+        row.Controls.Add(label);
+
+        if (deleteAction != null)
+        {
+            var btnDelete = new Button
+            {
+                Text = "✕",
+                Dock = DockStyle.Right,
+                Width = 20,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Arial", 7),
+                ForeColor = Color.DarkRed
+            };
+            btnDelete.Click += (s, e) => deleteAction();
+            row.Controls.Add(btnDelete);
+            // Добавлять кнопку нужно ДО Label с Dock=Fill по Z-порядку контролов,
+            // иначе Fill-контрол перекрывает Dock=Right — переставляем на передний план
+            btnDelete.BringToFront();
         }
+
+        _magnifierListPanel.Controls.Add(row);
+    }
+
+    /// <summary>
+    /// Выполняет удаление объекта из-под конкретной строки и обновляет список —
+    /// после удаления содержимое клетки меняется (например, был последний объект
+    /// на тайле), поэтому список нужно построить заново.
+    /// </summary>
+    private void DeleteMagnifierObject(Action deleteAction)
+    {
+        deleteAction();
+        UpdateMagnifierPanel();
     }
 
     /// <summary>
@@ -128,14 +184,15 @@ public partial class MainForm
     /// </summary>
     private void UpdateMagnifierPanel()
     {
-        if (_magnifierPanel == null || _magnifierTextBox == null || _magnifierHeaderLabel == null)
+        if (_magnifierPanel == null || _magnifierListPanel == null || _magnifierHeaderLabel == null)
             return;
+
+        _magnifierListPanel.Controls.Clear();
 
         var grid = _map.ActiveGrid;
         if (grid == null)
         {
             _magnifierHeaderLabel.Text = "🔍 Лупа — нет активного грида";
-            _magnifierTextBox.Text = "";
             if (_btnMagnifierUnpin != null) _btnMagnifierUnpin.Visible = false;
             return;
         }
@@ -159,21 +216,22 @@ public partial class MainForm
         string pinMark = _magnifierPinned ? " [закреплено]" : "";
         _magnifierHeaderLabel.Text = $"🔍 Тайл ({tileX}, {tileY}){pinMark}";
 
-        var lines = new List<string>();
-
-        // Пол
+        // Пол и стена выводятся из границ комнаты (TileBuilder.BuildFromRooms),
+        // а не хранятся как самостоятельный объект — прямого способа "удалить"
+        // именно этот тайл пола/стены нет (см. правило "геометрия комнаты
+        // производная, не хранимая" в принципах проекта), поэтому у этих двух
+        // строк кнопки удаления не будет.
         var floorTile = _tileGrid.GetTilesByContent(TileContent.Floor)
             .FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (floorTile != null)
-            lines.Add($"Пол: {floorTile.ProtoId ?? "Plating"}");
+            AddMagnifierRow($"Пол: {floorTile.ProtoId ?? "Plating"}", null);
 
-        // Стена
         var wallTile = _tileGrid.GetTilesByContent(TileContent.Wall)
             .FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (wallTile != null)
-            lines.Add($"Стена: {wallTile.ProtoId ?? "WallSolid"}");
+            AddMagnifierRow($"Стена: {wallTile.ProtoId ?? "WallSolid"}", null);
 
-        // Дверь (+ пол под ней, если есть)
+        // Дверь — удаляется через DoorUpdater, как и в инструменте "Удалить"
         var doorTile = _tileGrid.GetTilesByContent(TileContent.Door)
             .FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (doorTile != null)
@@ -181,23 +239,72 @@ public partial class MainForm
             string doorLine = $"Дверь: {doorTile.ProtoId ?? "Airlock"}";
             if (doorTile.HasFloorUnder && !string.IsNullOrEmpty(doorTile.FloorProtoUnder))
                 doorLine += $" (пол под: {doorTile.FloorProtoUnder})";
-            lines.Add(doorLine);
+
+            int dtx = tileX, dty = tileY;
+            AddMagnifierRow(doorLine, () => DeleteMagnifierObject(() =>
+            {
+                if (_doorUpdater.TryRemoveDoor(grid, dtx, dty))
+                {
+                    RecalculateDecalPatterns();
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }));
         }
 
         // Вручную размещённые тайлы (инструмент "Разместить прототип" → tile)
-        foreach (var pt in grid.Tiles.Where(t => t.X == tileX && t.Y == tileY))
-            lines.Add($"Ручной тайл: {pt.Proto}");
+        foreach (var pt in grid.Tiles.Where(t => t.X == tileX && t.Y == tileY).ToList())
+        {
+            var ptRef = pt;
+            AddMagnifierRow($"Ручной тайл: {ptRef.Proto}", () => DeleteMagnifierObject(() =>
+            {
+                grid.Tiles.Remove(ptRef);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }));
+        }
 
         // Комнаты, реально владеющие этой клеткой (учитывает вырезы через Room.Contains)
-        foreach (var room in grid.Rooms.Where(r => r.Contains(tileX, tileY)))
-            lines.Add($"Комната: {room.RoomType} [{room.Width}×{room.Height} @ ({room.X},{room.Y})]");
+        foreach (var room in grid.Rooms.Where(r => r.Contains(tileX, tileY)).ToList())
+        {
+            var roomRef = room;
+            AddMagnifierRow(
+                $"Комната: {roomRef.RoomType} [{roomRef.Width}×{roomRef.Height} @ ({roomRef.X},{roomRef.Y})]",
+                () => DeleteMagnifierObject(() =>
+                {
+                    // Та же последовательность, что и в Delete-инструменте по комнате:
+                    // сначала снести декали внутри её границ, потом саму комнату,
+                    // потом пересчитать двери всей карты
+                    var roomDecals = grid.Decals
+                        .Where(d => d.X >= roomRef.X && d.X < roomRef.X + roomRef.Width &&
+                                    d.Y >= roomRef.Y && d.Y < roomRef.Y + roomRef.Height)
+                        .ToList();
+                    foreach (var rd in roomDecals)
+                        grid.Decals.Remove(rd);
+
+                    grid.Rooms.Remove(roomRef);
+                    _doorUpdater.RecalculateAllDoors(grid);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }));
+        }
 
         // Сущности — попадание проверяем через floor(X)/floor(Y), как и весь
         // остальной код (HitTestAt/Delete), чтобы декали/сущности с дробными
         // координатами у края клетки тоже засчитывались как "в этом тайле"
-        foreach (var entity in grid.Entities)
+        foreach (var entity in grid.Entities.Where(e => FloorToInt(e.X) == tileX && FloorToInt(e.Y) == tileY).ToList())
         {
-            if (FloorToInt(entity.X) != tileX || FloorToInt(entity.Y) != tileY) continue;
+            var entityRef = entity;
+            void DeleteEntity() => DeleteMagnifierObject(() =>
+            {
+                grid.Entities.Remove(entityRef);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            });
 
             switch (entity)
             {
@@ -217,31 +324,39 @@ public partial class MainForm
                             EndpointType.DisposalUnit => " [DisposalUnit]",
                             _ => ""
                         };
-                        lines.Add(pipeLine);
+                        AddMagnifierRow(pipeLine, DeleteEntity);
                         break;
                     }
                 case FirelockEntity firelock:
-                    lines.Add($"Огнешлюз: {firelock.Proto}{(firelock.IsGlass ? " (стекло)" : "")}");
+                    AddMagnifierRow($"Огнешлюз: {firelock.Proto}{(firelock.IsGlass ? " (стекло)" : "")}", DeleteEntity);
                     break;
                 case AirAlarmEntity air:
-                    lines.Add($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)");
+                    AddMagnifierRow($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)", DeleteEntity);
                     break;
                 case FireAlarmEntity fire:
-                    lines.Add($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)");
+                    AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity);
                     break;
                 default:
-                    lines.Add($"Сущность: {entity.Proto}");
+                    AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity);
                     break;
             }
         }
 
         // Декали
-        foreach (var decal in grid.Decals)
+        foreach (var decal in grid.Decals.Where(d => FloorToInt(d.X) == tileX && FloorToInt(d.Y) == tileY).ToList())
         {
-            if (FloorToInt(decal.X) != tileX || FloorToInt(decal.Y) != tileY) continue;
-            lines.Add($"Декаль: {decal.Proto} [{decal.Color}, поворот {decal.Rotation * 180 / Math.PI:F0}°]");
+            var decalRef = decal;
+            AddMagnifierRow($"Декаль: {decalRef.Proto} [{decalRef.Color}, поворот {decalRef.Rotation * 180 / Math.PI:F0}°]",
+                () => DeleteMagnifierObject(() =>
+                {
+                    grid.Decals.Remove(decalRef);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }));
         }
 
-        _magnifierTextBox.Text = lines.Count > 0 ? string.Join(Environment.NewLine, lines) : "(пусто)";
+        if (_magnifierListPanel.Controls.Count == 0)
+            AddMagnifierRow("(пусто)", null);
     }
 }
