@@ -123,6 +123,14 @@ public partial class MainForm : Form
     private List<object> _selectedObjects = new();
     private (int x, int y)? _lastClickTile = null;
 
+    // ===== Инструмент "Лупа" =====
+    private Button? _btnMagnifier;
+    private Panel? _magnifierPanel;
+    private Label? _magnifierHeaderLabel;
+    private TextBox? _magnifierTextBox;
+    private Button? _btnMagnifierUnpin;
+    private bool _magnifierPinned = false;
+    private (int x, int y)? _magnifierPinnedTile = null;
     private bool _isMovingSelection = false;
     private bool _isBoxSelecting = false;
     private bool _boxSelectAdditive = false;
@@ -193,6 +201,7 @@ public partial class MainForm : Form
         CreateToolPanel();
         CreateGridPanel();
         CreateCanvas();
+        CreateMagnifierPanel();
         CreateMenu();
 
         _toolManager.ToolChanged += OnToolChanged;
@@ -380,6 +389,7 @@ public partial class MainForm : Form
         if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
+        if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
 
         if (tool != ToolManager.Tool.Move)
@@ -472,6 +482,10 @@ public partial class MainForm : Form
             case ToolManager.Tool.DecalRule:
                 if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.Magnifier:
+                if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.LightBlue;
+                break;
+        
         }
 
         Cursor = tool switch
@@ -479,6 +493,7 @@ public partial class MainForm : Form
             ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom or ToolManager.Tool.RestoreRoom => Cursors.Cross,
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule => Cursors.Hand,
+            ToolManager.Tool.Magnifier => Cursors.Cross,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
@@ -488,6 +503,22 @@ public partial class MainForm : Form
             _ => Cursors.Default
         };
 
+        if (_magnifierPanel != null)
+        {
+            bool showMagnifier = tool == ToolManager.Tool.Magnifier;
+            _magnifierPanel.Visible = showMagnifier;
+            if (showMagnifier)
+            {
+                // Каждое новое включение инструмента начинается с "живого" (неприкреплённого)
+                // режима — иначе после переключения на другой инструмент и обратно
+                // пользователь мог бы неожиданно увидеть старую зафиксированную клетку
+                _magnifierPinned = false;
+                _magnifierPinnedTile = null;
+                RepositionMagnifierPanel();
+                UpdateMagnifierPanel();
+            }
+        }
+
         Render();
     }
 
@@ -495,8 +526,8 @@ public partial class MainForm : Form
     private void OnResize(object? sender, EventArgs e)
     {
         _renderer.Resize(_canvas.Width, _canvas.Height);
+        RepositionMagnifierPanel();
         Render();
-        
     }
 
 
@@ -531,6 +562,11 @@ public partial class MainForm : Form
         else
         {
             _renderer.SetAlarmNetwork(null!);
+        }
+
+        if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
+        {
+            UpdateMagnifierPanel();
         }
 
         _canvas.Invalidate();

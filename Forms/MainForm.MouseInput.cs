@@ -75,6 +75,14 @@ public partial class MainForm
             int tileX = tilePos.x;
             int tileY = tilePos.y;
 
+                        if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
+            {
+                _magnifierPinnedTile = (tileX, tileY);
+                _magnifierPinned = true;
+                UpdateMagnifierPanel();
+                return;
+            }
+
             if (_toolManager.CurrentTool == ToolManager.Tool.Delete)
             {
                 var grid = _map.ActiveGrid;
@@ -762,6 +770,16 @@ public partial class MainForm
         }
 
         if (_map.ActiveGrid == null) return;
+
+
+
+        if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
+        {
+            if (!_magnifierPinned)
+                UpdateMagnifierPanel();
+            return;
+        }
+
 
         if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
             _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)

@@ -671,6 +671,37 @@ public partial class MainForm
         y += 40 + 2;
 
 
+        // === ЛУПА (отладка) ===
+        var magnifierLabel = new Label
+        {
+            Text = "Отладка:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(magnifierLabel);
+        y += 20 + 2;
+
+        _btnMagnifier = new Button
+        {
+            Text = "🔍 Лупа",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold)
+        };
+        _btnMagnifier.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.Magnifier);
+        };
+        _toolPanel.Controls.Add(_btnMagnifier);
+        y += 40 + 2;
+
         var decalRuleLabel = new Label
         {
             Text = "Decal Rule:",

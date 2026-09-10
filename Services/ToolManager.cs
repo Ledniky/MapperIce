@@ -29,7 +29,8 @@ public class ToolManager
         FireAlarm,
         PlacePrototype,
         Move,
-        DecalRule
+        DecalRule,
+        Magnifier
     }
 
     private Tool _currentTool = Tool.None;
