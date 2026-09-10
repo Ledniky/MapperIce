@@ -44,9 +44,10 @@ public partial class MainForm
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 30
         };
-        _protoList.DoubleClick += OnPrototypeDoubleClick;
-        _protoList.DrawItem += ProtoList_DrawItem;
-        listContainer.Controls.Add(_protoList);
+_protoList.DoubleClick += OnPrototypeDoubleClick;
+_protoList.DrawItem += ProtoList_DrawItem;
+_protoList.MouseDown += ProtoList_MouseDown;
+listContainer.Controls.Add(_protoList);
         panel.Controls.Add(listContainer);
 
         _iconRedrawTimer = new System.Windows.Forms.Timer { Interval = 80 };
@@ -501,6 +502,24 @@ public partial class MainForm
         MessageBox.Show(message, "Информация о прототипе");
     }
 
+private void ProtoList_MouseDown(object? sender, MouseEventArgs e)
+{
+    if (e.Button != MouseButtons.Left) return;
+
+    int index = _protoList.IndexFromPoint(e.Location);
+    if (index < 0 || index >= _protoList.Items.Count) return;
+
+    string? id = _protoList.Items[index]?.ToString();
+    bool isRealProto = !string.IsNullOrEmpty(id) &&
+                        !id.StartsWith("(") && !id.StartsWith("⚠") &&
+                        !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
+                        !id.StartsWith("Нажмите");
+    if (!isRealProto) return;
+
+    // Стандартный WinForms drag'n'drop: начинаем перетаскивание строки-ID,
+    // цель (например поле позиции в DecalPackDialog) сама решает, что с ней делать
+    _protoList.DoDragDrop(id!, DragDropEffects.Copy);
+}
 
     private void LoadDoorIcons()
     {

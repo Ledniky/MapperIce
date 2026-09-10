@@ -428,7 +428,8 @@ public partial class DecalPackDialog : Form
             {
                 Text = pack.Positions.TryGetValue(pos, out var v) ? v : "",
                 Location = new Point(120, y),
-                Width = 165
+                Width = 165,
+                AllowDrop = true
             };
             var capturedPos = pos;
             void CommitPosition()
@@ -439,6 +440,23 @@ public partial class DecalPackDialog : Form
             }
             txt.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; CommitPosition(); } };
             txt.Leave += (s, e) => CommitPosition();
+
+            // Приём drag'n'drop: перетащенный из панели репозиториев ID прототипа
+            // подставляется в поле позиции и сразу коммитится в пак
+            txt.DragEnter += (s, e) =>
+            {
+                e.Effect = e.Data != null && e.Data.GetDataPresent(DataFormats.Text)
+                    ? DragDropEffects.Copy
+                    : DragDropEffects.None;
+            };
+            txt.DragDrop += (s, e) =>
+            {
+                if (e.Data == null || !e.Data.GetDataPresent(DataFormats.Text)) return;
+                var dropped = (string)e.Data.GetData(DataFormats.Text)!;
+                txt.Text = dropped;
+                CommitPosition();
+            };
+
             _editorPanel.Controls.Add(txt);
 
             y += 24;
