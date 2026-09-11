@@ -66,6 +66,7 @@ public partial class MainForm
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             AutoScroll = true,
+            AutoSize = false,
             BackColor = Color.FromArgb(255, 255, 255, 245),
             Top = headerPanel.Height,
             Width = _magnifierPanel.Width,
@@ -146,11 +147,11 @@ public partial class MainForm
         {
             var btnDelete = new Button
             {
-                Text = "✕",
+                Text = "🗑",
                 Dock = DockStyle.Right,
                 Width = 20,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Arial", 7),
+                Font = new Font("Arial", 9),
                 ForeColor = Color.DarkRed
             };
             btnDelete.Click += (s, e) => deleteAction();

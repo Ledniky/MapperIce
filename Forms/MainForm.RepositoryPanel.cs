@@ -8,6 +8,8 @@ namespace MapperIce.Forms;
 public partial class MainForm
 {
     private System.Windows.Forms.Timer? _searchDebounceTimer;
+    private System.Windows.Forms.Timer? _moveTimer;
+    private DragGhostForm? _dragGhost;
 
     // === ПАНЕЛЬ РЕПОЗИТОРИЕВ ===
     private void CreateRepositoryPanel()
@@ -515,10 +517,48 @@ private void ProtoList_MouseDown(object? sender, MouseEventArgs e)
                         !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
                         !id.StartsWith("Нажмите");
     if (!isRealProto) return;
+    
+    // Курсор во время OLE drag'n'drop переопределить надёжно нельзя (Windows поверх
+    // него всё равно рисует своё "запрещено"/стрелку) — поэтому вместо этого ведём
+    // за курсором отдельное floating-окошко на всё время перетаскивания. Берём ту же
+    // иконку, что уже нарисована в списке (кэш ProtoList_DrawItem), либо грузим её
+    // синхронно на месте, если фоновая загрузка ещё не успела её закэшировать.
+    var dragIcon = GetCachedProtoIcon(id!) ?? GetPrototypeIcon(id!);
+    _dragGhost = new DragGhostForm(dragIcon, id!);
+    _dragGhost.MoveTo(Cursor.Position);
+    _dragGhost.Show();
+    _protoList.GiveFeedback += ProtoList_GiveFeedback;
 
-    // Стандартный WinForms drag'n'drop: начинаем перетаскивание строки-ID,
-    // цель (например поле позиции в DecalPackDialog) сама решает, что с ней делать
-    _protoList.DoDragDrop(id!, DragDropEffects.Copy);
+    // Timer для плавного следования "призрака" за курсором.
+    // GiveFeedback срабатывает только при смене состояния OLE DnD,
+    // поэтому отдельно отслеживаем движение мыши через таймер.
+    _moveTimer = new System.Windows.Forms.Timer { Interval = 16 };
+    _moveTimer.Tick += (s, e) => _dragGhost?.MoveTo(Cursor.Position);
+    _moveTimer.Start();
+
+    try
+    {
+        _protoList.DoDragDrop(id!, DragDropEffects.Copy);
+    }
+    finally
+    {
+        _protoList.GiveFeedback -= ProtoList_GiveFeedback;
+        _moveTimer?.Stop();
+        _moveTimer?.Dispose();
+        _moveTimer = null;
+        _dragGhost?.Close();
+        _dragGhost?.Dispose();
+        _dragGhost = null;
+    }
+}
+
+private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
+{
+    // Системные курсоры оставляем как есть — их всё равно не подменить, зато
+    // плашка с ID честно следует за курсором независимо от того, что рисует
+    // Windows (даже над зонами без поддержки drop).
+    e.UseDefaultCursors = true;
+    _dragGhost?.MoveTo(Cursor.Position);
 }
 
     private void LoadDoorIcons()
