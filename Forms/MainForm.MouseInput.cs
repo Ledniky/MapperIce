@@ -30,6 +30,13 @@ public partial class MainForm
                 return;
             }
 
+            if (_wireBuilder.IsDrawing)
+            {
+                _wireBuilder.ResetDrawing();
+                Render();
+                return;
+            }
+
             // ПКМ по синему квадрату — открыть диалог ввода строки
             var grid = _map.ActiveGrid;
             if (grid != null)
@@ -280,8 +287,75 @@ public partial class MainForm
                 }
             }
 
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeUtilSettings)
+            else if (_toolManager.CurrentTool == ToolManager.Tool.WireHV ||
+                     _toolManager.CurrentTool == ToolManager.Tool.WireMV ||
+                     _toolManager.CurrentTool == ToolManager.Tool.WireLV)
             {
+                if (!_wireBuilder.IsDrawing)
+                {
+                    _wireBuilder.StartDrawing(tileX, tileY);
+                    Render();
+                }
+                else
+                {
+                    string wireType = _toolManager.CurrentTool switch
+                    {
+                        ToolManager.Tool.WireHV => "HV",
+                        ToolManager.Tool.WireMV => "MV",
+                        _ => "LV"
+                    };
+                    _wireBuilder.FinishDrawing(_map.ActiveGrid, wireType);
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceSubstation)
+            {
+                // Подстанция — переходник ВВ↔СВ. Ставится только там, где на клетке
+                // физически совпадают провод ВВ и провод СВ (как дверь — только
+                // там, где есть граница комнаты)
+                var grid = _map.ActiveGrid;
+                if (grid != null && !string.IsNullOrEmpty(_selectedSubstationProto) &&
+                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") &&
+                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV"))
+                {
+                    bool alreadyThere = grid.Entities.Any(en =>
+                        en.GetType() == typeof(MapEntity) && (int)en.X == tileX && (int)en.Y == tileY);
+
+                    if (!alreadyThere)
+                    {
+                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedSubstationProto });
+                        SaveState();
+                        UpdateTileGrid();
+                        Render();
+                    }
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceApc)
+            {
+                // ЛКП — переходник СВ↔НВ, та же логика, что у подстанции
+                var grid = _map.ActiveGrid;
+                if (grid != null && !string.IsNullOrEmpty(_selectedApcProto) &&
+                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") &&
+                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "LV"))
+                {
+                    bool alreadyThere = grid.Entities.Any(en =>
+                        en.GetType() == typeof(MapEntity) && (int)en.X == tileX && (int)en.Y == tileY);
+
+                    if (!alreadyThere)
+                    {
+                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedApcProto });
+                        SaveState();
+                        UpdateTileGrid();
+                        Render();
+                    }
+                }
+            }
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeUtilSettings)            {
                 // Клик по трубе утилизации — меняем направление стрелки
                 var grid = _map.ActiveGrid;
                 if (grid == null) return;
@@ -845,6 +919,14 @@ public partial class MainForm
         {
             var tilePos = GetTilePosition(e.Location);
             _pipeBuilder.UpdateEndPoint(tilePos.x, tilePos.y);
+            Render();
+            return;
+        }
+
+        if (_wireBuilder.IsDrawing)
+        {
+            var tilePos = GetTilePosition(e.Location);
+            _wireBuilder.UpdateEndPoint(tilePos.x, tilePos.y);
             Render();
             return;
         }

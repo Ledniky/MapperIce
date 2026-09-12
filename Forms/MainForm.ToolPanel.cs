@@ -524,6 +524,138 @@ public partial class MainForm
         _toolPanel.Controls.Add(utilPanel);
         y += 40 + 2;
 
+        // === ЭЛЕКТРОСЕТЬ ===
+        var wireLabel = new Label
+        {
+            Text = "Электросеть:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(wireLabel);
+        y += 20 + 2;
+
+        // Строка 1: выбор типа кабеля + кнопка настроек цветов
+        var wireRow1Panel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 30,
+            BackColor = Color.Transparent
+        };
+
+        _wireTypeCombo = new ComboBox
+        {
+            Location = new Point(0, 0),
+            Width = wireRow1Panel.Width - 42,
+            Height = 30,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Arial", 9)
+        };
+        foreach (var wt in _wireTypeManager.GetTypes())
+            _wireTypeCombo.Items.Add(wt.DisplayName);
+        _wireTypeCombo.SelectedIndexChanged += (s, e) =>
+        {
+            int idx = _wireTypeCombo.SelectedIndex;
+            var types = _wireTypeManager.GetTypes();
+            if (idx < 0 || idx >= types.Count) return;
+
+            _currentWireLayer = types[idx].Name;
+            _toolManager.SetTool(_currentWireLayer switch
+            {
+                "HV" => ToolManager.Tool.WireHV,
+                "MV" => ToolManager.Tool.WireMV,
+                _ => ToolManager.Tool.WireLV
+            });
+        };
+        wireRow1Panel.Controls.Add(_wireTypeCombo);
+
+        _btnWireSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(wireRow1Panel.Width - 40, 0),
+            Width = 40,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 12)
+        };
+        _btnWireSettings.Click += (s, e) => ShowWireSettingsDialog();
+        wireRow1Panel.Controls.Add(_btnWireSettings);
+
+        wireRow1Panel.Resize += (s, e) =>
+        {
+            _wireTypeCombo.Width = wireRow1Panel.Width - 42;
+            _btnWireSettings.Location = new Point(wireRow1Panel.Width - 40, 0);
+        };
+
+        _toolPanel.Controls.Add(wireRow1Panel);
+        y += 30 + 2;
+
+        // Строка 2: выпадающие списки прототипов ЛКП (СВ-НВ) и подстанции (ВВ-СВ) —
+        // выбор пункта сразу активирует инструмент точечной установки переходника
+        var wireRow2Panel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 30,
+            BackColor = Color.Transparent
+        };
+
+        _apcCombo = new ComboBox
+        {
+            Location = new Point(0, 0),
+            Width = (wireRow2Panel.Width / 2) - 1,
+            Height = 30,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Arial", 8)
+        };
+        var apcTip = new ToolTip();
+        apcTip.SetToolTip(_apcCombo, "ЛКП (СВ ↔ НВ)");
+        _apcCombo.SelectedIndexChanged += (s, e) =>
+        {
+            if (_apcCombo.SelectedItem is string proto)
+            {
+                _selectedApcProto = proto;
+                _toolManager.SetTool(ToolManager.Tool.PlaceApc);
+            }
+        };
+        wireRow2Panel.Controls.Add(_apcCombo);
+
+        _substationCombo = new ComboBox
+        {
+            Location = new Point((wireRow2Panel.Width / 2) + 1, 0),
+            Width = (wireRow2Panel.Width / 2) - 1,
+            Height = 30,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Arial", 8)
+        };
+        var subTip = new ToolTip();
+        subTip.SetToolTip(_substationCombo, "Подстанция (ВВ ↔ СВ)");
+        _substationCombo.SelectedIndexChanged += (s, e) =>
+        {
+            if (_substationCombo.SelectedItem is string proto)
+            {
+                _selectedSubstationProto = proto;
+                _toolManager.SetTool(ToolManager.Tool.PlaceSubstation);
+            }
+        };
+        wireRow2Panel.Controls.Add(_substationCombo);
+
+        wireRow2Panel.Resize += (s, e) =>
+        {
+            int halfW = wireRow2Panel.Width / 2;
+            _apcCombo.Width = halfW - 1;
+            _substationCombo.Location = new Point(halfW + 1, 0);
+            _substationCombo.Width = halfW - 1;
+        };
+
+        _toolPanel.Controls.Add(wireRow2Panel);
+        y += 30 + 2;
+
         // === СИГНАЛИЗАЦИЯ ===
         var alarmLabel = new Label
         {
@@ -907,6 +1039,33 @@ public partial class MainForm
         });
 
         Controls.Add(_toolPanel);
+    }
+
+
+    /// <summary>
+    /// Наполняет выпадающие списки ЛКП/подстанции ID-шниками из проиндексированного
+    /// репозитория. Вызывается через _indexer.OnIndexingComplete — при первом запуске
+    /// список пуст, пока не выбран и не проиндексирован хотя бы один репозиторий.
+    /// </summary>
+    private void UpdateWireJunctionCombos()
+    {
+        if (_apcCombo == null || _substationCombo == null) return;
+
+        var allIds = _indexer.GetPrototypeIds();
+
+        string? prevApc = _apcCombo.SelectedItem as string;
+        _apcCombo.Items.Clear();
+        foreach (var id in allIds.Where(i => i.StartsWith("APC", StringComparison.OrdinalIgnoreCase)))
+            _apcCombo.Items.Add(id);
+        if (prevApc != null && _apcCombo.Items.Contains(prevApc))
+            _apcCombo.SelectedItem = prevApc;
+
+        string? prevSub = _substationCombo.SelectedItem as string;
+        _substationCombo.Items.Clear();
+        foreach (var id in allIds.Where(i => i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase)))
+            _substationCombo.Items.Add(id);
+        if (prevSub != null && _substationCombo.Items.Contains(prevSub))
+            _substationCombo.SelectedItem = prevSub;
     }
 
 

@@ -21,6 +21,8 @@ public partial class MainForm : Form
     private TileGrid _tileGrid = new();
     private PipeBuilder _pipeBuilder = null!;
     private PipeTypeManager _pipeTypeManager = new();
+    private WireBuilder _wireBuilder = null!;
+    private WireTypeManager _wireTypeManager = new();
     private AlarmNetwork? _cachedAlarmNetwork;
     private DecalPackManager _decalPackManager = new();
     private DecalInheritanceManager _decalInheritanceManager = new();
@@ -62,6 +64,11 @@ public partial class MainForm : Form
         { "🔧🔧 Фильтр", ToolManager.Tool.UtilWrenches },
         { "⚙ Настройки", ToolManager.Tool.UtilNodeLabel }
     };
+    private ComboBox _wireTypeCombo = null!;
+    private Button? _btnWireSettings;
+    private Form? _wireSettingsForm = null;
+    private ComboBox _apcCombo = null!;
+    private ComboBox _substationCombo = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -90,6 +97,9 @@ public partial class MainForm : Form
     private Form? _alarmSettingsForm = null;
     private Button _btnAlarmSettings = null!;
     private string _currentPipeLayer = "Distra";
+    private string _currentWireLayer = "HV";
+    private string? _selectedSubstationProto = null;
+    private string? _selectedApcProto = null;
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
     private float _currentAlarmRotation = 0;
@@ -192,10 +202,11 @@ public partial class MainForm : Form
         _pipeTypeManager = new PipeTypeManager();
         _decalPatternBuilder = new DecalPatternBuilder(_decalPackManager);
         _pipeBuilder = new PipeBuilder(_pipeTypeManager);
+        _wireBuilder = new WireBuilder(_wireTypeManager);
         _doorUpdater = new DoorUpdater(_roomTypeManager);
         _tileBuilder = new TileBuilder(_roomTypeManager, _doorUpdater, _drawDepthManager);
         _tileGrid = new TileGrid();
-        _renderer = new Renderer(Width, Height, _indexer, _drawDepthManager, _tileBuilder, _pipeBuilder);
+        _renderer = new Renderer(Width, Height, _indexer, _drawDepthManager, _tileBuilder, _pipeBuilder, _wireBuilder, _wireTypeManager);
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -222,6 +233,7 @@ public partial class MainForm : Form
             ClearProtoIconCache();
             UpdatePrototypeList();
             UpdateDoorIcons();
+            UpdateWireJunctionCombos();
             Render();
         };
 
@@ -403,6 +415,9 @@ public partial class MainForm : Form
         if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
         if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
         if (_utilToolCombo != null) _utilToolCombo.BackColor = Color.White;
+        if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.White;
+        if (_substationCombo != null) _substationCombo.BackColor = Color.White;
+        if (_apcCombo != null) _apcCombo.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
@@ -509,6 +524,17 @@ public partial class MainForm : Form
             case ToolManager.Tool.Magnifier:
                 if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.WireHV:
+            case ToolManager.Tool.WireMV:
+            case ToolManager.Tool.WireLV:
+                if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PlaceSubstation:
+                if (_substationCombo != null) _substationCombo.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PlaceApc:
+                if (_apcCombo != null) _apcCombo.BackColor = Color.LightBlue;
+                break;
         
         }
 
@@ -524,6 +550,8 @@ public partial class MainForm : Form
             ToolManager.Tool.UtilWrenches => Cursors.Help,
             ToolManager.Tool.UtilNodeLabel => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
+            ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
+            ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default
         };
 

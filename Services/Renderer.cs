@@ -13,6 +13,8 @@ public class Renderer
     private readonly DrawDepthManager _drawDepthManager;
     private readonly TileBuilder _tileBuilder;
     private readonly PipeBuilder _pipeBuilder;
+    private readonly WireBuilder _wireBuilder;
+    private readonly WireTypeManager _wireTypeManager;
     private readonly string _rootPath = "";
     public bool HideRoomOverlay { get; set; } = false;
     private MapData? _currentMap;
@@ -83,13 +85,15 @@ public class Renderer
         _selection = selection;
     }
 
-    public Renderer(int width, int height, PrototypeIndexer? indexer, DrawDepthManager? drawDepthManager, TileBuilder tileBuilder, PipeBuilder pipeBuilder)
+    public Renderer(int width, int height, PrototypeIndexer? indexer, DrawDepthManager? drawDepthManager, TileBuilder tileBuilder, PipeBuilder pipeBuilder, WireBuilder wireBuilder, WireTypeManager wireTypeManager)
     {
         _buffer = new Bitmap(Math.Max(1, width), Math.Max(1, height));
         _indexer = indexer;
         _drawDepthManager = drawDepthManager ?? new DrawDepthManager();
         _tileBuilder = tileBuilder;
         _pipeBuilder = pipeBuilder;
+        _wireBuilder = wireBuilder;
+        _wireTypeManager = wireTypeManager;
         if (_indexer != null)
             _rootPath = _indexer.GetRootPath();
     }
@@ -238,8 +242,26 @@ public class Renderer
                     }
                 }
 
-                // Собираем сигнализации для стрелок — они теперь внутри DrawRenderLayer,
-                // но стрелки рисуются отдельно, поэтому фильтруем заново
+                // Электросеть — отдельный слой поверх труб, та же идея (линии между
+                // соседями одного типа + точки узлов), без специфичных для труб
+                // маркеров фильтра/стрелок утилизации
+                var allWires = _wireBuilder.GetWires(grid)
+                    .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
+                    .OrderBy(w => w.Y)
+                    .ToList();
+                DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset);
+                if (allWires.Count > 0)
+                    DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
+
+                if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
+                {
+                    var wireStart = _wireBuilder.StartPoint.Value;
+                    var wireEnd = _wireBuilder.EndPoint ?? wireStart;
+                    var wirePath = CalculatePipePath(wireStart, wireEnd);
+                    DrawTempPipePath(g, wirePath, tileSize, viewOffset, gridOffset);
+                }
+
+                // Собираем сигнализации для стрелок — они теперь внутри DrawRenderLayer,                // но стрелки рисуются отдельно, поэтому фильтруем заново
                 var visibleAlarmsForArrows = grid.Entities
                     .OfType<MapEntity>()
                     .Where(e => e is AirAlarmEntity or FireAlarmEntity)
@@ -685,10 +707,13 @@ public class Renderer
                     penCache[cacheKey] = pen;
                 }
 
-                float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-                float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
+                float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+
+                var (nOffX, nOffY) = GetPipeDirectionalOffset(neighbor.Rotation);
+                float nx = (key.Item1 + 0.5f + nOffX + gridOffset.X) * tileSize - viewOffset.X;
+                float ny = (key.Item2 + 0.5f + nOffY + gridOffset.Y) * tileSize - viewOffset.Y;
                 g.DrawLine(pen, cx, cy, nx, ny);
             }
         }
@@ -726,8 +751,9 @@ public class Renderer
                 brushCache[cacheKey] = cached;
             }
 
-            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
+            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
 
             g.FillEllipse(cached.brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
             g.DrawEllipse(cached.pen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
@@ -741,8 +767,86 @@ public class Renderer
         }
     }
 
-    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    private void DrawWireLinesBatch(Graphics g, List<WireEntity> wires, int tileSize, PointF viewOffset, PointF gridOffset)
     {
+        if (wires.Count == 0) return;
+
+        var penCache = new Dictionary<string, Pen>();
+
+        var wireDicts = new Dictionary<string, Dictionary<(float x, float y), WireEntity>>();
+        foreach (var wire in wires)
+        {
+            if (!wireDicts.TryGetValue(wire.WireType, out var dict))
+            {
+                dict = new Dictionary<(float x, float y), WireEntity>();
+                wireDicts[wire.WireType] = dict;
+            }
+            dict[(wire.X, wire.Y)] = wire;
+        }
+
+        // Каждое ребро — один раз (та же идея, что и в DrawPipeLinesBatch)
+        var forwardDirections = new[] { (1, 0), (0, 1) };
+
+        foreach (var wire in wires)
+        {
+            var wireDict = wireDicts[wire.WireType];
+            foreach (var (dx, dy) in forwardDirections)
+            {
+                var key = (wire.X + dx, wire.Y + dy);
+                if (!wireDict.TryGetValue(key, out _)) continue;
+
+                if (!penCache.TryGetValue(wire.WireType, out var pen))
+                {
+                    pen = new Pen(GetWireColor(wire.WireType), Math.Max(2, tileSize / 10));
+                    penCache[wire.WireType] = pen;
+                }
+
+                float cx = (wire.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                float cy = (wire.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+                float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                g.DrawLine(pen, cx, cy, nx, ny);
+            }
+        }
+
+        foreach (var p in penCache.Values)
+            p?.Dispose();
+    }
+
+    private void DrawWireDotsBatch(Graphics g, List<WireEntity> wires, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        if (wires.Count == 0) return;
+
+        float dotSize = Math.Max(4, tileSize / 6);
+        var brushCache = new Dictionary<string, SolidBrush>();
+
+        foreach (var wire in wires.OrderBy(w => w.Y))
+        {
+            if (!brushCache.TryGetValue(wire.WireType, out var brush))
+            {
+                brush = new SolidBrush(GetWireColor(wire.WireType));
+                brushCache[wire.WireType] = brush;
+            }
+
+            float cx = (wire.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (wire.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+
+            g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
+        }
+
+        foreach (var b in brushCache.Values)
+            b.Dispose();
+    }
+
+    private Color GetWireColor(string wireType)
+    {
+        // В отличие от GetPipeColor (жёстко зашитые цвета труб), цвет кабеля
+        // берётся из WireTypeManager — так диалог "Настройки" реально влияет
+        // на отрисовку, а не только на иконки инструментов
+        return _wireTypeManager.GetWireType(wireType).Color;
+    }
+
+    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)    {
         var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
         if (utilPipes.Count == 0) return;
 
@@ -765,8 +869,9 @@ public class Renderer
 
             if (neighbors != 1) continue;
 
-            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
+            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
 
             Color markerColor;
             if (pipe.EndpointType == EndpointType.MailingUnit)
@@ -806,9 +911,10 @@ public class Renderer
 
         foreach (var pipe in markedPipes)
         {
-            // Квадрат рисуется прямо поверх узла, по центру клетки
-            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
+            // Квадрат рисуется прямо поверх узла, со смещением по направлению
+            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
 
 using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
             g.FillRectangle(brush, cx - squareSize / 2, cy - squareSize / 2, squareSize, squareSize);
@@ -850,8 +956,9 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
             // Рисуем стрелку на развилках (3) и перекрёстках (4)
             if (neighbors != 3 && neighbors != 4) continue;
 
-            float cx = (pipe.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
+            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
 
             float arrowSize = tileSize / 2f;
 
@@ -1111,8 +1218,7 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity) continue;
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue;            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
             if (dd == 0 && _indexer != null)
             {
@@ -1616,6 +1722,32 @@ renderQueue.Sort((a, b) =>
     #endregion
 
     #region Вспомогательные методы
+
+    /// <summary>
+    /// Возвращает смещение в долях тайла для визуального позиционирования трубы
+    /// в зависимости от направления (rotation). Конвенция: 0=юг, PI/2=восток,
+    /// PI=север, 3PI/2=запад.
+    /// </summary>
+    private static (float offsetX, float offsetY) GetPipeDirectionalOffset(float rotation)
+    {
+        // Нормализуем rotation к диапазону [0, 2PI)
+        float normalized = rotation % (float)(2 * Math.PI);
+        if (normalized < 0) normalized += (float)(2 * Math.PI);
+
+        const float q = 0.25f; // четверть тайла
+
+        // Определяем направление по ближайшей четверти круга
+        int quarter = (int)Math.Round(normalized / (float)(Math.PI / 2)) % 4;
+
+        return quarter switch
+        {
+            0 => ( q, -q),  // Юг (D)  — выше (-Y) и правее (+X) на четверть тайла
+            1 => ( 0,  0),  // Восток (E) — по центру
+            2 => ( 0,  0),  // Север (N) — по центру
+            3 => (-q,  q),  // Запад (W) — ниже (+Y) и левее (-X) на четверть тайла
+            _ => ( 0,  0)
+        };
+    }
 
     private Color GetPipeColor(string pipeType)
     {

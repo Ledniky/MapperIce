@@ -30,7 +30,12 @@ public class ToolManager
         PlacePrototype,
         Move,
         DecalRule,
-        Magnifier
+        Magnifier,
+        WireHV,
+        WireMV,
+        WireLV,
+        PlaceSubstation,
+        PlaceApc
     }
 
     private Tool _currentTool = Tool.None;

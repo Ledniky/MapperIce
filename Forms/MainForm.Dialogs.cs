@@ -169,9 +169,88 @@ public partial class MainForm
         _pipeSettingsForm.Show(this);
     }
 
+    private void ShowWireSettingsDialog()
+    {
+        if (_wireSettingsForm != null && !_wireSettingsForm.IsDisposed)
+        {
+            _wireSettingsForm.Close();
+            _wireSettingsForm = null;
+            return;
+        }
+
+        _wireSettingsForm = new Form
+        {
+            Text = "Настройки цветов кабелей",
+            Size = new Size(360, 260),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        _wireSettingsForm.Owner = this;
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 4,
+            ColumnCount = 2,
+            AutoSize = true
+        };
+
+        panel.Controls.Add(new Label { Text = "Тип кабеля", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
+        panel.Controls.Add(new Label { Text = "Цвет", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
+
+        int row = 1;
+        foreach (var wireType in _wireTypeManager.GetTypes())
+        {
+            panel.Controls.Add(new Label { Text = wireType.DisplayName, AutoSize = true, Font = new Font("Arial", 9) }, 0, row);
+
+            var btnColor = new Button
+            {
+                BackColor = wireType.Color,
+                Width = 60,
+                Height = 30,
+                FlatStyle = FlatStyle.Flat,
+                Tag = wireType.Name
+            };
+            btnColor.Click += (s, e) =>
+            {
+                if (ArgbColorPickerDialog.Pick(this, wireType.Color, out var picked))
+                {
+                    wireType.Color = picked;
+                    btnColor.BackColor = picked;
+                    Render();
+                }
+            };
+            panel.Controls.Add(btnColor, 1, row);
+
+            row++;
+        }
+
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 30,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnOk.Click += (s, e) => _wireSettingsForm?.Close();
+        btnPanel.Controls.Add(btnOk);
+
+        _wireSettingsForm.Controls.Add(panel);
+        _wireSettingsForm.Controls.Add(btnPanel);
+
+        _wireSettingsForm.FormClosed += (s, e) => { _wireSettingsForm = null; };
+        _wireSettingsForm.Show(this);
+    }
+
     // Стандартные теги фильтрации мусоропровода SS14
     private static readonly string[] _defaultFilterTags =
-    {
+{
         "SEC, ", "MED, ", "ENG, ", "CMD, ", "SUP, ", "RND, ", "SRV, "
     };
 
