@@ -22,6 +22,7 @@ public partial class MainForm
             Padding = new Padding(5),
             BorderStyle = BorderStyle.None
         };
+        DragDropCursorHelper.SuppressForbiddenCursor(panel);
 
         var rightLine = new Panel
         {

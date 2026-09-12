@@ -19,6 +19,7 @@ public partial class MainForm
             BorderStyle = BorderStyle.None,
             Padding = new Padding(0)
         };
+        DragDropCursorHelper.SuppressForbiddenCursor(_toolPanel);
 
         var leftLine = new Panel
         {

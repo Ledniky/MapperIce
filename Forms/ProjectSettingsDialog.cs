@@ -46,6 +46,7 @@ public class ProjectSettingsDialog : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Arial", 10);
+        DragDropCursorHelper.SuppressForbiddenCursor(this);
 
         CreateUI();
     }

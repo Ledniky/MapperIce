@@ -38,6 +38,7 @@ public class ArgbColorPickerDialog : Form
         ShowInTaskbar = false;
         MaximizeBox = false;
         MinimizeBox = false;
+        DragDropCursorHelper.SuppressForbiddenCursor(this);
 
         _preview = new Panel
         {

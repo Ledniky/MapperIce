@@ -25,6 +25,7 @@ public partial class MainForm
             Padding = new Padding(0),
             BorderStyle = BorderStyle.FixedSingle
         };
+        DragDropCursorHelper.SuppressForbiddenCursor(panel);
 
         // Initialize ToolTip
         _tabToolTip = new ToolTip { InitialDelay = 100 };
