@@ -320,7 +320,8 @@ public partial class MainForm : Form
         _canvas = new PictureBox
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.White
+            BackColor = Color.White,
+            AllowDrop = true
         };
         _canvas.MouseDown += OnMouseDown;
         _canvas.MouseMove += OnMouseMove;
@@ -329,10 +330,33 @@ public partial class MainForm : Form
         _canvas.Resize += OnResize;
         _canvas.MouseWheel += OnMouseWheel;
         _canvas.MouseLeave += OnMouseLeave;
+        _canvas.DragEnter += Canvas_DragOver;
+        _canvas.DragOver += Canvas_DragOver;
         Controls.Add(_canvas);
     }
 
 
+    // Effect = Copy выставляется только если под курсором реально есть комната —
+    // иначе GiveFeedback (см. ProtoList_GiveFeedback) покажет обычную стрелку,
+    // а не системный значок "вставки" над пустотой холста.
+    private void Canvas_DragOver(object? sender, DragEventArgs e)
+    {
+        e.Effect = DragDropEffects.None;
+
+        if (e.Data == null || !e.Data.GetDataPresent(typeof(string))) return;
+
+        var grid = _map.ActiveGrid;
+        if (grid == null) return;
+
+        var clientPoint = _canvas.PointToClient(new Point(e.X, e.Y));
+        var (tileX, tileY) = GetTilePosition(clientPoint);
+
+        var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+        if (room != null)
+            e.Effect = DragDropEffects.Copy;
+    }
+
+    
     // === МЕНЮ ===
     private void CreateMenu()
     {

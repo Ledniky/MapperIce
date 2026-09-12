@@ -554,13 +554,17 @@ private void ProtoList_MouseDown(object? sender, MouseEventArgs e)
 
 private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 {
-    // Системные курсоры оставляем как есть — их всё равно не подменить, зато
-    // плашка с ID честно следует за курсором независимо от того, что рисует
-    // Windows (даже над зонами без поддержки drop).
-    e.UseDefaultCursors = true;
+    // e.Effect — это то, что выставил DragOver текущей цели под курсором.
+    // Copy -> над валидной зоной (канвас и т.п.): оставляем системный курсор,
+    // чтобы был виден нормальный значок "вставки".
+    // None -> над невалидной зоной: системный курсор дал бы "запрет",
+    // поэтому подменяем на обычную стрелку.
+    e.UseDefaultCursors = e.Effect == DragDropEffects.Copy;
+    if (e.Effect != DragDropEffects.Copy)
+        Cursor.Current = Cursors.Default;
+
     _dragGhost?.MoveTo(Cursor.Position);
 }
-
     private void LoadDoorIcons()
     {
         if (_btnAirlock != null)
