@@ -780,21 +780,54 @@ public partial class MainForm
         _toolPanel.Controls.Add(magnifierLabel);
         y += 20 + 2;
 
-        _btnMagnifier = new Button
+        var magnifierRowPanel = new Panel
         {
-            Text = "🔍 Лупа",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
             Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        _btnMagnifier = new Button
+        {
+            Text = "🔍 Лупа",
+            Location = new Point(0, 0),
+            Width = magnifierRowPanel.Width / 2 - 1,
+            Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Arial", 9, FontStyle.Bold)
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
         };
         _btnMagnifier.Click += (s, e) =>
         {
             _toolManager.SetTool(ToolManager.Tool.Magnifier);
         };
-        _toolPanel.Controls.Add(_btnMagnifier);
+        magnifierRowPanel.Controls.Add(_btnMagnifier);
+
+        _btnProjectSettings = new Button
+        {
+            Text = "Проект",
+            Location = new Point(magnifierRowPanel.Width / 2 + 1, 0),
+            Width = magnifierRowPanel.Width / 2 - 1,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnProjectSettings.Click += (s, e) => ShowProjectSettingsDialog();
+        magnifierRowPanel.Controls.Add(_btnProjectSettings);
+
+        magnifierRowPanel.Resize += (s, e) =>
+        {
+            int halfW = magnifierRowPanel.Width / 2;
+            _btnMagnifier.Width = halfW - 1;
+            _btnProjectSettings.Location = new Point(halfW + 1, 0);
+            _btnProjectSettings.Width = halfW - 1;
+        };
+
+        _toolPanel.Controls.Add(magnifierRowPanel);
         y += 40 + 2;
 
         var decalRuleLabel = new Label
@@ -862,39 +895,6 @@ public partial class MainForm
                     _decalInheritanceForm.Show(this);
                 };
         _toolPanel.Controls.Add(_btnDecalInheritance);
-        y += 40 + 2;
-
-
-        // === НАСТРОЙКИ ПРОЕКТА ===
-        var projectSettingsPanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 40,
-            BackColor = Color.Transparent
-        };
-
-        _btnProjectSettings = new Button
-        {
-            Text = "⚙ Настройки проекта",
-            Location = new Point(0, 0),
-            Width = contentWidth - 4,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Arial", 9, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(10, 0, 0, 0)
-        };
-        _btnProjectSettings.Click += (s, e) => ShowProjectSettingsDialog();
-        projectSettingsPanel.Controls.Add(_btnProjectSettings);
-
-        projectSettingsPanel.Resize += (s, e) =>
-        {
-            _btnProjectSettings.Width = projectSettingsPanel.Width - 4;
-        };
-
-        _toolPanel.Controls.Add(projectSettingsPanel);
         y += 40 + 2;
 
 
