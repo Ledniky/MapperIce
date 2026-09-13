@@ -43,10 +43,30 @@ public partial class MainForm : Form
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
     private Button _btnRoomSettings = null!;
-    private Button _btnAirlock = null!;
-    private Button _btnAirlockGlass = null!;
-    private Button _btnPassage = null!;
-    private Button _btnRestoreWall = null!;
+private ComboBox _doorToolCombo = null!;
+    // Ключ — подпись пункта в списке, значение — инструмент (как _utilToolMap)
+    private readonly Dictionary<string, ToolManager.Tool> _doorToolMap = new()
+    {
+        { "Дверь", ToolManager.Tool.Door },
+        { "Дверь (стекло)", ToolManager.Tool.DoorGlass },
+        { "Проход", ToolManager.Tool.Passage },
+        { "Восстановить стену", ToolManager.Tool.RestoreWall }
+    };
+    // Для пунктов с реальным прототипом (двери) — Id для GetCachedProtoIcon.
+    // ProtoId == null -> у пункта нет спрайта, всегда рисуется Fallback-эмодзи
+    // (так было и раньше: Проход/Восстановить стену — просто глифы на кнопках)
+    private readonly Dictionary<string, (string? ProtoId, string Fallback)> _doorToolIcons = new()
+    {
+        { "Дверь", ("Airlock", "🚪") },
+        { "Дверь (стекло)", ("AirlockGlass", "🔲") },
+        { "Проход", (null, "▢") },
+        { "Восстановить стену", (null, "🧱") }
+    };
+    // Готовые заранее (синхронно) иконки для _doorToolCombo — в отличие от
+    // GetCachedProtoIcon, без асинхронной догрузки, чтобы не ждать повторного
+    // открытия/наведения на список для появления текстур
+    private Image? _doorIconAirlock;
+    private Image? _doorIconAirlockGlass;
     private Button _btnSubtractRoom = null!;
     private Button _btnRestoreRoom = null!;
     private Room? _restoreTargetRoom = null;
@@ -232,16 +252,14 @@ public partial class MainForm : Form
         {
             ClearProtoIconCache();
             UpdatePrototypeList();
-            UpdateDoorIcons();
             UpdateWireJunctionCombos();
+            LoadDoorComboIcons();
             Render();
         };
 
         UpdateRepoSelector();
-        LoadDoorIcons();
-        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };
-        SaveState();
-        UpdateBuffer();
+        LoadDoorComboIcons();
+        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };        UpdateBuffer();
     }
 
 
@@ -406,10 +424,7 @@ public partial class MainForm : Form
         _btnDelete.BackColor = Color.White;
         _btnDeleteArea.BackColor = Color.White;
         _btnDeleteSettings.BackColor = Color.White;
-        _btnAirlock.BackColor = Color.White;
-        _btnAirlockGlass.BackColor = Color.White;
-        _btnPassage.BackColor = Color.White;
-        _btnRestoreWall.BackColor = Color.White;
+        if (_doorToolCombo != null) _doorToolCombo.BackColor = Color.White;
         if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.White;
         if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.White;
         if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
@@ -463,16 +478,32 @@ public partial class MainForm : Form
                 _btnDeleteSettings.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.Door:
-                _btnAirlock.BackColor = Color.LightBlue;
+                if (_doorToolCombo != null)
+                {
+                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.SelectedItem = "Дверь";
+                }
                 break;
             case ToolManager.Tool.DoorGlass:
-                _btnAirlockGlass.BackColor = Color.LightBlue;
+                if (_doorToolCombo != null)
+                {
+                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.SelectedItem = "Дверь (стекло)";
+                }
                 break;
             case ToolManager.Tool.Passage:
-                _btnPassage.BackColor = Color.LightBlue;
+                if (_doorToolCombo != null)
+                {
+                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.SelectedItem = "Проход";
+                }
                 break;
             case ToolManager.Tool.RestoreWall:
-                _btnRestoreWall.BackColor = Color.LightBlue;
+                if (_doorToolCombo != null)
+                {
+                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.SelectedItem = "Восстановить стену";
+                }
                 break;
             case ToolManager.Tool.PipeDistra:
                 if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.LightBlue;

@@ -60,6 +60,7 @@ listContainer.Controls.Add(_protoList);
             {
                 _pendingIconRedraw = false;
                 if (!_protoList.IsDisposed) _protoList.Invalidate();
+                if (_doorToolCombo != null && !_doorToolCombo.IsDisposed) _doorToolCombo.Invalidate();
             }
         };
         _iconRedrawTimer.Start();
@@ -381,8 +382,6 @@ listContainer.Controls.Add(_protoList);
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
 
-            UpdateDoorIcons();
-
             MessageBox.Show($"Проиндексировано {count} прототипов");
         }
     }
@@ -566,41 +565,6 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 
     _dragGhost?.MoveTo(Cursor.Position);
 }
-    private void LoadDoorIcons()
-    {
-        if (_btnAirlock != null)
-        {
-            var icon = GetPrototypeIcon("Airlock");
-            if (icon != null)
-            {
-                _btnAirlock.Image = icon;
-                _btnAirlock.Text = "";
-            }
-            else
-            {
-                _btnAirlock.Text = "🚪";
-                _btnAirlock.TextAlign = ContentAlignment.MiddleCenter;
-                _btnAirlock.Font = new Font("Segoe UI", 16);
-            }
-        }
-
-        if (_btnAirlockGlass != null)
-        {
-            var icon = GetPrototypeIcon("AirlockGlass");
-            if (icon != null)
-            {
-                _btnAirlockGlass.Image = icon;
-                _btnAirlockGlass.Text = "";
-            }
-            else
-            {
-                _btnAirlockGlass.Text = "🔲";
-                _btnAirlockGlass.TextAlign = ContentAlignment.MiddleCenter;
-                _btnAirlockGlass.Font = new Font("Segoe UI", 16);
-            }
-        }
-    }
-
 
     private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
 
@@ -673,6 +637,16 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
         return null;
     }
 
+
+    private void LoadDoorComboIcons()
+    {
+        _doorIconAirlock?.Dispose();
+        _doorIconAirlockGlass?.Dispose();
+        _doorIconAirlock = GetPrototypeIcon("Airlock");
+        _doorIconAirlockGlass = GetPrototypeIcon("AirlockGlass");
+        if (_doorToolCombo != null && !_doorToolCombo.IsDisposed) _doorToolCombo.Invalidate();
+    }
+    
     private Image? GetCachedProtoIcon(string protoId)
     {
         if (_protoIconCache.TryGetValue(protoId, out var cached))
@@ -755,29 +729,6 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 
         e.DrawFocusRectangle();
     }
-    private void UpdateDoorIcons()
-    {
-        if (_btnAirlock != null)
-        {
-            var icon = GetPrototypeIcon("Airlock");
-            if (icon != null)
-            {
-                _btnAirlock.Image = icon;
-                _btnAirlock.Text = "";
-            }
-        }
-
-        if (_btnAirlockGlass != null)
-        {
-            var icon = GetPrototypeIcon("AirlockGlass");
-            if (icon != null)
-            {
-                _btnAirlockGlass.Image = icon;
-                _btnAirlockGlass.Text = "";
-            }
-        }
-    }
-
 
     private void ArmPrototypePlacement()
     {

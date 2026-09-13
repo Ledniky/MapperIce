@@ -211,117 +211,79 @@ public partial class MainForm
         _toolPanel.Controls.Add(roomRow2Panel);
         y += 40 + 2;
 
-        // ДВЕРИ
-        var doorPanel = new Panel
+
+
+        _doorToolCombo = new ComboBox
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
             Height = 40,
-            BackColor = Color.Transparent
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 34,
+            Font = new Font("Arial", 10)
+        };
+        foreach (var label in _doorToolMap.Keys)
+            _doorToolCombo.Items.Add(label);
+
+        // Рисуем реальный спрайт прототипа (если есть и уже загружен через
+        // GetCachedProtoIcon), иначе — emoji-заглушку из _doorToolIcons.Fallback.
+        // Тот же приём, что и в ProtoList_DrawItem: иконка слева, текст справа от неё.
+        _doorToolCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string label = _doorToolCombo.Items[e.Index].ToString() ?? "";
+                const int iconSize = 28;
+                const int padding = 4;
+                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
+                int textX = e.Bounds.Left + padding;
+
+                Image? icon = null;
+                string fallback = "";
+                if (_doorToolIcons.TryGetValue(label, out var info))
+                {
+                    fallback = info.Fallback;
+                    icon = info.ProtoId switch
+                    {
+                        "Airlock" => _doorIconAirlock,
+                        "AirlockGlass" => _doorIconAirlockGlass,
+                        _ => null
+                    };
+                }
+
+                if (icon != null)
+                {
+                    int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
+                    e.Graphics.DrawImage(icon, e.Bounds.Left + padding, drawY, icon.Width, icon.Height);
+                    textX = e.Bounds.Left + padding + iconSize + padding;
+                }
+                else if (!string.IsNullOrEmpty(fallback))
+                {
+                    TextRenderer.DrawText(e.Graphics, fallback, new Font("Segoe UI", 14),
+                        new Rectangle(e.Bounds.Left + padding, iconY, iconSize, iconSize),
+                        e.ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    textX = e.Bounds.Left + padding + iconSize + padding;
+                }
+
+                TextRenderer.DrawText(e.Graphics, label, _doorToolCombo.Font,
+                    new Rectangle(textX, e.Bounds.Top, e.Bounds.Width - (textX - e.Bounds.Left), e.Bounds.Height),
+                    _doorToolCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
         };
 
-        _btnAirlock = new Button
+        _doorToolCombo.SelectedIndexChanged += (s, e) =>
         {
-            Location = new Point(0, 0),
-            Width = (doorPanel.Width / 2) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Airlock",
-            ImageAlign = ContentAlignment.MiddleCenter,
-            Text = "",
-            Padding = new Padding(0)
+            if (_doorToolCombo.SelectedItem is string key && _doorToolMap.TryGetValue(key, out var tool))
+            {
+                _toolManager.SetTool(tool);
+            }
         };
-        _btnAirlock.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.Door);
-        };
-        doorPanel.Controls.Add(_btnAirlock);
-
-        _btnAirlockGlass = new Button
-        {
-            Location = new Point((doorPanel.Width / 2) + 1, 0),
-            Width = (doorPanel.Width / 2) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "AirlockGlass",
-            ImageAlign = ContentAlignment.MiddleCenter,
-            Text = "",
-            Padding = new Padding(0)
-        };
-        _btnAirlockGlass.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.DoorGlass);
-        };
-        doorPanel.Controls.Add(_btnAirlockGlass);
-
-        doorPanel.Resize += (s, e) =>
-        {
-            int halfWidth = doorPanel.Width / 2;
-            _btnAirlock.Width = halfWidth - 1;
-            _btnAirlockGlass.Location = new Point(halfWidth + 1, 0);
-            _btnAirlockGlass.Width = halfWidth - 1;
-        };
-
-        _toolPanel.Controls.Add(doorPanel);
+        _toolPanel.Controls.Add(_doorToolCombo);
         y += 40 + 2;
 
-        // ПРОХОДЫ
-        var passagePanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 40,
-            BackColor = Color.Transparent
-        };
-
-        _btnPassage = new Button
-        {
-            Location = new Point(0, 0),
-            Width = (passagePanel.Width / 2) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Text = "▢",
-            Font = new Font("Arial", 14)
-        };
-        _btnPassage.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.Passage);
-        };
-        passagePanel.Controls.Add(_btnPassage);
-
-        _btnRestoreWall = new Button
-        {
-            Location = new Point((passagePanel.Width / 2) + 1, 0),
-            Width = (passagePanel.Width / 2) - 1,
-            Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Text = "🧱",
-            Font = new Font("Arial", 14)
-        };
-        _btnRestoreWall.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.RestoreWall);
-        };
-        passagePanel.Controls.Add(_btnRestoreWall);
-
-        passagePanel.Resize += (s, e) =>
-        {
-            int halfWidth = passagePanel.Width / 2;
-            _btnPassage.Width = halfWidth - 1;
-            _btnRestoreWall.Location = new Point(halfWidth + 1, 0);
-            _btnRestoreWall.Width = halfWidth - 1;
-        };
-
-        _toolPanel.Controls.Add(passagePanel);
-        y += 40 + 2;
 
         // ТРУБЫ
         var pipeLabel = new Label
