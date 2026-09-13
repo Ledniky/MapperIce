@@ -505,7 +505,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 30,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -513,9 +513,11 @@ public partial class MainForm
         {
             Location = new Point(0, 0),
             Width = wireRow1Panel.Width - 42,
-            Height = 30,
+            Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = new Font("Arial", 9)
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 28,
+            Font = new Font("Arial", 11)
         };
         foreach (var wt in _wireTypeManager.GetTypes())
             _wireTypeCombo.Items.Add(wt.DisplayName);
@@ -533,6 +535,17 @@ public partial class MainForm
                 _ => ToolManager.Tool.WireLV
             });
         };
+        _wireTypeCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string text = _wireTypeCombo.Items[e.Index].ToString() ?? "";
+                TextRenderer.DrawText(e.Graphics, text, _wireTypeCombo.Font, e.Bounds, _wireTypeCombo.ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
+        };
         wireRow1Panel.Controls.Add(_wireTypeCombo);
 
         _btnWireSettings = new Button
@@ -540,10 +553,10 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(wireRow1Panel.Width - 40, 0),
             Width = 40,
-            Height = 30,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Arial", 12)
+            Font = new Font("Arial", 14)
         };
         _btnWireSettings.Click += (s, e) => ShowWireSettingsDialog();
         wireRow1Panel.Controls.Add(_btnWireSettings);
@@ -555,7 +568,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(wireRow1Panel);
-        y += 30 + 2;
+        y += 34 + 2;
 
         // Строка 2: выпадающие списки прототипов ЛКП (СВ-НВ) и подстанции (ВВ-СВ) —
         // выбор пункта сразу активирует инструмент точечной установки переходника
@@ -563,7 +576,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 30,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -571,9 +584,11 @@ public partial class MainForm
         {
             Location = new Point(0, 0),
             Width = (wireRow2Panel.Width / 2) - 1,
-            Height = 30,
+            Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = new Font("Arial", 8)
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 28,
+            Font = new Font("Arial", 10)
         };
         var apcTip = new ToolTip();
         apcTip.SetToolTip(_apcCombo, "ЛКП (СВ ↔ НВ)");
@@ -585,15 +600,28 @@ public partial class MainForm
                 _toolManager.SetTool(ToolManager.Tool.PlaceApc);
             }
         };
+        _apcCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string text = _apcCombo.Items[e.Index].ToString() ?? "";
+                TextRenderer.DrawText(e.Graphics, text, _apcCombo.Font, e.Bounds, _apcCombo.ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
+        };
         wireRow2Panel.Controls.Add(_apcCombo);
 
         _substationCombo = new ComboBox
         {
             Location = new Point((wireRow2Panel.Width / 2) + 1, 0),
             Width = (wireRow2Panel.Width / 2) - 1,
-            Height = 30,
+            Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = new Font("Arial", 8)
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 28,
+            Font = new Font("Arial", 10)
         };
         var subTip = new ToolTip();
         subTip.SetToolTip(_substationCombo, "Подстанция (ВВ ↔ СВ)");
@@ -616,7 +644,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(wireRow2Panel);
-        y += 30 + 2;
+        y += 34 + 2;
 
         // === СИГНАЛИЗАЦИЯ ===
         var alarmLabel = new Label
