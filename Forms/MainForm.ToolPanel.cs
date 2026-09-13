@@ -626,6 +626,17 @@ public partial class MainForm
         };
         var subTip = new ToolTip();
         subTip.SetToolTip(_substationCombo, "Подстанция (ВВ ↔ СВ)");
+        _substationCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string text = _substationCombo.Items[e.Index].ToString() ?? "";
+                TextRenderer.DrawText(e.Graphics, text, _substationCombo.Font, e.Bounds, _substationCombo.ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
+        };
         _substationCombo.SelectedIndexChanged += (s, e) =>
         {
             if (_substationCombo.SelectedItem is string proto)
