@@ -217,10 +217,10 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 34,
+            Height = 40,
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 28,
+            ItemHeight = 34,
             Font = new Font("Arial", 10)
         };
         foreach (var label in _doorToolMap.Keys)
@@ -282,7 +282,7 @@ public partial class MainForm
             }
         };
         _toolPanel.Controls.Add(_doorToolCombo);
-        y += 34 + 2;
+        y += 40 + 2;
 
 
         // ТРУБЫ
