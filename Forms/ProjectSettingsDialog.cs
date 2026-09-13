@@ -137,13 +137,13 @@ public class ProjectSettingsDialog : Form
     {
         if (selectedIndex == 0)
         {
-            return "Моно-грид (станция):\n\n" +
+            return "Моно-грид (Z-network):\n\n" +
                    "Грид не двигается, используется для станций и карт.\n" +
                    "Применяется: BecomesStation, Roof, NavMap.";
         }
         else
         {
-            return "Динамичный грид (шаттл):\n\n" +
+            return "Динамичный грид (шаттлы/станция):\n\n" +
                    "Грид может двигаться и сталкиваться с объектами.\n" +
                    "Применяется: Physics (Dynamic), Shuttle, ImplicitRoof.";
         }
