@@ -161,6 +161,7 @@ private ComboBox _doorToolCombo = null!;
     private Button? _btnMagnifierUnpin;
     private bool _magnifierPinned = false;
     private (int x, int y)? _magnifierPinnedTile = null;
+    private (int x, int y) _lastMagnifierTile = (-1, -1);
     private bool _isMovingSelection = false;
     private bool _isBoxSelecting = false;
     private bool _boxSelectAdditive = false;
@@ -597,6 +598,7 @@ private ComboBox _doorToolCombo = null!;
                 // пользователь мог бы неожиданно увидеть старую зафиксированную клетку
                 _magnifierPinned = false;
                 _magnifierPinnedTile = null;
+                _lastMagnifierTile = (-1, -1);
                 RepositionMagnifierPanel();
                 UpdateMagnifierPanel();
             }

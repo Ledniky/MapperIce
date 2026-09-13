@@ -51,6 +51,7 @@ public partial class MainForm
         {
             _magnifierPinned = false;
             _magnifierPinnedTile = null;
+            _lastMagnifierTile = (-1, -1);
             UpdateMagnifierPanel();
         };
         headerPanel.Controls.Add(_btnMagnifierUnpin);

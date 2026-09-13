@@ -850,7 +850,14 @@ public partial class MainForm
         if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
         {
             if (!_magnifierPinned)
-                UpdateMagnifierPanel();
+            {
+                var tilePos = GetTilePosition(e.Location);
+                if (tilePos != _lastMagnifierTile)
+                {
+                    _lastMagnifierTile = tilePos;
+                    UpdateMagnifierPanel();
+                }
+            }
             return;
         }
 
