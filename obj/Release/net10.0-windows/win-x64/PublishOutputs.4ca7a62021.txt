@@ -1,0 +1,2 @@
+D:\My programs\MapperIce\bin\Release\net10.0-windows\win-x64\publish\MapperIce.pdb
+D:\My programs\MapperIce\bin\Release\net10.0-windows\win-x64\publish\MapperIce.exe

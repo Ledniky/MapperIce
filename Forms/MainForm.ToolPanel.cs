@@ -221,6 +221,7 @@ public partial class MainForm
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 34,
+            DropDownHeight = 160,
             Font = new Font("Arial", 10)
         };
         foreach (var label in _doorToolMap.Keys)

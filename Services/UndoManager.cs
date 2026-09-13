@@ -86,6 +86,7 @@ public class GridSnapshot
     public List<Door> Doors { get; set; } = new();
     public List<Door> LooseDoors { get; set; } = new();
     public List<PipeEntity> Pipes { get; set; } = new();
+    public List<WireEntity> Wires { get; set; } = new();
     public List<FirelockEntity> Firelocks { get; set; } = new();
     public List<AirAlarmEntity> AirAlarms { get; set; } = new();
     public List<FireAlarmEntity> FireAlarms { get; set; } = new();
@@ -109,6 +110,10 @@ public class GridSnapshot
             .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType, IsEndpoint = p.IsEndpoint })
             .ToList();
 
+        Wires = grid.Entities.OfType<WireEntity>()
+            .Select(w => new WireEntity { X = w.X, Y = w.Y, WireType = w.WireType })
+            .ToList();
+
         Firelocks = grid.Entities.OfType<FirelockEntity>()
             .Select(f => new FirelockEntity { X = f.X, Y = f.Y, Proto = f.Proto, IsGlass = f.IsGlass })
             .ToList();
@@ -121,7 +126,7 @@ public class GridSnapshot
             .ToList();
 
         GenericEntities = grid.Entities
-            .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+            .Where(e => e is not PipeEntity && e is not WireEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity)
             .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
             .ToList();
@@ -175,6 +180,16 @@ public class GridSnapshot
                 Y = pipe.Y,
                 PipeType = pipe.PipeType,
                 IsEndpoint = pipe.IsEndpoint
+            });
+        }
+
+        foreach (var wire in Wires)
+        {
+            grid.Entities.Add(new WireEntity
+            {
+                X = wire.X,
+                Y = wire.Y,
+                WireType = wire.WireType
             });
         }
 
