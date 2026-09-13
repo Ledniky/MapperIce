@@ -114,7 +114,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -123,7 +123,7 @@ public partial class MainForm
             Text = "➕ Добавить",
             Location = new Point(0, 0),
             Width = contentWidth - 50,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -140,7 +140,7 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(contentWidth - 44, 0),
             Width = 40,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 14),
@@ -155,14 +155,14 @@ public partial class MainForm
             _btnRoomSettings.Location = new Point(roomRow1Panel.Width - 44, 0);
         };
         _toolPanel.Controls.Add(roomRow1Panel);
-        y += 40 + 2;
+        y += 34 + 2;
 
         // Строка 2: вычесть и восстановить
         var roomRow2Panel = new Panel
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -171,7 +171,7 @@ public partial class MainForm
             Text = "✂️",
             Location = new Point(0, 0),
             Width = (roomRow2Panel.Width / 2) - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -188,7 +188,7 @@ public partial class MainForm
             Text = "🔨",
             Location = new Point((roomRow2Panel.Width / 2) + 1, 0),
             Width = (roomRow2Panel.Width / 2) - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -209,7 +209,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(roomRow2Panel);
-        y += 40 + 2;
+        y += 34 + 2;
 
 
 
@@ -217,10 +217,10 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 34,
+            ItemHeight = 28,
             Font = new Font("Arial", 10)
         };
         foreach (var label in _doorToolMap.Keys)
@@ -282,7 +282,7 @@ public partial class MainForm
             }
         };
         _toolPanel.Controls.Add(_doorToolCombo);
-        y += 40 + 2;
+        y += 34 + 2;
 
 
         // ТРУБЫ
@@ -303,7 +303,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -313,7 +313,7 @@ public partial class MainForm
         {
             Location = new Point(0, 0),
             Width = buttonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -332,7 +332,7 @@ public partial class MainForm
         {
             Location = new Point(buttonWidth, 0),
             Width = buttonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -351,7 +351,7 @@ public partial class MainForm
         {
             Location = new Point(buttonWidth * 2, 0),
             Width = buttonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -371,7 +371,7 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(buttonWidth * 3, 0),
             Width = buttonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 12)
@@ -392,7 +392,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(pipePanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
         // === УТИЛИЗАЦИЯ ===
         var utilLabel = new Label
@@ -412,7 +412,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -423,7 +423,7 @@ public partial class MainForm
         {
             Location = new Point(0, 0),
             Width = utilBtnWidth,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -445,10 +445,10 @@ public partial class MainForm
         {
             Location = new Point(utilBtnWidth + utilComboGap, 0),
             Width = utilPanel.Width - utilBtnWidth - utilComboGap,
-            Height = 40,
+            Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 34, // реальная высота поля = ItemHeight + рамка; подберите под 40px при необходимости
+            ItemHeight = 28, // реальная высота поля = ItemHeight + рамка; подберите под 34px при необходимости
             Font = new Font("Arial", 12)
         };
         foreach (var label in _utilToolMap.Keys)
@@ -484,7 +484,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(utilPanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
         // === ЭЛЕКТРОСЕТЬ ===
         var wireLabel = new Label
@@ -664,7 +664,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -674,7 +674,7 @@ public partial class MainForm
         {
             Location = new Point(0, 0),
             Width = alarmButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -691,7 +691,7 @@ public partial class MainForm
         {
             Location = new Point(alarmButtonWidth, 0),
             Width = alarmButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -709,7 +709,7 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(alarmButtonWidth * 2, 0),
             Width = alarmButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 12)
@@ -728,7 +728,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(alarmPanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
 
 
@@ -751,7 +751,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -760,7 +760,7 @@ public partial class MainForm
             Text = "✥ Переместить",
             Location = new Point(0, 0),
             Width = movePanel.Width - 42,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold)
@@ -776,7 +776,7 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(movePanel.Width - 40, 0),
             Width = 40,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 12)
@@ -791,7 +791,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(movePanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
 
         // === ЛУПА (отладка) ===
@@ -812,7 +812,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -821,7 +821,7 @@ public partial class MainForm
             Text = "🔍 Лупа",
             Location = new Point(0, 0),
             Width = magnifierRowPanel.Width / 2 - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold),
@@ -838,7 +838,7 @@ public partial class MainForm
             Text = "Проект",
             Location = new Point(magnifierRowPanel.Width / 2 + 1, 0),
             Width = magnifierRowPanel.Width / 2 - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold),
@@ -856,7 +856,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(magnifierRowPanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
         var decalRuleLabel = new Label
         {
@@ -876,14 +876,14 @@ public partial class MainForm
             Text = "🧱 Узор по периметру",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold)
         };
         _btnDecalRule.Click += (s, e) => { _toolManager.SetTool(ToolManager.Tool.DecalRule); };
         _toolPanel.Controls.Add(_btnDecalRule);
-        y += 40 + 2;
+        y += 34 + 2;
 
         // Отдельная кнопка — не инструмент канвы, а обычный диалог, работающий не с
         // конкретными установленными комнатами, а с абстрактными RoomType-классами
@@ -892,7 +892,7 @@ public partial class MainForm
             Text = "🌳 Наследование декалей",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 9, FontStyle.Bold)
@@ -923,7 +923,7 @@ public partial class MainForm
                     _decalInheritanceForm.Show(this);
                 };
         _toolPanel.Controls.Add(_btnDecalInheritance);
-        y += 40 + 2;
+        y += 34 + 2;
 
 
 
@@ -949,7 +949,7 @@ public partial class MainForm
         {
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent
         };
 
@@ -960,7 +960,7 @@ public partial class MainForm
             Text = "🗑",
             Location = new Point(0, 0),
             Width = deleteButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 14),
@@ -977,7 +977,7 @@ public partial class MainForm
             Text = "🧹",
             Location = new Point(deleteButtonWidth, 0),
             Width = deleteButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 14),
@@ -994,7 +994,7 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(deleteButtonWidth * 2, 0),
             Width = deleteButtonWidth - 1,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             Font = new Font("Arial", 12),
@@ -1014,7 +1014,7 @@ public partial class MainForm
         };
 
         _toolPanel.Controls.Add(deletePanel);
-        y += 40 + 2;
+        y += 34 + 2;
 
         _toolPanel.Controls.Add(new Label
         {
