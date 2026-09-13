@@ -707,13 +707,8 @@ public class Renderer
                     penCache[cacheKey] = pen;
                 }
 
-                var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
-                float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
-
-                var (nOffX, nOffY) = GetPipeDirectionalOffset(neighbor.Rotation);
-                float nx = (key.Item1 + 0.5f + nOffX + gridOffset.X) * tileSize - viewOffset.X;
-                float ny = (key.Item2 + 0.5f + nOffY + gridOffset.Y) * tileSize - viewOffset.Y;
+                var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
+                var (nx, ny) = GetPipeNodeScreenCenter(neighbor, tileSize, viewOffset, gridOffset);
                 g.DrawLine(pen, cx, cy, nx, ny);
             }
         }
@@ -723,7 +718,7 @@ public class Renderer
     }
 
 
-    
+
     private void DrawPipeDotsBatch(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (pipes.Count == 0) return;
@@ -751,9 +746,7 @@ public class Renderer
                 brushCache[cacheKey] = cached;
             }
 
-            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
-            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
 
             g.FillEllipse(cached.brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
             g.DrawEllipse(cached.pen, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
@@ -846,7 +839,8 @@ public class Renderer
         return _wireTypeManager.GetWireType(wireType).Color;
     }
 
-    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)    {
+    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
         var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
         if (utilPipes.Count == 0) return;
 
@@ -869,9 +863,7 @@ public class Renderer
 
             if (neighbors != 1) continue;
 
-            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
-            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
 
             Color markerColor;
             if (pipe.EndpointType == EndpointType.MailingUnit)
@@ -911,12 +903,11 @@ public class Renderer
 
         foreach (var pipe in markedPipes)
         {
-            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
-            // Квадрат рисуется прямо поверх узла, со смещением по направлению
-            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+            // Квадрат рисуется прямо поверх узла ("базовой трубы" — со смещением
+            // только у Distra/Waste, см. GetPipeNodeScreenCenter)
+            var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
 
-using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
+            using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёлтый, как у развилки
             g.FillRectangle(brush, cx - squareSize / 2, cy - squareSize / 2, squareSize, squareSize);
 
             // Рисуем текст маркера
@@ -956,9 +947,7 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
             // Рисуем стрелку на развилках (3) и перекрёстках (4)
             if (neighbors != 3 && neighbors != 4) continue;
 
-            var (offX, offY) = GetPipeDirectionalOffset(pipe.Rotation);
-            float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
 
             float arrowSize = tileSize / 2f;
 
@@ -994,9 +983,9 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
             using var arrowBrush = new SolidBrush(arrowColor);
             g.FillPolygon(arrowBrush, points);
         }
-    
-    
-    
+
+
+
     }
 
     /// <summary>
@@ -1218,7 +1207,7 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue;            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue; if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
             if (dd == 0 && _indexer != null)
             {
@@ -1232,12 +1221,12 @@ using var brush = new SolidBrush(Color.FromArgb(255, 200, 200, 100)); // жёл�
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
         // затем внутри одного слоя по Y (меньше Y = дальше на экране = заднее)
-renderQueue.Sort((a, b) =>
-{
-    int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
-    if (ddComp != 0) return ddComp;
-    return a.WorldY.CompareTo(b.WorldY);
-});
+        renderQueue.Sort((a, b) =>
+        {
+            int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
+            if (ddComp != 0) return ddComp;
+            return a.WorldY.CompareTo(b.WorldY);
+        });
 
         foreach (var item in renderQueue)
         {
@@ -1728,25 +1717,37 @@ renderQueue.Sort((a, b) =>
     /// в зависимости от направления (rotation). Конвенция: 0=юг, PI/2=восток,
     /// PI=север, 3PI/2=запад.
     /// </summary>
-    private static (float offsetX, float offsetY) GetPipeDirectionalOffset(float rotation)
+    /// <summary>
+    /// Смещение узла трубы от центра тайла в долях тайла, в зависимости ТОЛЬКО от
+    /// типа трубы. У PipeEntity нет реального поворота (Rotation нигде не
+    /// проставляется при создании, всегда 0) — раньше сдвиг ошибочно считался
+    /// через несуществующий поворот. Теперь: Distra всегда снизу-слева, Waste
+    /// всегда сверху-справа, Normal и Util — без сдвига, строго по центру.
+    /// </summary>
+    private static (float offsetX, float offsetY) GetPipeTypeOffset(string pipeType)
     {
-        // Нормализуем rotation к диапазону [0, 2PI)
-        float normalized = rotation % (float)(2 * Math.PI);
-        if (normalized < 0) normalized += (float)(2 * Math.PI);
-
         const float q = 0.25f; // четверть тайла
 
-        // Определяем направление по ближайшей четверти круга
-        int quarter = (int)Math.Round(normalized / (float)(Math.PI / 2)) % 4;
-
-        return quarter switch
+        return pipeType switch
         {
-            0 => ( q, -q),  // Юг (D)  — выше (-Y) и правее (+X) на четверть тайла
-            1 => ( 0,  0),  // Восток (E) — по центру
-            2 => ( 0,  0),  // Север (N) — по центру
-            3 => (-q,  q),  // Запад (W) — ниже (+Y) и левее (-X) на четверть тайла
-            _ => ( 0,  0)
+            "Distra" => (-q,  q), // снизу-слева
+            "Waste"  => ( q, -q), // сверху-справа
+            _        => ( 0,  0)  // Normal, Util — по центру
         };
+    }
+
+    /// <summary>
+    /// "Базовая труба" — единая точка расчёта экранного центра узла трубы для всех
+    /// топологических мест отрисовки (линии, точки, маркеры конца/фильтра, стрелки
+    /// потока).
+    /// </summary>
+    private static (float cx, float cy) GetPipeNodeScreenCenter(PipeEntity pipe, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var (offX, offY) = GetPipeTypeOffset(pipe.PipeType);
+
+        float cx = (pipe.X + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+        float cy = (pipe.Y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+        return (cx, cy);
     }
 
     private Color GetPipeColor(string pipeType)

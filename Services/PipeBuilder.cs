@@ -62,9 +62,9 @@ public class PipeBuilder
             return new List<(int x, int y)>();
         }
 
-        // Удаляем старые концы в этих позициях
-        RemoveEndpoint(grid, firstPos.x, firstPos.y);
-        RemoveEndpoint(grid, lastPos.x, lastPos.y);
+        // Удаляем старые концы в этих позициях (только того же типа трубы)
+        RemoveEndpoint(grid, firstPos.x, firstPos.y, pipeType);
+        RemoveEndpoint(grid, lastPos.x, lastPos.y, pipeType);
 
         foreach (var pos in validPositions)
         {
@@ -116,19 +116,20 @@ public class PipeBuilder
 
     private bool CanPlaceEndpoint(Grid grid, int x, int y, string pipeType)
     {
-        var existing = grid.Entities
-            .OfType<PipeEntity>()
-            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
-
-        if (existing == null) return true;
-        return existing.PipeType == pipeType;
+        // Раньше запрещала endpoint нового типа поверх endpoint'а другого типа
+        // на той же клетке. Теперь трубы разных типов независимы — конец одного
+        // типа никак не мешает концу другого на этой же клетке.
+        return true;
     }
 
-    private void RemoveEndpoint(Grid grid, int x, int y)
+    private void RemoveEndpoint(Grid grid, int x, int y, string pipeType)
     {
+        // Удаляем старый конец ТОЛЬКО того же типа — концы разных типов
+        // на одной клетке независимы (см. CanPlaceEndpoint) и не должны
+        // затирать друг друга
         var endpoint = grid.Entities
             .OfType<PipeEntity>()
-            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint);
+            .FirstOrDefault(p => p.X == x && p.Y == y && p.IsEndpoint && p.PipeType == pipeType);
 
         if (endpoint != null)
             grid.Entities.Remove(endpoint);
@@ -138,18 +139,6 @@ public class PipeBuilder
     {
         if (grid == null) return;
         if (!HasFloorAt(grid, x, y)) return;
-
-        // Существующий "конец" на клетке (любого типа) — только для проверки
-        // конфликта: два конца РАЗНЫХ типов на одной клетке недопустимы
-        var existingEndpoint = grid.Entities
-            .OfType<PipeEntity>()
-            .FirstOrDefault(p => (int)p.X == x && (int)p.Y == y && p.IsEndpoint);
-
-        // Если ставим конец, а там уже есть конец другого типа - нельзя
-        if (isEndpoint && existingEndpoint != null && existingEndpoint.PipeType != pipeType)
-        {
-            return;
-        }
 
         // Существующая труба ЭТОГО ЖЕ ТИПА на клетке — вне зависимости от того,
         // конец это или проходная труба. На одной клетке должна быть максимум одна
