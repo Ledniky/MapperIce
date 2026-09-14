@@ -595,9 +595,9 @@ public partial class MainForm
         apcTip.SetToolTip(_apcCombo, "ЛКП (СВ ↔ НВ)");
         _apcCombo.SelectedIndexChanged += (s, e) =>
         {
-            if (_apcCombo.SelectedItem is string proto)
+            if (_apcCombo.SelectedItem is ProtoDisplayItem item)
             {
-                _selectedApcProto = proto;
+                _selectedApcProto = item.Id;
                 _toolManager.SetTool(ToolManager.Tool.PlaceApc);
             }
         };
@@ -639,9 +639,9 @@ public partial class MainForm
         };
         _substationCombo.SelectedIndexChanged += (s, e) =>
         {
-            if (_substationCombo.SelectedItem is string proto)
+            if (_substationCombo.SelectedItem is ProtoDisplayItem item)
             {
-                _selectedSubstationProto = proto;
+                _selectedSubstationProto = item.Id;
                 _toolManager.SetTool(ToolManager.Tool.PlaceSubstation);
             }
         };
@@ -1055,19 +1055,46 @@ public partial class MainForm
 
         var allIds = _indexer.GetPrototypeIds();
 
-        string? prevApc = _apcCombo.SelectedItem as string;
+        string? prevApc = _selectedApcProto;
         _apcCombo.Items.Clear();
-        foreach (var id in allIds.Where(i => i.StartsWith("APC", StringComparison.OrdinalIgnoreCase)))
-            _apcCombo.Items.Add(id);
-        if (prevApc != null && _apcCombo.Items.Contains(prevApc))
-            _apcCombo.SelectedItem = prevApc;
+        foreach (var id in allIds.Where(i =>
+            i.StartsWith("APC", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
+        {
+            var displayName = id.Replace("APC", "").TrimStart('-', '_');
+            _apcCombo.Items.Add(new ProtoDisplayItem(id, displayName));
+        }
+        if (prevApc != null && _apcCombo.Items.Cast<ProtoDisplayItem>().Any(p => p.Id == prevApc))
+            _apcCombo.SelectedItem = _apcCombo.Items.Cast<ProtoDisplayItem>().First(p => p.Id == prevApc);
 
-        string? prevSub = _substationCombo.SelectedItem as string;
+        string? prevSub = _selectedSubstationProto;
         _substationCombo.Items.Clear();
-        foreach (var id in allIds.Where(i => i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase)))
-            _substationCombo.Items.Add(id);
-        if (prevSub != null && _substationCombo.Items.Contains(prevSub))
-            _substationCombo.SelectedItem = prevSub;
+        foreach (var id in allIds.Where(i =>
+            i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
+        {
+            var displayName = id.Replace("Substation", "").TrimStart('-', '_');
+            _substationCombo.Items.Add(new ProtoDisplayItem(id, displayName));
+        }
+        if (prevSub != null && _substationCombo.Items.Cast<ProtoDisplayItem>().Any(p => p.Id == prevSub))
+            _substationCombo.SelectedItem = _substationCombo.Items.Cast<ProtoDisplayItem>().First(p => p.Id == prevSub);
+    }
+
+
+    /// <summary>
+    /// Обёртка для отображения прототипа в ComboBox: хранит оригинальный ID
+    /// и отформатированное имя для отображения.
+    /// </summary>
+    private class ProtoDisplayItem
+    {
+        public string Id { get; }
+        public string DisplayName { get; }
+        public ProtoDisplayItem(string id, string displayName)
+        {
+            Id = id;
+            DisplayName = displayName;
+        }
+        public override string ToString() => DisplayName;
     }
 
 
