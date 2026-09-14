@@ -503,31 +503,45 @@ public class Renderer
         }
 
         bool anyDrawn = false;
+        float cx = rect.X + rect.Width / 2f;
+        float cy = rect.Y + rect.Height / 2f;
 
-        void DoDrawAllLayers()
+        for (int i = 0; i < proto.Layers.Count; i++)
         {
-            for (int i = 0; i < proto.Layers.Count; i++)
+            var layer = proto.Layers[i];
+            if (!layer.Visible) continue;
+
+            // Составной ключ кэша — отдельная запись в _textureCache/_sourceRectCache
+            // и т.п. на каждый слой каждого прототипа (а не одна на protoId, как для
+            // однослойных текстур)
+            string cacheKey = $"{protoId}__layer{i}";
+            Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer);
+            if (layerTexture == null) continue;
+
+            anyDrawn = true;
+
+            var layerRect = rect;
+            if (layer.HasOffset)
             {
-                var layer = proto.Layers[i];
-                if (!layer.Visible) continue;
+                int pixelDX = (int)Math.Round(layer.OffsetX * rect.Width);
+                int pixelDY = (int)Math.Round(-layer.OffsetY * rect.Height);
+                layerRect = new Rectangle(rect.X + pixelDX, rect.Y + pixelDY, rect.Width, rect.Height);
+            }
 
-                // Составной ключ кэша — отдельная запись в _textureCache/_sourceRectCache
-                // и т.п. на каждый слой каждого прототипа (а не одна на protoId, как для
-                // однослойных текстур)
-                string cacheKey = $"{protoId}__layer{i}";
-                Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer);
-                if (layerTexture == null) continue;
+            // РЕШЕНИЕ ПРО ПОВОРОТ ПРИНИМАЕТСЯ НА КАЖДЫЙ СЛОЙ ОТДЕЛЬНО (а не одно на всю
+            // композицию, как было раньше) — у разных слоёв одной и той же сущности
+            // (например, "computerLayerBody" со state "computer" и "computerLayerScreen"
+            // со state "alert-0") число directions в meta.json может отличаться. Если у
+            // ЭТОГО слоя directions>=4, GetSourceRect уже выбирает нужный кадр по rotation
+            // сам — аффинный поворот здесь не нужен и даже вреден (даёт двойной поворот:
+            // кадр меняется под направление И весь слой ещё крутится как картинка,
+            // из-за чего сущность визуально "не туда" смотрит и как будто застревает
+            // на юге). Если же у слоя directions<4 (кадр всегда один и тот же) — нужен
+            // обычный аффинный поворот картинки, как раньше для однослойных спрайтов.
+            bool layerHasDirections = GetStateDirections(cacheKey) >= 4;
 
-                anyDrawn = true;
-
-                var layerRect = rect;
-                if (layer.HasOffset)
-                {
-                    int pixelDX = (int)Math.Round(layer.OffsetX * rect.Width);
-                    int pixelDY = (int)Math.Round(-layer.OffsetY * rect.Height);
-                    layerRect = new Rectangle(rect.X + pixelDX, rect.Y + pixelDY, rect.Width, rect.Height);
-                }
-
+            void DrawThisLayer()
+            {
                 var layerSrc = GetSourceRect(cacheKey, layerTexture, rotation);
 
                 // GetDecalTintAttributes — несмотря на название, просто строит ColorMatrix
@@ -539,26 +553,18 @@ public class Renderer
                 else
                     DrawPreservingAspect(g, layerTexture, layerRect, layerSrc);
             }
-        }
 
-        // Та же логика, что и в однослойном случае: если у прототипа directions>=4,
-        // поворот уже "зашит" в выбор кадра/строки текстуры каждого слоя (см.
-        // GetSourceRect), доп. аффинный поворот всей композиции не нужен
-        if (GetStateDirections(protoId) >= 4)
-        {
-            DoDrawAllLayers();
-        }
-        else
-        {
-            float cx = rect.X + rect.Width / 2f;
-            float cy = rect.Y + rect.Height / 2f;
-            WithRotation(g, cx, cy, rotation, DoDrawAllLayers);
+            if (layerHasDirections)
+                DrawThisLayer();
+            else
+                WithRotation(g, cx, cy, rotation, DrawThisLayer);
         }
 
         if (!anyDrawn)
             fallback?.Invoke(g, rect);
     }
 
+    
     /// <summary>
     /// Загружает и кэширует текстуру ОДНОГО слоя многослойного прототипа. cacheKey —
     /// составной ("protoId__layerN"), поэтому переиспользует те же словари
