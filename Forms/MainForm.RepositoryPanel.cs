@@ -1,5 +1,6 @@
 // Forms/MainForm.RepositoryPanel.cs
 
+using System.Linq;
 using MapperIce.Models;
 using MapperIce.Services;
 
@@ -45,7 +46,7 @@ public partial class MainForm
             Font = new Font("Consolas", 9),
             IntegralHeight = false,
             DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 30
+            ItemHeight = 32
         };
 _protoList.DoubleClick += OnPrototypeDoubleClick;
 _protoList.DrawItem += ProtoList_DrawItem;
@@ -396,6 +397,27 @@ listContainer.Controls.Add(_protoList);
         _protoList.Items.Clear();
         _protoList.Items.Add("⏳ Поиск...");
 
+        // Измеряем ширину панели на основе самой длинной строки
+        void AdjustPanelWidth(IEnumerable<string> items)
+        {
+            if (_protoList == null || _protoList.IsDisposed) return;
+            using var g = _protoList.CreateGraphics();
+            var font = _protoList.Font;
+            float maxW = 0;
+            foreach (var item in items)
+            {
+                var size = TextRenderer.MeasureText(g, item, font);
+                if (size.Width > maxW) maxW = size.Width;
+            }
+            // Минимальная ширина 200, максимум 500, запас 50px на иконки и отступы
+            var newWidth = Math.Max(200, Math.Min(500, (int)maxW + 50));
+            if (_protoList.Parent != null && _protoList.Parent.Width != newWidth)
+            {
+                _protoList.Parent.Width = newWidth;
+                _toolPanel.Parent?.PerformLayout();
+            }
+        }
+
         Task.Run(() =>
         {
             try
@@ -470,6 +492,8 @@ listContainer.Controls.Add(_protoList);
                     else
                         foreach (var id in result)
                             _protoList.Items.Add(id);
+                    // Пересчитываем ширину панели по содержимому
+                    AdjustPanelWidth(result);
                 });
             }
             catch (Exception ex)
@@ -729,12 +753,12 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 
         // В ListBox.Items по-прежнему лежит настоящий id (drag&drop, выбор,
         // ArmPrototypePlacement и т.п. завязаны именно на него) — здесь подменяем
-        // ТОЛЬКО отображаемый текст на русское название, если оно нашлось в локализации
+        // ТОЛЬКО отображаемый текст на русское название, если оно нашлось и содержит кириллицу
         string? displayText = id;
         if (isRealProto)
         {
             var localizedName = _indexer.FindPrototype(id!)?.LocalizedName;
-            if (!string.IsNullOrWhiteSpace(localizedName))
+            if (!string.IsNullOrWhiteSpace(localizedName) && localizedName.Any(c => c >= '\u0400' && c <= '\u04FF'))
                 displayText = localizedName;
         }
 
@@ -760,10 +784,8 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
             textX = e.Bounds.Left + padding;
         }
 
-        using var textBrush = new SolidBrush(e.ForeColor);
-        var textFont = e.Font;
-        float textY = e.Bounds.Top + (e.Bounds.Height - textFont.Height) / 2f;
-        e.Graphics.DrawString(displayText, textFont, textBrush, textX, textY);
+        var textFont = new Font(e.Font.FontFamily, 12, e.Font.Style);
+        TextRenderer.DrawText(e.Graphics, displayText, textFont, new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height), e.ForeColor, TextFormatFlags.VerticalCenter);
 
         e.DrawFocusRectangle();
     }

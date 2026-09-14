@@ -804,8 +804,13 @@ public class PrototypeIndexer
         if (proto.HasOffset)
             return (proto.OffsetX, proto.OffsetY);
 
-        if (!string.IsNullOrEmpty(proto.Parent))
-            return FindOffsetRecursive(proto.Parent, depth + 1);
+        // Ищем offset по ВСЕМ родителям
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindOffsetRecursive(parent, depth + 1);
+            if (result.x != 0f || result.y != 0f)
+                return result;
+        }
 
         return (0f, 0f);
     }
@@ -1025,10 +1030,12 @@ public class PrototypeIndexer
             return path;
         }
 
-        // Если нет - идем к родителю
-        if (!string.IsNullOrEmpty(proto.Parent))
+        // Если нет - ищем по ВСЕМ родителям (поддерживаем массив parent: [A, B, C])
+        foreach (var parent in proto.Parents)
         {
-            return FindPathRecursive(proto.Parent, depth + 1);
+            var result = FindPathRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
         }
 
         return null;
@@ -1049,11 +1056,12 @@ public class PrototypeIndexer
             return proto.State;
         }
 
-        // Если у текущего нет - идем к родителю
-        if (!string.IsNullOrEmpty(proto.Parent))
+        // Если у текущего нет - ищем по ВСЕМ родителям
+        foreach (var parent in proto.Parents)
         {
-            System.Diagnostics.Debug.WriteLine($"State не найден у {id}, ищем у родителя {proto.Parent}");
-            return FindStateRecursive(proto.Parent, depth + 1);
+            var result = FindStateRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
         }
 
         return null;
@@ -1073,10 +1081,12 @@ public class PrototypeIndexer
             return (path, proto.State);
         }
 
-        // Если нет - идем к родителю
-        if (!string.IsNullOrEmpty(proto.Parent))
+        // Если нет - ищем по ВСЕМ родителям
+        foreach (var parent in proto.Parents)
         {
-            return FindSpriteRecursive(proto.Parent, depth + 1);
+            var result = FindSpriteRecursive(parent, depth + 1);
+            if (result.path != null)
+                return result;
         }
 
         return (null, null);
