@@ -43,81 +43,172 @@ public class PrototypeIndexer
 
         // Сначала пробуем быстро восстановить индекс из кэша на диске,
         // чтобы не пересканировать весь репозиторий заново при каждом запуске
-    if (TryLoadCache(repo.Id))
-    {
-        OnIndexingComplete?.Invoke();
-        return;
-    }
+        if (TryLoadCache(repo.Id))
+        {
+            OnIndexingComplete?.Invoke();
+            return;
+        }
 
-    // silent: true — это автоматическая попытка при выборе репозитория на старте,
-    // а не явное действие пользователя, поэтому без блокирующего MessageBox
-    ReindexFromDisk(repo, silent: true);
-}
+        // silent: true — это автоматическая попытка при выборе репозитория на старте,
+        // а не явное действие пользователя, поэтому без блокирующего MessageBox
+        ReindexFromDisk(repo, silent: true);
+    }
 
     /// <summary>
     /// Полное пересканирование репозитория с диска (используется кнопкой "Обновить"
     /// и как fallback, если кэша ещё нет или он повреждён)
     /// </summary>
-public void ReindexFromDisk(Repository repo, bool silent = false)
-{
-    string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
-
-    // Проверяем доступность папки ДО очистки текущих данных — иначе неудачная
-    // переиндексация (диск не примонтирован после перезагрузки, путь временно
-    // недоступен и т.п.) стирала уже загруженные прототипы, оставляя панель
-    // пустой, хотя валидные данные (например, из дискового кэша) уже были в памяти.
-    if (!Directory.Exists(prototypesPath))
+    public void ReindexFromDisk(Repository repo, bool silent = false)
     {
-        System.Diagnostics.Debug.WriteLine($"[Index] Папка Prototypes не найдена: {prototypesPath}");
+        string prototypesPath = Path.Combine(repo.Path, "Resources", "Prototypes");
 
-        // MessageBox блокирует UI-поток модальным окном. При автоматической
-        // попытке на старте приложения это недопустимо (даёт эффект зависшего
-        // "Поиск..." на панели) — блокирующий диалог оставляем только для
-        // явного ручного нажатия кнопки "Обновить" (silent = false по умолчанию).
-        if (!silent)
-            MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
-        return;
-    }
-
-    _rootPath = repo.Path;
-    _currentRepoId = repo.Id;
-    _currentRepoPath = repo.Path;
-    _prototypes.Clear();
-    _palettes.Clear();
-    ClearSearchCache();
-
-    var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
-    int count = 0;
-
-    foreach (var file in yamlFiles)
-    {
-        try
+        // Проверяем доступность папки ДО очистки текущих данных — иначе неудачная
+        // переиндексация (диск не примонтирован после перезагрузки, путь временно
+        // недоступен и т.п.) стирала уже загруженные прототипы, оставляя панель
+        // пустой, хотя валидные данные (например, из дискового кэша) уже были в памяти.
+        if (!Directory.Exists(prototypesPath))
         {
-            var content = File.ReadAllText(file);
-            var protos = ParsePrototypes(content, file);
-            foreach (var proto in protos)
+            System.Diagnostics.Debug.WriteLine($"[Index] Папка Prototypes не найдена: {prototypesPath}");
+
+            // MessageBox блокирует UI-поток модальным окном. При автоматической
+            // попытке на старте приложения это недопустимо (даёт эффект зависшего
+            // "Поиск..." на панели) — блокирующий диалог оставляем только для
+            // явного ручного нажатия кнопки "Обновить" (silent = false по умолчанию).
+            if (!silent)
+                MessageBox.Show($"Папка Prototypes не найдена: {prototypesPath}");
+            return;
+        }
+
+        _rootPath = repo.Path;
+        _currentRepoId = repo.Id;
+        _currentRepoPath = repo.Path;
+        _prototypes.Clear();
+        _palettes.Clear();
+        ClearSearchCache();
+
+        var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
+        int count = 0;
+
+        foreach (var file in yamlFiles)
+        {
+            try
             {
-                if (!_prototypes.ContainsKey(proto.Id))
+                var content = File.ReadAllText(file);
+                var protos = ParsePrototypes(content, file);
+                foreach (var proto in protos)
                 {
-                    _prototypes[proto.Id] = proto;
-                    count++;
+                    if (!_prototypes.ContainsKey(proto.Id))
+                    {
+                        _prototypes[proto.Id] = proto;
+                        count++;
+                    }
+                }
+
+                var palettes = ParsePalettes(content);
+                foreach (var palette in palettes)
+                {
+                    if (!string.IsNullOrEmpty(palette.Id))
+                        _palettes[palette.Id] = palette;
                 }
             }
-
-            var palettes = ParsePalettes(content);
-            foreach (var palette in palettes)
-            {
-                if (!string.IsNullOrEmpty(palette.Id))
-                    _palettes[palette.Id] = palette;
-            }
+            catch { }
         }
-        catch { }
+
+        ApplyLocalizedNames(repo.Path);
+        CheckAllStructures();
+        SaveCache(repo.Id);
+        OnIndexingComplete?.Invoke();
     }
 
-    CheckAllStructures();
-    SaveCache(repo.Id);
-    OnIndexingComplete?.Invoke();
-}
+
+    /// <summary>
+    /// Сканирует Resources/Locale/ru-RU репозитория (*.ftl, рекурсивно) и проставляет
+    /// Prototype.LocalizedName для каждой сущности, у которой в локализации есть
+    /// запись "ent-{Id} = ...". Значения могут ссылаться друг на друга через Fluent-
+    /// синтаксис "{ ent-ДругойId }" (см. пример BarricadeBlock -> Barricade -> BaseBarricade
+    /// в barricades.ftl) — такие ссылки резолвятся рекурсивно, аналогично тому, как
+    /// FindPathRecursive идёт по цепочке parent:.
+    /// </summary>
+    private void ApplyLocalizedNames(string repoPath)
+    {
+        var localeDir = Path.Combine(repoPath, "Resources", "Locale", "ru-RU");
+        if (!Directory.Exists(localeDir)) return;
+
+        var rawNames = new Dictionary<string, string>();
+        var ftlFiles = Directory.GetFiles(localeDir, "*.ftl", SearchOption.AllDirectories);
+        foreach (var file in ftlFiles)
+        {
+            try
+            {
+                var content = File.ReadAllText(file);
+                foreach (var kv in ParseFtlEntityNames(content))
+                {
+                    if (!rawNames.ContainsKey(kv.Key))
+                        rawNames[kv.Key] = kv.Value;
+                }
+            }
+            catch { }
+        }
+
+        if (rawNames.Count == 0) return;
+
+        var resolved = new Dictionary<string, string>();
+        foreach (var id in rawNames.Keys)
+            ResolveFtlValue(id, rawNames, resolved, new HashSet<string>(), 0);
+
+        foreach (var proto in _prototypes.Values)
+        {
+            if (resolved.TryGetValue(proto.Id, out var localized) && !string.IsNullOrWhiteSpace(localized))
+                proto.LocalizedName = localized;
+        }
+    }
+
+    /// <summary>
+    /// Парсит один .ftl-файл и достаёт только "имя" сущности — верхнеуровневую
+    /// строку "ent-{Id} = значение". Строки с отступом (например ".desc = ...")
+    /// пропускаются: они относятся не к имени, а к атрибутам той же записи.
+    /// </summary>
+    private Dictionary<string, string> ParseFtlEntityNames(string content)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var lines = content.Replace("\r\n", "\n").Split('\n');
+
+        foreach (var line in lines)
+        {
+            if (line.Length == 0 || char.IsWhiteSpace(line[0])) continue; // атрибут/продолжение — не имя
+
+            var m = Regex.Match(line, @"^ent-(\S+)\s*=\s*(.*)$");
+            if (!m.Success) continue;
+
+            string id = m.Groups[1].Value;
+            string value = m.Groups[2].Value.TrimEnd('\r');
+            if (!result.ContainsKey(id))
+                result[id] = value;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Рекурсивно резолвит Fluent-ссылки вида "{ ent-ДругойId }" внутри значения
+    /// локализации, заменяя их на уже разрешённое имя ссылочной сущности.
+    /// visiting защищает от циклических ссылок, depth — от случайной бесконечной
+    /// рекурсии при повреждённых данных (тот же паттерн, что FindOffsetRecursive).
+    /// </summary>
+    private string ResolveFtlValue(string id, Dictionary<string, string> raw,
+        Dictionary<string, string> resolved, HashSet<string> visiting, int depth)
+    {
+        if (resolved.TryGetValue(id, out var cached)) return cached;
+        if (!raw.TryGetValue(id, out var value)) return id;
+        if (depth > 10 || !visiting.Add(id)) return value;
+
+        string result = Regex.Replace(value, @"\{\s*ent-(\S+?)\s*\}", m =>
+            ResolveFtlValue(m.Groups[1].Value, raw, resolved, visiting, depth + 1));
+
+        visiting.Remove(id);
+        resolved[id] = result;
+        return result;
+    }
 
 
     private string GetCacheDir()
@@ -135,43 +226,43 @@ public void ReindexFromDisk(Repository repo, bool silent = false)
     // Версия формата кэша. Увеличивай на 1 каждый раз, когда меняешь состав полей
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
-    
-    private const int CacheFormatVersion = 17;
 
-private class CacheEnvelope
-{
-    public int Version { get; set; }
-    public List<Prototype> Prototypes { get; set; } = new();
-    public List<Palette> Palettes { get; set; } = new();
-}
+    private const int CacheFormatVersion = 18;
 
-private void SaveCache(string repoId)
-{
-    try
+    private class CacheEnvelope
     {
-        var envelope = new CacheEnvelope
+        public int Version { get; set; }
+        public List<Prototype> Prototypes { get; set; } = new();
+        public List<Palette> Palettes { get; set; } = new();
+    }
+
+    private void SaveCache(string repoId)
+    {
+        try
         {
-            Version = CacheFormatVersion,
-            Prototypes = _prototypes.Values.ToList(),
-            Palettes = _palettes.Values.ToList()
-        };
+            var envelope = new CacheEnvelope
+            {
+                Version = CacheFormatVersion,
+                Prototypes = _prototypes.Values.ToList(),
+                Palettes = _palettes.Values.ToList()
+            };
 
-        var json = JsonSerializer.Serialize(envelope);
-        var path = GetCachePath(repoId);
+            var json = JsonSerializer.Serialize(envelope);
+            var path = GetCachePath(repoId);
 
-        // Та же защита от обрезанного файла при аварийном завершении/перезагрузке,
-        // что и в RepositoryManager.Save() — см. комментарий там
-        var tempPath = path + ".tmp";
-        File.WriteAllText(tempPath, json);
-        File.Move(tempPath, path, overwrite: true);
+            // Та же защита от обрезанного файла при аварийном завершении/перезагрузке,
+            // что и в RepositoryManager.Save() — см. комментарий там
+            var tempPath = path + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, path, overwrite: true);
 
-        System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов, {_palettes.Count} палитр)");
+            System.Diagnostics.Debug.WriteLine($"[Cache] Сохранён кэш v{CacheFormatVersion}: {path} ({_prototypes.Count} прототипов, {_palettes.Count} палитр)");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА сохранения кэша для repoId={repoId}: {ex}");
+        }
     }
-    catch (Exception ex)
-    {
-        System.Diagnostics.Debug.WriteLine($"[Cache] ОШИБКА сохранения кэша для repoId={repoId}: {ex}");
-    }
-}
 
     private bool TryLoadCache(string repoId)
     {
@@ -191,28 +282,28 @@ private void SaveCache(string repoId)
                 return false;
             }
 
-if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
+            if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
-        _prototypes.Clear();
-        foreach (var proto in envelope.Prototypes)
-        {
-            if (!string.IsNullOrEmpty(proto.Id))
-                _prototypes[proto.Id] = proto;
-        }
-
-        _palettes.Clear();
-        if (envelope.Palettes != null)
-        {
-            foreach (var palette in envelope.Palettes)
+            _prototypes.Clear();
+            foreach (var proto in envelope.Prototypes)
             {
-                if (!string.IsNullOrEmpty(palette.Id))
-                    _palettes[palette.Id] = palette;
+                if (!string.IsNullOrEmpty(proto.Id))
+                    _prototypes[proto.Id] = proto;
             }
-        }
 
-        System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов, {_palettes.Count} палитр");
-        ClearSearchCache();
-        return true;
+            _palettes.Clear();
+            if (envelope.Palettes != null)
+            {
+                foreach (var palette in envelope.Palettes)
+                {
+                    if (!string.IsNullOrEmpty(palette.Id))
+                        _palettes[palette.Id] = palette;
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[Cache] Загружен кэш v{envelope.Version}: {_prototypes.Count} прототипов, {_palettes.Count} палитр");
+            ClearSearchCache();
+            return true;
         }
         catch (Exception ex)
         {
@@ -318,7 +409,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         // 2. Массив в строке: "parent: [Parent1, Parent2]"
         // 3. Множественный список: "parent:\n  - X\n  - Y"
         // Собираем ВСЕХ родителей для проверки на BaseStructure.
-        
+
         // Сначала проверяем формат с квадратными скобками: parent: [A, B, C]
         var arrayParentMatch = Regex.Match(block, @"parent:\s*\[\s*([^\]]+)\]");
         if (arrayParentMatch.Success)
@@ -433,7 +524,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         // потому что порядок и границы элементов списка layers: критичны для отступов
         proto.Layers = ParseSpriteLayers(ExtractComponentBlock(block, "Sprite"));
 
-               return proto;
+        return proto;
     }
 
     /// <summary>
@@ -523,7 +614,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
         for (; i < lines.Length; i++)
         {
-                        var line = lines[i];
+            var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             var trimmedFull = line.TrimStart();
@@ -719,7 +810,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         return (0f, 0f);
     }
 
-    
+
     public List<string> GetPrototypeIds()
     {
         return _prototypes.Keys.OrderBy(k => k).ToList();
@@ -742,8 +833,13 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
                 return cached;
         }
 
-        var results = _prototypes.Keys
-            .Where(k => k.Contains(query, StringComparison.OrdinalIgnoreCase))
+        // Матчим и по id (как раньше), и по русскому названию из локализации —
+        // пользователь может не знать/не помнить английский id прототипа
+        var results = _prototypes.Values
+            .Where(p => p.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(p.LocalizedName) &&
+                         p.LocalizedName.Contains(query, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Id)
             .Take(1000)
             .ToList();
 
@@ -758,6 +854,7 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
         return results;
     }
 
+    
     /// <summary>
     /// Рекурсивно ищет drawdepth по цепочке родителей.
     /// Если у прототипа drawdepth не задан — ищет у ВСЕХ родителей

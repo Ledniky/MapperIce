@@ -21,6 +21,16 @@ public class Prototype
     public string? DrawDepth { get; set; }
 
     /// <summary>
+    /// Русское название сущности, найденное в локализации (.ftl, ключ "ent-{Id}").
+    /// Резолвится с учётом Fluent-ссылок вида "{ ent-ДругойId }" (см. ApplyLocalizedNames
+    /// в PrototypeIndexer). Null, если у прототипа нет собственной/унаследованной записи
+    /// в локализации репозитория — в этом случае панель репозитория показывает id как раньше.
+    /// </summary>
+    public string? LocalizedName { get; set; }
+
+    /// <summary>
+
+    /// <summary>
     /// Слои компонента Sprite (YAML "layers:"). Пустой список — прототип без
     /// многослойности, рисуется как раньше через SpritePath/RsiPath/State.
     /// Если список не пуст, Renderer рисует все видимые слои по порядку друг

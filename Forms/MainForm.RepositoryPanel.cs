@@ -597,15 +597,29 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 
     private Image? GetPrototypeIcon(string protoId)
     {
-        // Многослойный прототип (Sprite.layers) — та же композиция слоёв, что и в
-        // Renderer.DrawLayeredTexturedRect, но для маленькой 32×32 иконки списка/комбобокса
-        var layeredProto = _indexer.FindPrototype(protoId);
-        if (layeredProto != null && layeredProto.Layers.Count > 0)
-            return GetLayeredPrototypeIcon(protoId, layeredProto);
-
         try
         {
-            var path = _indexer.GetFullTexturePath(protoId);
+            // В панели репозитория (список прототипов, комбобокс дверей, drag-иконка)
+            // многослойные прототипы (Sprite.layers) сознательно показываются ОДНИМ
+            // слоем — берём текстуру первого видимого слоя вместо композиции всех слоёв
+            // друг поверх друга (композиция используется только в Renderer при отрисовке
+            // на канвасе, см. DrawLayeredTexturedRect) — так иконка в списке остаётся
+            // простой и однозначной, без наложения экрана/клавиатуры/панели друг на друга
+            // в крошечном 32×32 превью, где это всё равно нечитаемо.
+            var layeredProto = _indexer.FindPrototype(protoId);
+            string? path;
+            if (layeredProto != null && layeredProto.Layers.Count > 0)
+            {
+                var firstVisibleLayer = layeredProto.Layers.FirstOrDefault(l => l.Visible);
+                path = firstVisibleLayer != null
+                    ? _indexer.GetLayerTexturePath(protoId, firstVisibleLayer.SpritePath, firstVisibleLayer.RsiPath, firstVisibleLayer.State)
+                    : null;
+            }
+            else
+            {
+                path = _indexer.GetFullTexturePath(protoId);
+            }
+
             if (path != null && File.Exists(path))
             {
                 using var original = Image.FromFile(path);
@@ -649,58 +663,6 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
     /// пропорции задаёт ПЕРВЫЙ успешно загруженный слой, остальные растягиваются под тот
     /// же холст — у слоёв одной сущности размер кадра почти всегда совпадает).
     /// </summary>
-    private Image? GetLayeredPrototypeIcon(string protoId, Prototype proto)
-    {
-        Bitmap? icon = null;
-        Graphics? g = null;
-        try
-        {
-            foreach (var layer in proto.Layers)
-            {
-                if (!layer.Visible) continue;
-
-                var path = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State);
-                if (path == null || !File.Exists(path)) continue;
-
-                using var original = Image.FromFile(path);
-                var frameSize = GetRsiFrameSize(path, original);
-                if (frameSize.Width <= 0 || frameSize.Height <= 0) continue;
-
-                if (icon == null)
-                {
-                    float ratio = (float)frameSize.Width / frameSize.Height;
-                    int iconW, iconH;
-                    if (ratio >= 1.0f)
-                    {
-                        iconW = 32;
-                        iconH = Math.Max(1, (int)(32f / ratio));
-                    }
-                    else
-                    {
-                        iconH = 32;
-                        iconW = Math.Max(1, (int)(32f * ratio));
-                    }
-
-                    icon = new Bitmap(iconW, iconH);
-                    g = Graphics.FromImage(icon);
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                }
-
-                var srcRect = new Rectangle(0, 0, frameSize.Width, frameSize.Height);
-                g!.DrawImage(original, new Rectangle(0, 0, icon.Width, icon.Height), srcRect, GraphicsUnit.Pixel);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка загрузки многослойной иконки для {protoId}: {ex.Message}");
-        }
-        finally
-        {
-            g?.Dispose();
-        }
-
-        return icon;
-    }
 
 
     private void LoadDoorComboIcons()
@@ -765,6 +727,17 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
                             !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
                             !id.StartsWith("Нажмите");
 
+        // В ListBox.Items по-прежнему лежит настоящий id (drag&drop, выбор,
+        // ArmPrototypePlacement и т.п. завязаны именно на него) — здесь подменяем
+        // ТОЛЬКО отображаемый текст на русское название, если оно нашлось в локализации
+        string? displayText = id;
+        if (isRealProto)
+        {
+            var localizedName = _indexer.FindPrototype(id!)?.LocalizedName;
+            if (!string.IsNullOrWhiteSpace(localizedName))
+                displayText = localizedName;
+        }
+
         if (isRealProto)
         {
             var icon = GetCachedProtoIcon(id!);
@@ -790,11 +763,10 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
         using var textBrush = new SolidBrush(e.ForeColor);
         var textFont = e.Font;
         float textY = e.Bounds.Top + (e.Bounds.Height - textFont.Height) / 2f;
-        e.Graphics.DrawString(id, textFont, textBrush, textX, textY);
+        e.Graphics.DrawString(displayText, textFont, textBrush, textX, textY);
 
         e.DrawFocusRectangle();
     }
-
     private void ArmPrototypePlacement()
     {
         if (_protoList.SelectedItem == null) return;
