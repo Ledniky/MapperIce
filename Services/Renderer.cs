@@ -407,6 +407,15 @@ public class Renderer
     /// </summary>
     private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f)
     {
+        // Многослойный прототип (YAML Sprite.layers) — рисуем все слои поверх друг
+        // друга отдельным путём и выходим, не трогая старую однослойную логику ниже
+        var layeredProto = !string.IsNullOrEmpty(protoId) ? _indexer?.FindPrototype(protoId) : null;
+        if (layeredProto != null && layeredProto.Layers.Count > 0)
+        {
+            DrawLayeredTexturedRect(g, protoId!, layeredProto, rect, tint, fallback, rotation);
+            return;
+        }
+
         Image? texture = GetOrLoadTexture(protoId ?? "");
         if (texture != null)
         {
@@ -468,6 +477,121 @@ public class Renderer
         {
             fallback?.Invoke(g, rect);
         }
+    }
+
+    /// <summary>
+    /// Рисует все видимые слои прототипа (proto.Layers) друг поверх друга, в том же
+    /// порядке, в котором они перечислены в YAML — так же, как это делает сам движок.
+    /// Смещение компонента Sprite.offset применяется ко всей композиции целиком (как
+    /// раньше для одного слоя), а собственный offset конкретного слоя (если задан) —
+    /// уже поверх этого, только к этому слою.
+    /// </summary>
+    private void DrawLayeredTexturedRect(Graphics g, string protoId, Models.Prototype proto, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation)
+    {
+        var (offX, offY) = _indexer?.GetSpriteOffset(protoId) ?? (0f, 0f);
+        if (offX != 0f || offY != 0f)
+        {
+            float cosR = (float)Math.Cos(rotation);
+            float sinR = (float)Math.Sin(rotation);
+            float rotatedX = offX * cosR - offY * sinR;
+            float rotatedY = offX * sinR + offY * cosR;
+
+            int pixelDX = (int)Math.Round(rotatedX * rect.Width);
+            int pixelDY = (int)Math.Round(-rotatedY * rect.Height);
+
+            rect = new Rectangle(rect.X + pixelDX, rect.Y + pixelDY, rect.Width, rect.Height);
+        }
+
+        bool anyDrawn = false;
+
+        void DoDrawAllLayers()
+        {
+            for (int i = 0; i < proto.Layers.Count; i++)
+            {
+                var layer = proto.Layers[i];
+                if (!layer.Visible) continue;
+
+                // Составной ключ кэша — отдельная запись в _textureCache/_sourceRectCache
+                // и т.п. на каждый слой каждого прототипа (а не одна на protoId, как для
+                // однослойных текстур)
+                string cacheKey = $"{protoId}__layer{i}";
+                Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer);
+                if (layerTexture == null) continue;
+
+                anyDrawn = true;
+
+                var layerRect = rect;
+                if (layer.HasOffset)
+                {
+                    int pixelDX = (int)Math.Round(layer.OffsetX * rect.Width);
+                    int pixelDY = (int)Math.Round(-layer.OffsetY * rect.Height);
+                    layerRect = new Rectangle(rect.X + pixelDX, rect.Y + pixelDY, rect.Width, rect.Height);
+                }
+
+                var layerSrc = GetSourceRect(cacheKey, layerTexture, rotation);
+
+                // GetDecalTintAttributes — несмотря на название, просто строит ColorMatrix
+                // тонирования по hex-цвету, пригодно для любого тонирования, не только декалей
+                var layerTint = tint ?? (!string.IsNullOrEmpty(layer.Color) ? GetDecalTintAttributes(layer.Color) : null);
+
+                if (layerTint != null)
+                    g.DrawImage(layerTexture, layerRect, layerSrc.X, layerSrc.Y, layerSrc.Width, layerSrc.Height, GraphicsUnit.Pixel, layerTint);
+                else
+                    DrawPreservingAspect(g, layerTexture, layerRect, layerSrc);
+            }
+        }
+
+        // Та же логика, что и в однослойном случае: если у прототипа directions>=4,
+        // поворот уже "зашит" в выбор кадра/строки текстуры каждого слоя (см.
+        // GetSourceRect), доп. аффинный поворот всей композиции не нужен
+        if (GetStateDirections(protoId) >= 4)
+        {
+            DoDrawAllLayers();
+        }
+        else
+        {
+            float cx = rect.X + rect.Width / 2f;
+            float cy = rect.Y + rect.Height / 2f;
+            WithRotation(g, cx, cy, rotation, DoDrawAllLayers);
+        }
+
+        if (!anyDrawn)
+            fallback?.Invoke(g, rect);
+    }
+
+    /// <summary>
+    /// Загружает и кэширует текстуру ОДНОГО слоя многослойного прототипа. cacheKey —
+    /// составной ("protoId__layerN"), поэтому переиспользует те же словари
+    /// (_textureCache/_protoTextureDirCache/_protoStateNameCache), что и GetOrLoadTexture
+    /// для обычных однослойных текстур, без коллизий с реальными protoId.
+    /// </summary>
+    private Image? GetOrLoadLayerTexture(string cacheKey, string protoId, Models.SpriteLayer layer)
+    {
+        if (_textureCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        Image? texture = null;
+        if (_indexer != null)
+        {
+            var texturePath = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State);
+            if (texturePath != null && File.Exists(texturePath))
+            {
+                try
+                {
+                    texture = Image.FromFile(texturePath);
+                    _protoTextureDirCache[cacheKey] = Path.GetDirectoryName(texturePath) ?? "";
+
+                    string? stateFromLayer = layer.State;
+                    _protoStateNameCache[cacheKey] = !string.IsNullOrEmpty(stateFromLayer)
+                        ? stateFromLayer
+                        : Path.GetFileNameWithoutExtension(texturePath);
+                }
+                catch { }
+            }
+        }
+
+        _textureCache[cacheKey] = texture;
+        return texture;
     }
 
     #endregion

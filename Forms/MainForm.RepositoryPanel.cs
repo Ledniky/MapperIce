@@ -597,6 +597,12 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
 
     private Image? GetPrototypeIcon(string protoId)
     {
+        // Многослойный прототип (Sprite.layers) — та же композиция слоёв, что и в
+        // Renderer.DrawLayeredTexturedRect, но для маленькой 32×32 иконки списка/комбобокса
+        var layeredProto = _indexer.FindPrototype(protoId);
+        if (layeredProto != null && layeredProto.Layers.Count > 0)
+            return GetLayeredPrototypeIcon(protoId, layeredProto);
+
         try
         {
             var path = _indexer.GetFullTexturePath(protoId);
@@ -635,6 +641,65 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Композитная иконка для многослойного прототипа: все видимые слои рисуются друг
+    /// поверх друга в 32×32 (или меньше по высоте/ширине — как и в однослойной версии,
+    /// пропорции задаёт ПЕРВЫЙ успешно загруженный слой, остальные растягиваются под тот
+    /// же холст — у слоёв одной сущности размер кадра почти всегда совпадает).
+    /// </summary>
+    private Image? GetLayeredPrototypeIcon(string protoId, Prototype proto)
+    {
+        Bitmap? icon = null;
+        Graphics? g = null;
+        try
+        {
+            foreach (var layer in proto.Layers)
+            {
+                if (!layer.Visible) continue;
+
+                var path = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State);
+                if (path == null || !File.Exists(path)) continue;
+
+                using var original = Image.FromFile(path);
+                var frameSize = GetRsiFrameSize(path, original);
+                if (frameSize.Width <= 0 || frameSize.Height <= 0) continue;
+
+                if (icon == null)
+                {
+                    float ratio = (float)frameSize.Width / frameSize.Height;
+                    int iconW, iconH;
+                    if (ratio >= 1.0f)
+                    {
+                        iconW = 32;
+                        iconH = Math.Max(1, (int)(32f / ratio));
+                    }
+                    else
+                    {
+                        iconH = 32;
+                        iconW = Math.Max(1, (int)(32f * ratio));
+                    }
+
+                    icon = new Bitmap(iconW, iconH);
+                    g = Graphics.FromImage(icon);
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                }
+
+                var srcRect = new Rectangle(0, 0, frameSize.Width, frameSize.Height);
+                g!.DrawImage(original, new Rectangle(0, 0, icon.Width, icon.Height), srcRect, GraphicsUnit.Pixel);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка загрузки многослойной иконки для {protoId}: {ex.Message}");
+        }
+        finally
+        {
+            g?.Dispose();
+        }
+
+        return icon;
     }
 
 

@@ -19,4 +19,31 @@ public class Prototype
     /// Имя drawdepth из компонента Sprite (например "FloorTiles", "Walls").
     /// </summary>
     public string? DrawDepth { get; set; }
+
+    /// <summary>
+    /// Слои компонента Sprite (YAML "layers:"). Пустой список — прототип без
+    /// многослойности, рисуется как раньше через SpritePath/RsiPath/State.
+    /// Если список не пуст, Renderer рисует все видимые слои по порядку друг
+    /// поверх друга (как это делает сам движок Robust Toolbox).
+    /// </summary>
+    public List<SpriteLayer> Layers { get; set; } = new();
+}
+
+/// <summary>
+/// Один элемент YAML-списка "layers:" под компонентом Sprite. SpritePath/RsiPath/State
+/// не заданы (null) — слой использует общий sprite: компонента Sprite и не имеет своего
+/// override. Так чаще всего и бывает: у слоя задан только свой state в общей RSI.
+/// </summary>
+public class SpriteLayer
+{
+    public string? State { get; set; }
+    public string? SpritePath { get; set; }
+    public string? RsiPath { get; set; }
+    /// <summary>Цвет тонирования слоя, формат "#RRGGBB"/"#RRGGBBAA" (YAML "color:").</summary>
+    public string? Color { get; set; }
+    public string? Shader { get; set; }
+    public bool Visible { get; set; } = true;
+    public float OffsetX { get; set; } = 0f;
+    public float OffsetY { get; set; } = 0f;
+    public bool HasOffset { get; set; } = false;
 }

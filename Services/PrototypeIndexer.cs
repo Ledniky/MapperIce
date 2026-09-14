@@ -136,7 +136,7 @@ public void ReindexFromDisk(Repository repo, bool silent = false)
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
     
-    private const int CacheFormatVersion = 15;
+    private const int CacheFormatVersion = 17;
 
 private class CacheEnvelope
 {
@@ -428,7 +428,163 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
             proto.DrawDepth = drawDepthMatch.Groups[1].Value;
         }
 
-        return proto;
+        // Многослойность (Sprite.layers) — сначала вычленяем сам подблок компонента
+        // Sprite по отступам (а не regex по всему block целиком, как sprite/state выше),
+        // потому что порядок и границы элементов списка layers: критичны для отступов
+        proto.Layers = ParseSpriteLayers(ExtractComponentBlock(block, "Sprite"));
+
+               return proto;
+    }
+
+    /// <summary>
+    /// Вычленяет подблок конкретного компонента (например "Sprite") из общего текста
+    /// прототипа по фактическим отступам исходного YAML: ищет строку "- type: ИмяКомпонента",
+    /// запоминает её отступ, и собирает все последующие строки с БОЛЬШИМ отступом —
+    /// то есть до начала следующего компонента (или конца блока). Без этого парсинг
+    /// layers: обычным regex по всему block рисковал бы зацепить чужой "state:"/"layers:"
+    /// из другого компонента при похожей структуре.
+    /// </summary>
+    private string ExtractComponentBlock(string block, string componentType)
+    {
+        var lines = block.Replace("\r\n", "\n").Split('\n');
+        int compIndent = -1;
+        bool inComponent = false;
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+
+            if (inComponent)
+            {
+                if (indent <= compIndent)
+                {
+                    inComponent = false;
+                }
+                else
+                {
+                    sb.Append(line).Append('\n');
+                    continue;
+                }
+            }
+
+            if (!inComponent && Regex.IsMatch(trimmed, @"^-\s*type:\s*" + Regex.Escape(componentType) + @"(\s|#|$)"))
+            {
+                compIndent = indent;
+                inComponent = true;
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Приводит путь текстуры (из "sprite:"/"rsi:" внутри слоя) к тому же виду, что и
+    /// проверенная логика для top-level sprite/rsi в ParseBlock: заменяет "/" на "\",
+    /// убирает ведущий "\" и опциональный префикс "Textures\".
+    /// </summary>
+    private string NormalizeTexturePath(string rawPath)
+    {
+        var path = rawPath.Replace("/", "\\").TrimStart('\\');
+        if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(9);
+        return path;
+    }
+
+    /// <summary>
+    /// Парсит YAML-список "layers:" внутри уже вычлененного подблока компонента Sprite
+    /// (см. ExtractComponentBlock). Каждый элемент списка ("- state: X" и последующие
+    /// вложенные строки того же элемента) превращается в один SpriteLayer.
+    /// </summary>
+    private List<SpriteLayer> ParseSpriteLayers(string spriteComponentBlock)
+    {
+        var layers = new List<SpriteLayer>();
+        if (string.IsNullOrWhiteSpace(spriteComponentBlock)) return layers;
+
+        var lines = spriteComponentBlock.Replace("\r\n", "\n").Split('\n');
+
+        int layersIndent = -1;
+        int i = 0;
+        for (; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].TrimStart();
+            if (trimmed.StartsWith("layers:"))
+            {
+                layersIndent = lines[i].Length - trimmed.Length;
+                i++;
+                break;
+            }
+        }
+        if (layersIndent < 0) return layers; // нет layers: — обычный однослойный прототип
+
+        SpriteLayer? current = null;
+
+        for (; i < lines.Length; i++)
+        {
+                        var line = lines[i];
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var trimmedFull = line.TrimStart();
+            int indent = line.Length - trimmedFull.Length;
+
+            // ВАЖНО: элементы списка "- map: [...]" в реальных YAML прототипов SS14
+            // стоят на ТОМ ЖЕ отступе, что и сама строка "layers:", а не глубже неё
+            // (пример: "    layers:\n    - map: [...]\n      state: computer").
+            // Раньше здесь стояло "<=" — из-за этого первая же строка списка (отступ
+            // == layersIndent) ошибочно трактовалась как конец списка, и layers
+            // оставался пустым для ВСЕХ прототипов с таким (обычным) стилем отступов.
+            // "<" пропускает строки на том же уровне и обрывает список только на
+            // строке с МЕНЬШИМ отступом (следующий ключ/компонент выше по иерархии).
+            if (indent < layersIndent) break; // список layers: закончился
+
+            var itemMatch = Regex.Match(trimmedFull, @"^-\s*(.*)$");
+            string fieldLine;
+            if (itemMatch.Success)
+            {
+                if (current != null) layers.Add(current);
+                current = new SpriteLayer();
+                fieldLine = itemMatch.Groups[1].Value;
+                if (string.IsNullOrWhiteSpace(fieldLine)) continue;
+            }
+            else
+            {
+                fieldLine = trimmedFull;
+            }
+
+            if (current == null) continue;
+
+            var stateMatch = Regex.Match(fieldLine, @"^state:\s*(\S+)");
+            if (stateMatch.Success) { current.State = stateMatch.Groups[1].Value; continue; }
+
+            var spriteMatch = Regex.Match(fieldLine, @"^sprite:\s*(\S+)");
+            if (spriteMatch.Success) { current.SpritePath = NormalizeTexturePath(spriteMatch.Groups[1].Value); continue; }
+
+            var rsiMatch = Regex.Match(fieldLine, @"^rsi:\s*(\S+)");
+            if (rsiMatch.Success) { current.RsiPath = NormalizeTexturePath(rsiMatch.Groups[1].Value); continue; }
+
+            var colorMatch = Regex.Match(fieldLine, "^color:\\s*\"?(#[0-9A-Fa-f]{6,8})\"?");
+            if (colorMatch.Success) { current.Color = colorMatch.Groups[1].Value; continue; }
+
+            var shaderMatch = Regex.Match(fieldLine, @"^shader:\s*(\S+)");
+            if (shaderMatch.Success) { current.Shader = shaderMatch.Groups[1].Value; continue; }
+
+            var visibleMatch = Regex.Match(fieldLine, @"^visible:\s*(true|false)", RegexOptions.IgnoreCase);
+            if (visibleMatch.Success) { current.Visible = visibleMatch.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase); continue; }
+
+            var offsetMatch = Regex.Match(fieldLine, @"^offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
+            if (offsetMatch.Success)
+            {
+                current.OffsetX = float.Parse(offsetMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+                current.OffsetY = float.Parse(offsetMatch.Groups[2].Value, CultureInfo.InvariantCulture);
+                current.HasOffset = true;
+                continue;
+            }
+        }
+        if (current != null) layers.Add(current);
+
+        return layers;
     }
 
     public Prototype? FindPrototype(string id)
@@ -695,6 +851,57 @@ if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
                     System.Diagnostics.Debug.WriteLine($"Найден первый PNG: {pngFiles[0]}");
                     return pngFiles[0];
                 }
+            }
+            return null;
+        }
+
+        if (!fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            fullPath += ".png";
+
+        return File.Exists(fullPath) ? fullPath : null;
+    }
+
+    /// <summary>
+    /// Аналог GetFullTexturePath, но для одного слоя многослойного спрайта: если у
+    /// слоя нет собственного sprite/rsi/state (layerSpritePath/layerRsiPath/layerState
+    /// == null) — путь и state наследуются от прототипа так же, как и для обычной
+    /// (однослойной) текстуры, через FindPathRecursive/FindStateRecursive.
+    /// </summary>
+    public string? GetLayerTexturePath(string protoId, string? layerSpritePath, string? layerRsiPath, string? layerState)
+    {
+        if (string.IsNullOrEmpty(_rootPath)) return null;
+
+        string? path = layerSpritePath ?? layerRsiPath;
+        if (string.IsNullOrEmpty(path))
+            path = FindPathRecursive(protoId, 0);
+        if (string.IsNullOrEmpty(path)) return null;
+
+        string? state = layerState;
+        if (string.IsNullOrEmpty(state))
+            state = FindStateRecursive(protoId, 0) ?? "icon";
+
+        path = path.Replace("/", "\\").TrimStart('\\');
+        if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(9);
+
+        string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
+
+        if (path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Directory.Exists(fullPath))
+            {
+                string stateFile = Path.Combine(fullPath, state + ".png");
+                if (File.Exists(stateFile)) return stateFile;
+
+                string[] fallbackStates = { "icon", "closed", "open", "full" };
+                foreach (var fallback in fallbackStates)
+                {
+                    string testPath = Path.Combine(fullPath, fallback + ".png");
+                    if (File.Exists(testPath)) return testPath;
+                }
+
+                var pngFiles = Directory.GetFiles(fullPath, "*.png", SearchOption.TopDirectoryOnly);
+                if (pngFiles.Length > 0) return pngFiles[0];
             }
             return null;
         }
