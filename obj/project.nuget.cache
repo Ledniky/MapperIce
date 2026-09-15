@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "+yipWRhzZg0=",
+  "dgSpecHash": "W4HhT51zyvc=",
   "success": true,
-  "projectFilePath": "D:\\My programs\\MapperIce\\MapperIce.csproj",
+  "projectFilePath": "d:\\My programs\\MapperIce\\MapperIce.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Администратор\\.nuget\\packages\\newtonsoft.json\\13.0.4\\newtonsoft.json.13.0.4.nupkg.sha512",
     "C:\\Users\\Администратор\\.nuget\\packages\\yamldotnet\\18.1.0\\yamldotnet.18.1.0.nupkg.sha512"

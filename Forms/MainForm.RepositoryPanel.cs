@@ -590,36 +590,37 @@ private void ProtoList_GiveFeedback(object? sender, GiveFeedbackEventArgs e)
     _dragGhost?.MoveTo(Cursor.Position);
 }
 
-    private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
+private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Size> _rsiFrameSizeCache = new();
 
-    private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
+private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
+{
+    string dir = Path.GetDirectoryName(texturePath) ?? "";
+    if (_rsiFrameSizeCache.TryGetValue(dir, out var cached)) return cached;
+
+    Size result = new Size(Math.Min(32, fallbackImage.Width), Math.Min(32, fallbackImage.Height));
+    try
     {
-        string dir = Path.GetDirectoryName(texturePath) ?? "";
-        if (_rsiFrameSizeCache.TryGetValue(dir, out var cached)) return cached;
-
-        Size result = new Size(Math.Min(32, fallbackImage.Width), Math.Min(32, fallbackImage.Height));
-        try
+        string metaPath = Path.Combine(dir, "meta.json");
+        if (File.Exists(metaPath))
         {
-            string metaPath = Path.Combine(dir, "meta.json");
-            if (File.Exists(metaPath))
+            var json = File.ReadAllText(metaPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("size", out var sizeElem) &&
+                sizeElem.TryGetProperty("x", out var xEl) &&
+                sizeElem.TryGetProperty("y", out var yEl))
             {
-                var json = File.ReadAllText(metaPath);
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("size", out var sizeElem) &&
-                    sizeElem.TryGetProperty("x", out var xEl) &&
-                    sizeElem.TryGetProperty("y", out var yEl))
-                {
-                    result = new Size(xEl.GetInt32(), yEl.GetInt32());
-                }
+                result = new Size(xEl.GetInt32(), yEl.GetInt32());
             }
         }
-        catch { }
-
-        _rsiFrameSizeCache[dir] = result;
-        return result;
     }
+    catch { }
 
-    private Image? GetPrototypeIcon(string protoId)
+    // ConcurrentDictionary — потокобезопасен по определению, но индексатор-присвоение
+    // здесь тоже безопасно (просто последний писатель победит при гонке на один и тот
+    // же dir, без исключений и без повреждения структуры словаря, в отличие от Dictionary)
+    _rsiFrameSizeCache[dir] = result;
+    return result;
+}    private Image? GetPrototypeIcon(string protoId)
     {
         try
         {

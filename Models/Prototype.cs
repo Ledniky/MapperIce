@@ -21,8 +21,14 @@ public class Prototype
     public string? DrawDepth { get; set; }
 
     /// <summary>
-    /// Русское название сущности, найденное в локализации (.ftl, ключ "ent-{Id}").
-    /// Резолвится с учётом Fluent-ссылок вида "{ ent-ДругойId }" (см. ApplyLocalizedNames
+    /// true, если у прототипа в YAML стоит "abstract: true" — это шаблон-родитель
+    /// (например BaseStructureWall), а не размещаемая на карте сущность. Такие
+    /// прототипы должны быть скрыты из списка репозитория/размещения.
+    /// </summary>
+    public bool IsAbstract { get; set; } = false;
+
+    /// <summary>
+    /// Русское название сущности, найденное в локализации (.ftl, ключ "ent-{Id}").    /// Резолвится с учётом Fluent-ссылок вида "{ ent-ДругойId }" (см. ApplyLocalizedNames
     /// в PrototypeIndexer). Null, если у прототипа нет собственной/унаследованной записи
     /// в локализации репозитория — в этом случае панель репозитория показывает id как раньше.
     /// </summary>

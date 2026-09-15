@@ -227,7 +227,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 18;
+    private const int CacheFormatVersion = 19;
 
     private class CacheEnvelope
     {
