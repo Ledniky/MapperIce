@@ -1107,7 +1107,11 @@ public partial class MainForm
         _apcCombo.Items.Clear();
         foreach (var id in allIds.Where(i =>
             i.StartsWith("APC", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
+            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Electronics", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Switch", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("MachineCircuit", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("board", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("APC", "").TrimStart('-', '_');
             _apcCombo.Items.Add(new ProtoDisplayItem(id, displayName));
@@ -1119,6 +1123,8 @@ public partial class MainForm
         _substationCombo.Items.Clear();
         foreach (var id in allIds.Where(i =>
             i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("MachineCircuit", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("board", StringComparison.OrdinalIgnoreCase)&&
             !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("Substation", "").TrimStart('-', '_');
