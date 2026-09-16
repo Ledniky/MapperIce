@@ -21,8 +21,15 @@ public class Prototype
     public string? DrawDepth { get; set; }
 
     /// <summary>
-    /// true, если у прототипа в YAML стоит "abstract: true" — это шаблон-родитель
-    /// (например BaseStructureWall), а не размещаемая на карте сущность. Такие
+    /// Максимальная отдаваемая мощность (Вт) из компонента PowerNetworkBattery
+    /// ("maxSupply:") — задаётся на подстанциях (отдают в сеть СВ) и на ЛКП/APC
+    /// (отдают в сеть НВ). Null, если у прототипа и его родителей такого
+    /// компонента нет.
+    /// </summary>
+    public float? MaxSupply { get; set; }
+
+    /// <summary>
+    /// true, если у прототипа в YAML стоит "abstract: true" — это шаблон-родитель    /// (например BaseStructureWall), а не размещаемая на карте сущность. Такие
     /// прототипы должны быть скрыты из списка репозитория/размещения.
     /// </summary>
     public bool IsAbstract { get; set; } = false;

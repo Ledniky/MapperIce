@@ -623,6 +623,13 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
     _rsiFrameSizeCache[dir] = result;
     return result;
 }    private Image? GetPrototypeIcon(string protoId)
+    => GetPrototypeIcon(protoId, stateOverride: null);
+
+    /// <summary>
+    /// Загружает иконку прототипа. Если stateOverride != null — использует
+    /// это состояние вместо того, что в YAML / дефолтного ("closed").
+    /// </summary>
+    private Image? GetPrototypeIcon(string protoId, string? stateOverride)
     {
         try
         {
@@ -639,12 +646,12 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             {
                 var firstVisibleLayer = layers.FirstOrDefault(l => l.Visible);
                 path = firstVisibleLayer != null
-                    ? _indexer.GetLayerTexturePath(protoId, firstVisibleLayer.SpritePath, firstVisibleLayer.RsiPath, firstVisibleLayer.State)
+                    ? _indexer.GetLayerTexturePath(protoId, firstVisibleLayer.SpritePath, firstVisibleLayer.RsiPath, firstVisibleLayer.State, stateOverride)
                     : null;
             }
             else
             {
-                path = _indexer.GetFullTexturePath(protoId);
+                path = _indexer.GetFullTexturePath(protoId, stateOverride);
             }
 
             if (path != null && File.Exists(path))

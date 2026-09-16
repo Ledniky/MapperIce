@@ -542,8 +542,30 @@ public partial class MainForm
             if (e.Index >= 0)
             {
                 string text = _wireTypeCombo.Items[e.Index].ToString() ?? "";
-                TextRenderer.DrawText(e.Graphics, text, _wireTypeCombo.Font, e.Bounds, _wireTypeCombo.ForeColor,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                // Карта иконок по индексу: 0=HV, 1=MV, 2=LV
+                Image? icon = e.Index switch
+                {
+                    0 => _wireIconHV,
+                    1 => _wireIconMV,
+                    2 => _wireIconLV,
+                    _ => null
+                };
+                int iconSize = 24;
+                int iconX = e.Bounds.Left + 6;
+                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
+                if (icon != null)
+                {
+                    e.Graphics.DrawImage(icon, iconX, iconY, iconSize, iconSize);
+                    TextRenderer.DrawText(e.Graphics, text, _wireTypeCombo.Font,
+                        new Rectangle(iconX + iconSize + 4, e.Bounds.Top,
+                            e.Bounds.Width - iconX - iconSize - 4, e.Bounds.Height),
+                        _wireTypeCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                }
+                else
+                {
+                    TextRenderer.DrawText(e.Graphics, text, _wireTypeCombo.Font, e.Bounds, _wireTypeCombo.ForeColor,
+                        TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                }
             }
             e.DrawFocusRectangle();
         };
@@ -1159,6 +1181,23 @@ public partial class MainForm
 
         _apcCombo.Invalidate();
         _substationCombo.Invalidate();
+    }
+
+    /// <summary>
+    /// Синхронно подгружает иконки для пунктов _wireTypeCombo:
+    /// HV → CableHV (hvcable_15), MV → CableMV (mvcable_15),
+    /// LV → CableApcExtension (lvcable_15).
+    /// Состояние _15 — спрайт с 4 соседями (полный сегмент).
+    /// </summary>
+    private void LoadWireTypeIcons()
+    {
+        _wireIconHV?.Dispose();
+        _wireIconMV?.Dispose();
+        _wireIconLV?.Dispose();
+        _wireIconHV = GetPrototypeIcon("CableHV", "hvcable_15");
+        _wireIconMV = GetPrototypeIcon("CableMV", "mvcable_15");
+        _wireIconLV = GetPrototypeIcon("CableApcExtension", "lvcable_15");
+        if (_wireTypeCombo != null && !_wireTypeCombo.IsDisposed) _wireTypeCombo.Invalidate();
     }
 
 

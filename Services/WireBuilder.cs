@@ -137,4 +137,41 @@ public class WireBuilder
     {
         return grid.Entities.OfType<WireEntity>().ToList();
     }
+
+    /// <summary>
+    /// BFS по клеткам одного типа кабеля начиная от (startX, startY) — связная
+    /// сеть, используемая лупой для поиска подстанций/ЛКП, стоящих на той же
+    /// сети, что и клетка под курсором (см. MainForm.Magnifier.cs). Если на
+    /// стартовой клетке нет провода нужного типа — возвращает пустое множество.
+    /// </summary>
+    public HashSet<(int x, int y)> GetConnectedWireTiles(Grid grid, string wireType, int startX, int startY)
+    {
+        var result = new HashSet<(int x, int y)>();
+        if (grid == null) return result;
+
+        var wireSet = new HashSet<(int x, int y)>(
+            grid.Entities.OfType<WireEntity>()
+                .Where(w => w.WireType == wireType)
+                .Select(w => ((int)w.X, (int)w.Y)));
+
+        if (!wireSet.Contains((startX, startY))) return result;
+
+        var queue = new Queue<(int x, int y)>();
+        queue.Enqueue((startX, startY));
+        result.Add((startX, startY));
+
+        var directions = new[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
+        while (queue.Count > 0)
+        {
+            var (cx, cy) = queue.Dequeue();
+            foreach (var (dx, dy) in directions)
+            {
+                var next = (cx + dx, cy + dy);
+                if (wireSet.Contains(next) && result.Add(next))
+                    queue.Enqueue(next);
+            }
+        }
+
+        return result;
+    }
 }

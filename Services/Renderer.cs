@@ -249,8 +249,8 @@ public class Renderer
                     .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
                     .OrderBy(w => w.Y)
                     .ToList();
-                DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset);
-                if (allWires.Count > 0)
+                DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
+                DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset);                if (allWires.Count > 0)
                     DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
 
                 if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
@@ -969,8 +969,35 @@ public class Renderer
         return _wireTypeManager.GetWireType(wireType).Color;
     }
 
-    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    /// <summary>
+    /// Зелёная область покрытия НВ-кабеля радиусом 3 клетки — все окружности
+    /// собираются в один GraphicsPath (FillMode.Winding) и заливаются ОДНИМ
+    /// вызовом FillPath, чтобы перекрывающиеся круги не давали двойной альфы
+    /// в местах наложения.
+    /// </summary>
+    private void DrawLvCoverageOverlay(Graphics g, List<WireEntity> wires, int tileSize, PointF viewOffset, PointF gridOffset)
     {
+        var lvWires = wires.Where(w => w.WireType == "LV").ToList();
+        if (lvWires.Count == 0) return;
+
+        const float radiusTiles = 3f;
+        float radiusPx = radiusTiles * tileSize;
+
+        using var path = new GraphicsPath();
+        path.FillMode = FillMode.Winding;
+        foreach (var wire in lvWires)
+        {
+            float cx = (wire.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
+            float cy = (wire.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            path.AddEllipse(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2);
+        }
+
+        using var brush = new SolidBrush(Color.FromArgb(50, 40, 200, 40));
+        g.FillPath(brush, path);
+    }
+
+    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+        {
         var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
         if (utilPipes.Count == 0) return;
 

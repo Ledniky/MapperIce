@@ -71,6 +71,10 @@ private ComboBox _doorToolCombo = null!;
     // LoadWireJunctionIcons сразу после заполнения списков, как и door-иконки,
     // чтобы не зависеть от ленивой фоновой подгрузки и лишнего Invalidate
     private readonly Dictionary<string, Image?> _wireJunctionIconCache = new();
+    // Готовые иконки для _wireTypeCombo — CableHV, CableMV, CableApcExtension
+    private Image? _wireIconHV;
+    private Image? _wireIconMV;
+    private Image? _wireIconLV;
     private Button _btnSubtractRoom = null!;
     private Button _btnRestoreRoom = null!;
     private Room? _restoreTargetRoom = null;
@@ -259,11 +263,13 @@ private ComboBox _doorToolCombo = null!;
             UpdatePrototypeList();
             UpdateWireJunctionCombos();
             LoadDoorComboIcons();
+            LoadWireTypeIcons();
             Render();
         };
 
         UpdateRepoSelector();
         LoadDoorComboIcons();
+        LoadWireTypeIcons();
         _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };        UpdateBuffer();
     }
 

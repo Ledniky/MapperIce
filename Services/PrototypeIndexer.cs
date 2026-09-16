@@ -227,7 +227,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 19;
+    private const int CacheFormatVersion = 20;
 
     private class CacheEnvelope
     {
@@ -519,8 +519,15 @@ public class PrototypeIndexer
             proto.DrawDepth = drawDepthMatch.Groups[1].Value;
         }
 
-        // Многослойность (Sprite.layers) — сначала вычленяем сам подблок компонента
-        // Sprite по отступам (а не regex по всему block целиком, как sprite/state выше),
+        // Ищем maxSupply — компонент PowerNetworkBattery (подстанции/ЛКП), как и
+        // drawdepth, ищем по всему блоку без привязки к отступу
+        var maxSupplyMatch = Regex.Match(block, @"maxSupply:\s*(\d+(?:\.\d+)?)");
+        if (maxSupplyMatch.Success)
+        {
+            proto.MaxSupply = float.Parse(maxSupplyMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        }
+
+        // Многослойность (Sprite.layers) — сначала вычленяем сам подблок компонента        // Sprite по отступам (а не regex по всему block целиком, как sprite/state выше),
         // потому что порядок и границы элементов списка layers: критичны для отступов
         proto.Layers = ParseSpriteLayers(ExtractComponentBlock(block, "Sprite"));
 
@@ -894,7 +901,39 @@ public class PrototypeIndexer
         return FindDrawDepthRecursive(protoId, 0);
     }
 
-    public string? GetFullTexturePath(string id)
+    /// <summary>
+    /// Рекурсивно ищет maxSupply (компонент PowerNetworkBattery) по цепочке
+    /// родителей — аналогично FindDrawDepthRecursive. Используется лупой для
+    /// подсчёта суммарной мощности подстанций/ЛКП в сети (см. MainForm.Magnifier.cs).
+    /// </summary>
+    private float? FindMaxSupplyRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+
+        if (proto.MaxSupply.HasValue)
+            return proto.MaxSupply;
+
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindMaxSupplyRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Получает maxSupply для прототипа, рекурсивно ища по цепочке родителей.
+    /// </summary>
+    public float? GetMaxSupply(string protoId)
+    {
+        return FindMaxSupplyRecursive(protoId, 0);
+    }
+    public string? GetFullTexturePath(string id, string? stateOverride = null)
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;
 
@@ -915,7 +954,11 @@ public class PrototypeIndexer
             System.Diagnostics.Debug.WriteLine($"State не найден для {id}, используем 'closed'");
         }
 
-        // 4. Собираем полный путь
+        // 4. Если передан override — используем его
+        if (!string.IsNullOrEmpty(stateOverride))
+            state = stateOverride;
+
+        // 5. Собираем полный путь
         path = path.Replace("/", "\\").TrimStart('\\');
         if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
             path = path.Substring(9);
@@ -968,8 +1011,9 @@ public class PrototypeIndexer
     /// слоя нет собственного sprite/rsi/state (layerSpritePath/layerRsiPath/layerState
     /// == null) — путь и state наследуются от прототипа так же, как и для обычной
     /// (однослойной) текстуры, через FindPathRecursive/FindStateRecursive.
+    /// stateOverride — если задан, полностью заменяет state слоя.
     /// </summary>
-    public string? GetLayerTexturePath(string protoId, string? layerSpritePath, string? layerRsiPath, string? layerState)
+    public string? GetLayerTexturePath(string protoId, string? layerSpritePath, string? layerRsiPath, string? layerState, string? stateOverride = null)
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;
 
@@ -981,6 +1025,10 @@ public class PrototypeIndexer
         string? state = layerState;
         if (string.IsNullOrEmpty(state))
             state = FindStateRecursive(protoId, 0) ?? "icon";
+
+        // stateOverride полностью заменяет state (для иконок кабелей и т.п.)
+        if (!string.IsNullOrEmpty(stateOverride))
+            state = stateOverride;
 
         path = path.Replace("/", "\\").TrimStart('\\');
         if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))

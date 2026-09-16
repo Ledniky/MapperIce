@@ -344,6 +344,41 @@ public partial class MainForm
             }
         }
 
+        // Мощность электросети — подстанция стоит на стыке ВВ/СВ и отдаёт
+        // мощность в сеть СВ, ЛКП (APC) стоит на стыке СВ/НВ и отдаёт мощность
+        // в сеть НВ. Ищем связную сеть кабеля нужного типа, начиная от клетки
+        // под курсором (GetConnectedWireTiles — BFS по соседям), и суммируем
+        // maxSupply всех найденных в этой сети устройств.
+        foreach (var (wireType, deviceLabel, idPrefix, networkLabel) in new[]
+        {
+            ("MV", "Подстанция", "Substation", "СВ"),
+            ("LV", "ЛКП", "APC", "НВ")
+        })
+        {
+            bool hasWireHere = grid.Entities.OfType<WireEntity>()
+                .Any(w => FloorToInt(w.X) == tileX && FloorToInt(w.Y) == tileY && w.WireType == wireType);
+            if (!hasWireHere) continue;
+
+            var networkTiles = _wireBuilder.GetConnectedWireTiles(grid, wireType, tileX, tileY);
+
+            var devices = grid.Entities
+                .Where(e => e.GetType() == typeof(MapEntity))
+                .Where(e => networkTiles.Contains((FloorToInt(e.X), FloorToInt(e.Y))))
+                .Where(e => !string.IsNullOrEmpty(e.Proto) && e.Proto.StartsWith(idPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (devices.Count == 0) continue;
+
+            float total = 0f;
+            foreach (var device in devices)
+            {
+                float supply = _indexer.GetMaxSupply(device.Proto) ?? 0f;
+                total += supply;
+                AddMagnifierRow($"{deviceLabel}: {device.Proto} ({supply:F0} Вт)", null);
+            }
+            AddMagnifierRow($"— Сеть {networkLabel}: {total:F0} Вт суммарно ({devices.Count} шт.)", null);
+        }
+
         // Декали
         foreach (var decal in grid.Decals.Where(d => FloorToInt(d.X) == tileX && FloorToInt(d.Y) == tileY).ToList())
         {
