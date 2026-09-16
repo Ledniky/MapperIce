@@ -292,7 +292,11 @@ public static class YAMLGenerator
         // 5. Сигнализации
         GenerateAlarmsGrouped(sb, grid, ref uid, alarmSettings, positionToUid);
 
-        // 6. Прочие сущности
+        // 6. Электросеть (провода). Подстанции/ЛКП сюда не входят — это обычные
+        // MapEntity с заполненным Proto, они уже уходят через п.7 (Generic)
+        GenerateWiresGrouped(sb, grid, ref uid);
+
+        // 7. Прочие сущности
         GenerateGenericEntitiesGrouped(sb, grid, ref uid);
 
         return sb.ToString();
@@ -1485,11 +1489,72 @@ public static class YAMLGenerator
 
 
 
+    /// <summary>
+    /// В отличие от труб, кабелям не нужен подбор прототипа-"угла"/"тройника"
+    /// по соседям при экспорте — CableVisualizer у CableHV/CableMV/
+    /// CableApcExtension (см. cables.yml) сам достраивает нужный спрайт-сегмент
+    /// в игре, читая соседние кабели той же NodeGroupID в рантайме. Поэтому
+    /// здесь просто группировка по WireType -> один proto -> список позиций,
+    /// без rot: (как GenerateWallsGrouped/GenerateDoorsGrouped, а не как трубы).
+    /// </summary>
+    private static void GenerateWiresGrouped(
+        StringBuilder sb,
+        Grid grid,
+        ref int uid)
+    {
+        if (grid == null) return;
+
+        var wires = grid.Entities.OfType<WireEntity>().ToList();
+        if (wires.Count == 0) return;
+
+        foreach (var group in wires.GroupBy(w => w.WireType))
+        {
+            string? protoName = GetCableProtoForWireType(group.Key);
+            if (protoName == null) continue; // неизвестный/будущий WireType — пропускаем, а не падаем
+
+            sb.AppendLine($"- proto: {protoName}");
+            sb.AppendLine("  entities:");
+
+            foreach (var wire in group)
+            {
+                float posX = wire.X + 0.5f;
+                float posY = -wire.Y + 0.5f;
+
+                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                uid++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// WireEntity.WireType ("HV"/"MV"/"LV") -> id реального прототипа кабеля из
+    /// cables.yml. "LV" в редакторе — это НВ (низковольтный), в игре это же
+    /// физически CableApcExtension ("cable used to connect machines to an APC").
+    /// </summary>
+    private static string? GetCableProtoForWireType(string wireType)
+    {
+        return wireType switch
+        {
+            "HV" => "CableHV",
+            "MV" => "CableMV",
+            "LV" => "CableApcExtension",
+            _ => null
+        };
+    }
+
+
+
+
     private static void GenerateGenericEntitiesGrouped(StringBuilder sb, Grid grid, ref int uid)
     {
         var generic = grid.Entities
             .Where(e => e is not PipeEntity && e is not FirelockEntity &&
-                        e is not AirAlarmEntity && e is not FireAlarmEntity)
+                        e is not AirAlarmEntity && e is not FireAlarmEntity && e is not WireEntity &&
+                        e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
 
