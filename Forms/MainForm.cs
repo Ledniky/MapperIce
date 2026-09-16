@@ -67,6 +67,10 @@ private ComboBox _doorToolCombo = null!;
     // открытия/наведения на список для появления текстур
     private Image? _doorIconAirlock;
     private Image? _doorIconAirlockGlass;
+    // Кэш иконок для _apcCombo/_substationCombo — грузится синхронно в
+    // LoadWireJunctionIcons сразу после заполнения списков, как и door-иконки,
+    // чтобы не зависеть от ленивой фоновой подгрузки и лишнего Invalidate
+    private readonly Dictionary<string, Image?> _wireJunctionIconCache = new();
     private Button _btnSubtractRoom = null!;
     private Button _btnRestoreRoom = null!;
     private Room? _restoreTargetRoom = null;

@@ -1041,6 +1041,41 @@ public class PrototypeIndexer
         return null;
     }
 
+    /// <summary>
+    /// Ищем Sprite.layers по цепочке родителей — аналогично FindPathRecursive/
+    /// FindStateRecursive. Без этого сущности без собственного компонента Sprite
+    /// в своём блоке (наследующие его целиком от parent, как APCBasic от BaseAPC)
+    /// всегда получали Layers.Count == 0, хотя фактически многослойны.
+    /// </summary>
+    private List<SpriteLayer>? FindLayersRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+
+        if (proto.Layers.Count > 0)
+            return proto.Layers;
+
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindLayersRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Публичный доступ к Sprite.layers прототипа с учётом наследования от parent.
+    /// Пустой список, если ни у самого прототипа, ни у родителей многослойности нет.
+    /// </summary>
+    public List<SpriteLayer> GetLayers(string id)
+    {
+        return FindLayersRecursive(id, 0) ?? new List<SpriteLayer>();
+    }
+
     // Ищем state СНАЧАЛА у самого прототипа, потом у родителей
     private string? FindStateRecursive(string id, int depth)
     {

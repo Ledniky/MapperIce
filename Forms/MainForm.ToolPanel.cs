@@ -606,9 +606,33 @@ public partial class MainForm
             e.DrawBackground();
             if (e.Index >= 0)
             {
-                string text = _apcCombo.Items[e.Index].ToString() ?? "";
-                TextRenderer.DrawText(e.Graphics, text, _apcCombo.Font, e.Bounds, _apcCombo.ForeColor,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                var item = _apcCombo.Items[e.Index] as ProtoDisplayItem;
+                string text = item?.DisplayName ?? _apcCombo.Items[e.Index].ToString() ?? "";
+                const int iconSize = 24;
+                const int padding = 3;
+                int textX = e.Bounds.Left + padding;
+
+                if (item != null)
+                {
+                    _wireJunctionIconCache.TryGetValue(item.Id, out var icon);
+                    if (icon != null)
+                    {
+                        int drawX = e.Bounds.Left + padding + (iconSize - icon.Width) / 2;
+                        int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
+                        e.Graphics.DrawImage(icon, drawX, drawY, icon.Width, icon.Height);
+                    }
+                    else
+                    {
+                        using var placeholderBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0));
+                        int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
+                        e.Graphics.FillRectangle(placeholderBrush, e.Bounds.Left + padding, iconY, iconSize, iconSize);
+                    }
+                    textX = e.Bounds.Left + padding + iconSize + padding;
+                }
+
+                TextRenderer.DrawText(e.Graphics, text, _apcCombo.Font,
+                    new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height),
+                    _apcCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             }
             e.DrawFocusRectangle();
         };
@@ -631,9 +655,33 @@ public partial class MainForm
             e.DrawBackground();
             if (e.Index >= 0)
             {
-                string text = _substationCombo.Items[e.Index].ToString() ?? "";
-                TextRenderer.DrawText(e.Graphics, text, _substationCombo.Font, e.Bounds, _substationCombo.ForeColor,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                var item = _substationCombo.Items[e.Index] as ProtoDisplayItem;
+                string text = item?.DisplayName ?? _substationCombo.Items[e.Index].ToString() ?? "";
+                const int iconSize = 24;
+                const int padding = 3;
+                int textX = e.Bounds.Left + padding;
+
+                if (item != null)
+                {
+                    _wireJunctionIconCache.TryGetValue(item.Id, out var icon);
+                    if (icon != null)
+                    {
+                        int drawX = e.Bounds.Left + padding + (iconSize - icon.Width) / 2;
+                        int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
+                        e.Graphics.DrawImage(icon, drawX, drawY, icon.Width, icon.Height);
+                    }
+                    else
+                    {
+                        using var placeholderBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0));
+                        int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
+                        e.Graphics.FillRectangle(placeholderBrush, e.Bounds.Left + padding, iconY, iconSize, iconSize);
+                    }
+                    textX = e.Bounds.Left + padding + iconSize + padding;
+                }
+
+                TextRenderer.DrawText(e.Graphics, text, _substationCombo.Font,
+                    new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height),
+                    _substationCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             }
             e.DrawFocusRectangle();
         };
@@ -1078,6 +1126,33 @@ public partial class MainForm
         }
         if (prevSub != null && _substationCombo.Items.Cast<ProtoDisplayItem>().Any(p => p.Id == prevSub))
             _substationCombo.SelectedItem = _substationCombo.Items.Cast<ProtoDisplayItem>().First(p => p.Id == prevSub);
+
+        LoadWireJunctionIcons();
+    }
+
+    /// <summary>
+    /// Синхронно (как LoadDoorComboIcons) подгружает иконки для всех пунктов
+    /// _apcCombo/_substationCombo — GetPrototypeIcon уже поддерживает
+    /// многослойные прототипы (берёт первый видимый слой, см. репозиторную
+    /// панель). Без этого иконки были бы видны только после наведения курсора,
+    /// т.к. закрытый ComboBox сам себя не перерисовывает по завершении
+    /// фоновой загрузки (в отличие от постоянно видимого _protoList).
+    /// </summary>
+    private void LoadWireJunctionIcons()
+    {
+        foreach (var kvp in _wireJunctionIconCache)
+            kvp.Value?.Dispose();
+        _wireJunctionIconCache.Clear();
+
+        foreach (var item in _apcCombo.Items.Cast<ProtoDisplayItem>()
+                     .Concat(_substationCombo.Items.Cast<ProtoDisplayItem>()))
+        {
+            if (!_wireJunctionIconCache.ContainsKey(item.Id))
+                _wireJunctionIconCache[item.Id] = GetPrototypeIcon(item.Id);
+        }
+
+        _apcCombo.Invalidate();
+        _substationCombo.Invalidate();
     }
 
 

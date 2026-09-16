@@ -62,6 +62,8 @@ listContainer.Controls.Add(_protoList);
                 _pendingIconRedraw = false;
                 if (!_protoList.IsDisposed) _protoList.Invalidate();
                 if (_doorToolCombo != null && !_doorToolCombo.IsDisposed) _doorToolCombo.Invalidate();
+                if (_apcCombo != null && !_apcCombo.IsDisposed) _apcCombo.Invalidate();
+                if (_substationCombo != null && !_substationCombo.IsDisposed) _substationCombo.Invalidate();
             }
         };
         _iconRedrawTimer.Start();
@@ -631,11 +633,11 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             // на канвасе, см. DrawLayeredTexturedRect) — так иконка в списке остаётся
             // простой и однозначной, без наложения экрана/клавиатуры/панели друг на друга
             // в крошечном 32×32 превью, где это всё равно нечитаемо.
-            var layeredProto = _indexer.FindPrototype(protoId);
+            var layers = _indexer.GetLayers(protoId);
             string? path;
-            if (layeredProto != null && layeredProto.Layers.Count > 0)
+            if (layers.Count > 0)
             {
-                var firstVisibleLayer = layeredProto.Layers.FirstOrDefault(l => l.Visible);
+                var firstVisibleLayer = layers.FirstOrDefault(l => l.Visible);
                 path = firstVisibleLayer != null
                     ? _indexer.GetLayerTexturePath(protoId, firstVisibleLayer.SpritePath, firstVisibleLayer.RsiPath, firstVisibleLayer.State)
                     : null;
