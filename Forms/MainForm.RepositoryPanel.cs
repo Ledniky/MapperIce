@@ -510,25 +510,30 @@ listContainer.Controls.Add(_protoList);
     }
 
 
-    private void OnPrototypeDoubleClick(object? sender, EventArgs e)
-    {
-        if (_protoList.SelectedItem == null) return;
-        string? id = _protoList.SelectedItem.ToString();
-        if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
+private void ShowPrototypeInfo(string id)
+{
+    var proto = _indexer.FindPrototype(id);
+    var path = _indexer.GetFullTexturePath(id);
 
-        var proto = _indexer.FindPrototype(id);
-        var path = _indexer.GetFullTexturePath(id);
+    bool fileExists = path != null && File.Exists(path);
 
-        bool fileExists = path != null && File.Exists(path);
+    string message = $"ID: {id}\n";
+    message += $"SpritePath: {proto?.SpritePath ?? "(нет)"}\n";
+    message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
+    message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
+    message += $"Файл существует: {(fileExists ? "✅ ДА" : "❌ НЕТ")}";
 
-        string message = $"ID: {id}\n";
-        message += $"SpritePath: {proto?.SpritePath ?? "(нет)"}\n";
-        message += $"FilePath: {proto?.FilePath ?? "(нет)"}\n";
-        message += $"\n--- АВТОМАТИЧЕСКИЙ ПУТЬ ---\n{path ?? "НЕ НАЙДЕН"}\n";
-        message += $"Файл существует: {(fileExists ? "✅ ДА" : "❌ НЕТ")}";
+    MessageBox.Show(message, "Информация о прототипе");
+}
 
-        MessageBox.Show(message, "Информация о прототипе");
-    }
+private void OnPrototypeDoubleClick(object? sender, EventArgs e)
+{
+    if (_protoList.SelectedItem == null) return;
+    string? id = _protoList.SelectedItem.ToString();
+    if (string.IsNullOrEmpty(id) || id.StartsWith("(")) return;
+
+    ShowPrototypeInfo(id);
+}
 
 private void ProtoList_MouseDown(object? sender, MouseEventArgs e)
 {
@@ -543,9 +548,17 @@ private void ProtoList_MouseDown(object? sender, MouseEventArgs e)
                         !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
                         !id.StartsWith("Нажмите");
     if (!isRealProto) return;
-    
-    // Курсор во время OLE drag'n'drop переопределить надёжно нельзя (Windows поверх
-    // него всё равно рисует своё "запрещено"/стрелку) — поэтому вместо этого ведём
+
+    // Двойной клик — показываем информацию о прототипе и НЕ запускаем
+    // Drag'n'Drop (иначе DoDragDrop на первом клике съедает события мыши
+    // и обычный DoubleClick листбокса до нас не долетает).
+    if (e.Clicks >= 2)
+    {
+        ShowPrototypeInfo(id!);
+        return;
+    }
+
+    // Курсор во время OLE drag'n'drop ...    // него всё равно рисует своё "запрещено"/стрелку) — поэтому вместо этого ведём
     // за курсором отдельное floating-окошко на всё время перетаскивания. Берём ту же
     // иконку, что уже нарисована в списке (кэш ProtoList_DrawItem), либо грузим её
     // синхронно на месте, если фоновая загрузка ещё не успела её закэшировать.
