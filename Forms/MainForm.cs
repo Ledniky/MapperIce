@@ -116,6 +116,7 @@ private ComboBox _doorToolCombo = null!;
     private CancellationTokenSource? _searchCts;
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
+    private bool _showWires = true;
     private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
     private Form? _pipeSettingsForm = null;
     private Form? _utilSettingsForm = null;
@@ -641,6 +642,7 @@ private ComboBox _doorToolCombo = null!;
         _renderer.HideRoomOverlay = _hideRoomOverlay;
         _renderer.ShowPipeOverlay = _showPipeOverlay;
         _renderer.ShowAlarmConnections = _showAlarmConnections;
+        _renderer.ShowWires = _showWires;
 
         if (_map.ActiveGrid != null)
         {

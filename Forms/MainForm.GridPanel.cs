@@ -13,6 +13,7 @@ public partial class MainForm
     private ContextMenuStrip _tabContextMenu = null!;
     private Grid? _contextMenuGrid;
     private ToolTip _tabToolTip = null!;
+    private Panel _flagsPanel = null!;
     private const int TAB_START_X = 42; // X позиция первой вкладки (после кнопки +)
 
     private void CreateGridPanel()
@@ -57,17 +58,17 @@ public partial class MainForm
 
         panel.Controls.Add(_tabStrip);
 
-        // === RIGHT BLOCK: Toggle Buttons (Flags) ===
-        var flagsPanel = new Panel
+        _flagsPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 200,
+            Width = 244, // фиксированная ширина: 10 (отступ слева) + 5×40 (кнопки) + 4×6 (зазоры) + 10 (отступ справа)
             Height = 55,
             BackColor = Color.FromArgb(220, 220, 220),
-            Margin = new Padding(4, 0, 4, 0)
+            Margin = new Padding(4, 0, 14, 0) // правый отступ 10px от экрана + 4px
         };
-        CreateToggleButtonsInPanel(flagsPanel);
-        panel.Controls.Add(flagsPanel);
+        CreateToggleButtonsInPanel(_flagsPanel);
+
+        panel.Controls.Add(_flagsPanel);
 
         Controls.Add(panel);
 
@@ -129,8 +130,17 @@ public partial class MainForm
             Render();
         });
         parentPanel.Controls.Add(btnSnap);
-    }
+        xPos += 46;
 
+        // ⚡ Wires overlay
+        var btnWire = CreateToggleBtn("⚡", "❌", "Кабели", xPos, yPos, v =>
+        {
+            _showWires = v;
+            Render();
+        });
+        parentPanel.Controls.Add(btnWire);
+    }
+    
     private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, Action<bool> onToggle)
     {
         var btn = new Button

@@ -19,6 +19,7 @@
         public bool HideRoomOverlay { get; set; } = false;
         private MapData? _currentMap;
         public bool ShowPipeOverlay { get; set; } = true;
+        public bool ShowWires { get; set; } = true;
 
         // Кэш текстур для ускорения рендеринга
         // Кэш текстур для ускорения рендеринга
@@ -245,20 +246,23 @@
                     // Электросеть — отдельный слой поверх труб, та же идея (линии между
                     // соседями одного типа + точки узлов), без специфичных для труб
                     // маркеров фильтра/стрелок утилизации
-                    var allWires = _wireBuilder.GetWires(grid)
-                        .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
-                        .OrderBy(w => w.Y)
-                        .ToList();
-                    DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
-                    DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset); if (allWires.Count > 0)
-                        DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
-
-                    if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
+                    if (ShowWires)
                     {
-                        var wireStart = _wireBuilder.StartPoint.Value;
-                        var wireEnd = _wireBuilder.EndPoint ?? wireStart;
-                        var wirePath = CalculatePipePath(wireStart, wireEnd);
-                        DrawTempPipePath(g, wirePath, tileSize, viewOffset, gridOffset);
+                        var allWires = _wireBuilder.GetWires(grid)
+                            .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
+                            .OrderBy(w => w.Y)
+                            .ToList();
+                        DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
+                        DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset); if (allWires.Count > 0)
+                            DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
+
+                        if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
+                        {
+                            var wireStart = _wireBuilder.StartPoint.Value;
+                            var wireEnd = _wireBuilder.EndPoint ?? wireStart;
+                            var wirePath = CalculatePipePath(wireStart, wireEnd);
+                            DrawTempPipePath(g, wirePath, tileSize, viewOffset, gridOffset);
+                        }
                     }
 
                     // Собираем сигнализации для стрелок — они теперь внутри DrawRenderLayer,                // но стрелки рисуются отдельно, поэтому фильтруем заново
