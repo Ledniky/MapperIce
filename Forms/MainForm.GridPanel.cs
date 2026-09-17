@@ -2,6 +2,8 @@
 
 using MapperIce.Models;
 using MapperIce.Services;
+using System.IO;
+using System.Text.Json;
 
 namespace MapperIce.Forms;
 
@@ -15,6 +17,9 @@ public partial class MainForm
     private ToolTip _tabToolTip = null!;
     private Panel _flagsPanel = null!;
     private const int TAB_START_X = 42; // X позиция первой вкладки (после кнопки +)
+
+    // Персистентность состояния кнопок-флажков (🗺️ 🔧 🔗 🧲 ⚡) между запусками
+    private UiToggleSettings _uiToggleSettings = new();
 
     private void CreateGridPanel()
     {
@@ -93,71 +98,80 @@ public partial class MainForm
 
     private void CreateToggleButtonsInPanel(Panel parentPanel)
     {
+        _uiToggleSettings = LoadUiToggleSettings();
+
         int xPos = 10;
         int yPos = 8;
 
         // 🗺️ Room overlay
-        var btnRoom = CreateToggleBtn("🗺️", "❌", "Оверлей комнат", xPos, yPos, v =>
+        if (_uiToggleSettings.RoomOverlayOn.HasValue) _hideRoomOverlay = _uiToggleSettings.RoomOverlayOn.Value;
+        var btnRoom = CreateToggleBtn("🗺️", "❌", "Оверлей комнат", xPos, yPos, _uiToggleSettings.RoomOverlayOn ?? true, v =>
         {
             _hideRoomOverlay = v;
+            SaveUiToggleSettings(s => s.RoomOverlayOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnRoom);
         xPos += 46;
 
         // 🔧 Pipe overlay
-        var btnPipe = CreateToggleBtn("🔧", "❌", "Оверлей труб", xPos, yPos, v =>
+        if (_uiToggleSettings.PipeOverlayOn.HasValue) _showPipeOverlay = _uiToggleSettings.PipeOverlayOn.Value;
+        var btnPipe = CreateToggleBtn("🔧", "❌", "Оверлей труб", xPos, yPos, _uiToggleSettings.PipeOverlayOn ?? true, v =>
         {
             _showPipeOverlay = v;
+            SaveUiToggleSettings(s => s.PipeOverlayOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnPipe);
         xPos += 46;
 
         // 🔗 Alarm connections
-        var btnAlarm = CreateToggleBtn("🔗", "❌", "Сети сигнализаций", xPos, yPos, v =>
+        if (_uiToggleSettings.AlarmConnectionsOn.HasValue) _showAlarmConnections = _uiToggleSettings.AlarmConnectionsOn.Value;
+        var btnAlarm = CreateToggleBtn("🔗", "❌", "Сети сигнализаций", xPos, yPos, _uiToggleSettings.AlarmConnectionsOn ?? true, v =>
         {
             _showAlarmConnections = v;
+            SaveUiToggleSettings(s => s.AlarmConnectionsOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnAlarm);
         xPos += 46;
 
         // 🧲 Snap to grid
-        var btnSnap = CreateToggleBtn("🧲", "❌", "Привязка к сетке", xPos, yPos, v =>
+        if (_uiToggleSettings.SnapToGridOn.HasValue) _snapToGrid = _uiToggleSettings.SnapToGridOn.Value;
+        var btnSnap = CreateToggleBtn("🧲", "❌", "Привязка к сетке", xPos, yPos, _uiToggleSettings.SnapToGridOn ?? true, v =>
         {
             _snapToGrid = v;
+            SaveUiToggleSettings(s => s.SnapToGridOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnSnap);
         xPos += 46;
 
         // ⚡ Wires overlay
-        var btnWire = CreateToggleBtn("⚡", "❌", "Кабели", xPos, yPos, v =>
+        if (_uiToggleSettings.WiresOn.HasValue) _showWires = _uiToggleSettings.WiresOn.Value;
+        var btnWire = CreateToggleBtn("⚡", "❌", "Кабели", xPos, yPos, _uiToggleSettings.WiresOn ?? true, v =>
         {
             _showWires = v;
+            SaveUiToggleSettings(s => s.WiresOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnWire);
     }
-    
-    private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, Action<bool> onToggle)
+    private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, bool initialState, Action<bool> onToggle)
     {
         var btn = new Button
         {
-            Text = onIcon,
+            Text = initialState ? onIcon : offIcon,
             Location = new Point(x, y),
             Width = 40,
             Height = 40,
-            BackColor = Color.LightGreen,
+            BackColor = initialState ? Color.LightGreen : Color.LightGray,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 14),
             Anchor = AnchorStyles.Top
         };
 
-        bool currentState = true;
-        btn.Text = onIcon;
-        btn.BackColor = Color.LightGreen;
+        bool currentState = initialState;
 
         btn.Click += (s, e) =>
         {
@@ -638,4 +652,56 @@ public partial class MainForm
     {
         RefreshTabStrip();
     }
+
+    // === Персистентность состояния кнопок-флажков ===
+    private class UiToggleSettings
+    {
+        public bool? RoomOverlayOn { get; set; }
+        public bool? PipeOverlayOn { get; set; }
+        public bool? AlarmConnectionsOn { get; set; }
+        public bool? SnapToGridOn { get; set; }
+        public bool? WiresOn { get; set; }
+    }
+
+    private static string GetUiSettingsPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MapperIce");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "ui_settings.json");
+    }
+
+    private UiToggleSettings LoadUiToggleSettings()
+    {
+        try
+        {
+            var path = GetUiSettingsPath();
+            if (!File.Exists(path)) return new UiToggleSettings();
+
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<UiToggleSettings>(json) ?? new UiToggleSettings();
+        }
+        catch
+        {
+            // Повреждённый/недоступный файл настроек — работаем со значениями по умолчанию
+            return new UiToggleSettings();
+        }
+    }
+
+    private void SaveUiToggleSettings(Action<UiToggleSettings> update)
+    {
+        update(_uiToggleSettings);
+        try
+        {
+            var path = GetUiSettingsPath();
+            var json = JsonSerializer.Serialize(_uiToggleSettings, new JsonSerializerOptions { WriteIndented = true });
+            var tmpPath = path + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch
+        {
+            // Настройки UI не критичны — молча игнорируем ошибку записи
+        }
+    }
+
 }
