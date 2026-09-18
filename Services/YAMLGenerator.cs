@@ -403,11 +403,6 @@ public static class YAMLGenerator
         {
             var pipeList = group.ToList();
 
-            // Util (зелёные трубы) — это не газовая магистраль, а сеть мусоропровода
-            // (DisposalPipe/Bend/Junction/XJunction/Trunk из pipes.yml). Генерируем
-            // её отдельным методом и переходим к следующей группе, минуя весь
-            // GasPipe-специфичный код ниже (суффиксы Alt1/Alt2, AtmosPipeColor,
-            // GasVentPump/Scrubber — этого всего у Disposal-прототипов нет)
             if (group.Key == "Util")
             {
                 GenerateDisposalPipesForGroup(sb, pipeList, ref uid);
@@ -427,17 +422,30 @@ public static class YAMLGenerator
             bool hasColor = settings != null && settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
+            string ventProto = settings != null
+                ? settings.VentProto
+                : (group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber");
+            bool noVent = ventProto == "None";
+
+            // pipeLayer (компонент AtmosPipeLayers) обязан соответствовать РЕАЛЬНОМУ
+            // слою трубы (Distra/Waste/Normal), а не выбранному типу вентиляции —
+            // иначе вентиляция окажется в атмос-слое чужой сети и физически не
+            // соединится со своей трубой в игре
+            string pipeLayer = group.Key == "Distra" ? "Tertiary" : "Secondary";
+
             var endpoints = new List<PipeEntity>();
-            foreach (var pipe in pipeList)
+            if (!noVent)
             {
-                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
-                if (neighbors == 1)
+                foreach (var pipe in pipeList)
                 {
-                    endpoints.Add(pipe);
+                    int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                    if (neighbors == 1)
+                    {
+                        endpoints.Add(pipe);
+                    }
                 }
             }
 
-            // Группируем трубы по прототипу
             var pipeProtos = new Dictionary<string, List<PipeEntity>>();
 
             foreach (var pipe in pipeList)
@@ -457,7 +465,6 @@ public static class YAMLGenerator
                 pipeProtos[key].Add(pipe);
             }
 
-            // Генерируем трубы по группам
             foreach (var protoGroup in pipeProtos)
             {
                 string protoName = protoGroup.Key.Split('_')[0];
@@ -481,13 +488,16 @@ public static class YAMLGenerator
                         sb.AppendLine($"      rot: {rotStr} rad");
                     }
 
-                    // ПРОВЕРИТЬ В ИГРЕ: DisposalUnit — самостоятельная мебель на тайле,
-                    // а не дочерняя сущность трубы. parent: {trunkUid} с теми же мировыми
-                    // pos, что и у трансформа трубы, задваивал бы смещение (родитель уже
-                    // стоит в этой точке грида, а не в 0,0) — поэтому здесь, как и у
-                    // остальных сущностей карты, parent: 2 (сам грид)
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
                     sb.AppendLine($"      parent: 2");
+
+                    // Цвет тела трубы — раньше эмитился только для вентиляций на конце,
+                    // сами трубы всегда шли без AtmosPipeColor
+                    if (hasColor)
+                    {
+                        sb.AppendLine($"    - type: AtmosPipeColor");
+                        sb.AppendLine($"      color: '{hexColor}'");
+                    }
 
                     uid++;
                 }
@@ -496,19 +506,8 @@ public static class YAMLGenerator
             // MailingUnit — для концов с MailingUnit, самостоятельная мебель на той же клетке
 
 
-            // Генерируем вентиляции
             if (endpoints.Count > 0)
             {
-                // Прототип вентиляции теперь берётся из настройки слоя (PipeSettings.VentProto,
-                // задаётся в диалоге "Настройки слоёв труб"), а не жёстко привязан к типу трубы.
-                // `settings` — та же pattern-переменная, что и в hasColor чуть выше по методу
-                // (TryGetValue(group.Key, out var settings)); если её нет — старое поведение
-                // по умолчанию (Distra -> насос, остальные -> скруббер).
-                string ventProto = settings != null
-                    ? settings.VentProto
-                    : (group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber");
-                string pipeLayer = ventProto == "GasVentPump" ? "Tertiary" : "Secondary";
-
                 sb.AppendLine($"- proto: {ventProto}");
                 sb.AppendLine("  entities:");
 
@@ -748,7 +747,7 @@ public static class YAMLGenerator
 
                 foreach (var endpoint in mailingEndpoints)
                 {
-                                        float posX = endpoint.X + 0.5f;
+                    float posX = endpoint.X + 0.5f;
                     float posY = -endpoint.Y + 0.5f;
 
                     // ВАЖНО: в отличие от DisposalUnit, MailingUnit не поддерживает
@@ -774,7 +773,7 @@ public static class YAMLGenerator
         }
 
         // DisposalTagger — маркеры фильтра (трубы с FilterLabel или HasFilterMarker)
-                // Тег фильтрации теперь пишется прямо на уже созданной сущности —
+        // Тег фильтрации теперь пишется прямо на уже созданной сущности —
         // для DisposalPipe→DisposalTagger подмена прототипа сделана в цикле сборки
         // pipeProtos выше, для DisposalRouter/RouterFlipped компонент tags дописывается
         // в основном цикле генерации сущностей выше. Отдельной сущности здесь больше нет.

@@ -8,10 +8,12 @@ public class PipeSettings
     public string DisplayName { get; set; } = "Distra";
     public bool HasColor { get; set; } = true; // Добавляем флаг
     public string HexColor => $"#{Color.R:X2}{Color.G:X2}{Color.B:X2}{Color.A:X2}";
-
+    
     // Прототип вентиляции, ставящейся на концах труб этого слоя при экспорте:
-    // "GasVentPump" (подача) или "GasVentScrubber" (вывод). Для "Util" не
-    // используется — утилизация экспортируется отдельным путём, без вентиляций.
+    // "GasVentPump" (подача), "GasVentScrubber" (вывод) или "None" — концы вообще
+    // без вентиляции, экспортируются как обычная прямая труба (см. YAMLGenerator.
+    // GeneratePipesGrouped). Для "Util" не используется — утилизация экспортируется
+    // отдельным путём.
     public string VentProto { get; set; } = "GasVentScrubber";
 
     public static Dictionary<string, PipeSettings> DefaultLayers = new()

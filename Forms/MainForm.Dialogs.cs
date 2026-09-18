@@ -49,7 +49,7 @@ public partial class MainForm
         _pipeSettingsForm = new Form
         {
             Text = "Настройки слоёв труб",
-            Size = new Size(520, 350),
+            Size = new Size(540, 350),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -71,6 +71,22 @@ public partial class MainForm
         panel.Controls.Add(new Label { Text = "Цвет", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
         panel.Controls.Add(new Label { Text = "", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 2, 0);
         panel.Controls.Add(new Label { Text = "Вентиляция", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 3, 0);
+
+        // Индекс <-> значение VentProto для комбобокса "Вентиляция" ниже. "None" —
+        // концы труб этого слоя вообще не получают вентиляцию/скруббер, а
+        // генерируются как обычная прямая труба
+        static int VentProtoToIndex(string proto) => proto switch
+        {
+            "GasVentPump" => 0,
+            "GasVentScrubber" => 1,
+            _ => 2 // "None"
+        };
+        static string IndexToVentProto(int index) => index switch
+        {
+            0 => "GasVentPump",
+            1 => "GasVentScrubber",
+            _ => "None"
+        };
 
         int row = 1;
         var colorButtons = new Dictionary<string, Button>();
@@ -121,16 +137,17 @@ public partial class MainForm
             var cmbVent = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 150,
+                Width = 170,
                 Font = new Font("Arial", 9),
                 Tag = layer
             };
             cmbVent.Items.Add("Вентиляция (подача)");
             cmbVent.Items.Add("Скруббер (вывод)");
-            cmbVent.SelectedIndex = settings.VentProto == "GasVentPump" ? 0 : 1;
+            cmbVent.Items.Add("Ничего (прямая труба)");
+            cmbVent.SelectedIndex = VentProtoToIndex(settings.VentProto);
             cmbVent.SelectedIndexChanged += (s, e) =>
             {
-                settings.VentProto = cmbVent.SelectedIndex == 0 ? "GasVentPump" : "GasVentScrubber";
+                settings.VentProto = IndexToVentProto(cmbVent.SelectedIndex);
             };
             panel.Controls.Add(cmbVent, 3, row);
             ventCombos[layer] = cmbVent;
@@ -144,7 +161,7 @@ public partial class MainForm
                     if (colorButtons.TryGetValue(layer, out var btn))
                         btn.BackColor = defaultSettings.Color;
                     if (ventCombos.TryGetValue(layer, out var cmb))
-                        cmb.SelectedIndex = defaultSettings.VentProto == "GasVentPump" ? 0 : 1;
+                        cmb.SelectedIndex = VentProtoToIndex(defaultSettings.VentProto);
                     UpdatePipeButtonColors();
                     Render();
                 }
