@@ -422,9 +422,9 @@ public static class YAMLGenerator
                 _ => ""
             };
 
-            bool hasColor = pipeLayers != null &&
-                            pipeLayers.TryGetValue(group.Key, out var settings) &&
-                            settings.HasColor;
+            PipeSettings? settings = null;
+            pipeLayers?.TryGetValue(group.Key, out settings);
+            bool hasColor = settings != null && settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
             var endpoints = new List<PipeEntity>();
@@ -499,8 +499,15 @@ public static class YAMLGenerator
             // Генерируем вентиляции
             if (endpoints.Count > 0)
             {
-                string ventProto = group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber";
-                string pipeLayer = group.Key == "Distra" ? "Tertiary" : "Secondary";
+                // Прототип вентиляции теперь берётся из настройки слоя (PipeSettings.VentProto,
+                // задаётся в диалоге "Настройки слоёв труб"), а не жёстко привязан к типу трубы.
+                // `settings` — та же pattern-переменная, что и в hasColor чуть выше по методу
+                // (TryGetValue(group.Key, out var settings)); если её нет — старое поведение
+                // по умолчанию (Distra -> насос, остальные -> скруббер).
+                string ventProto = settings != null
+                    ? settings.VentProto
+                    : (group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber");
+                string pipeLayer = ventProto == "GasVentPump" ? "Tertiary" : "Secondary";
 
                 sb.AppendLine($"- proto: {ventProto}");
                 sb.AppendLine("  entities:");

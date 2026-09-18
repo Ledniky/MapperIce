@@ -31,7 +31,7 @@ public class PipeBuilder
         _pipeEndPoint = (x, y);
     }
 
-    public List<(int x, int y)> FinishDrawing(Grid grid, string pipeType)
+    public List<(int x, int y)> FinishDrawing(Grid grid, string pipeType, Color? customColor = null)
     {
         if (!_isDrawingPipe || _pipeStartPoint == null || _pipeEndPoint == null || grid == null)
         {
@@ -69,7 +69,7 @@ public class PipeBuilder
         foreach (var pos in validPositions)
         {
             bool isEndpoint = pos.Equals(firstPos) || pos.Equals(lastPos);
-            AddPipe(grid, pos.x, pos.y, pipeType, isEndpoint);
+            AddPipe(grid, pos.x, pos.y, pipeType, isEndpoint, customColor);
         }
 
         ResetDrawing();
@@ -135,19 +135,11 @@ public class PipeBuilder
             grid.Entities.Remove(endpoint);
     }
 
-    public void AddPipe(Grid grid, int x, int y, string pipeType, bool isEndpoint = false)
+    public void AddPipe(Grid grid, int x, int y, string pipeType, bool isEndpoint = false, Color? customColor = null)
     {
         if (grid == null) return;
         if (!HasFloorAt(grid, x, y)) return;
 
-        // Существующая труба ЭТОГО ЖЕ ТИПА на клетке — вне зависимости от того,
-        // конец это или проходная труба. На одной клетке должна быть максимум одна
-        // труба каждого типа; раньше endpoint и проходная труба одного типа могли
-        // существовать ОДНОВРЕМЕННО как две разные сущности (при превращении конца
-        // в проходную клетку старый IsEndpoint-объект не находился фильтром
-        // "!p.IsEndpoint" и не удалялся) — это давало две наложенные Util-трубы на
-        // одной клетке и, как следствие, две стрелки в DrawPipeFlowArrows, одна из
-        // которых была "мёртвым" дублем, не реагирующим на клики инструментов
         var existingSameType = grid.Entities
             .OfType<PipeEntity>()
             .FirstOrDefault(p => (int)p.X == x && (int)p.Y == y && p.PipeType == pipeType);
@@ -155,7 +147,8 @@ public class PipeBuilder
         if (existingSameType != null)
         {
             // Просто переключаем статус конца на уже существующей сущности,
-            // не создавая вторую
+            // не создавая вторую. CustomColor НЕ трогаем — точка, поставленная
+            // раньше, сохраняет тот цвет, с которым была создана
             existingSameType.IsEndpoint = isEndpoint;
             return;
         }
@@ -165,11 +158,14 @@ public class PipeBuilder
             X = x,
             Y = y,
             PipeType = pipeType,
-            IsEndpoint = isEndpoint
+            IsEndpoint = isEndpoint,
+            CustomColor = customColor
         };
 
         grid.Entities.Add(pipe);
     }
+    
+    
     public void RemovePipe(Grid grid, int x, int y)
     {
         var pipe = grid.Entities.OfType<PipeEntity>()

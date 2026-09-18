@@ -319,7 +319,7 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Distra",
-            Text = "D",
+            Text = "L2",
             Padding = new Padding(0)
         };
         _btnPipeDistra.Click += (s, e) =>
@@ -338,7 +338,7 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Normal",
-            Text = "N",
+            Text = "L1",
             Padding = new Padding(0)
         };
         _btnPipeNormal.Click += (s, e) =>
@@ -357,7 +357,7 @@ public partial class MainForm
             BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Tag = "Waste",
-            Text = "W",
+            Text = "L3",
             Padding = new Padding(0)
         };
         _btnPipeWaste.Click += (s, e) =>

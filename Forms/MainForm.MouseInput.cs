@@ -280,7 +280,14 @@ public partial class MainForm
                         ToolManager.Tool.PipeUtil => "Util",
                         _ => "Normal"
                     };
-                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType);
+
+                    // Только газовые слои (L2/L1/L3 = Distra/Normal/Waste) получают
+                    // текущий цвет настройки слоя, зафиксированный на самой точке в
+                    // момент простановки. Util не трогаем — у него свой отдельный
+                    // механизм перекраски конкретных точек через ПКМ по маркеру
+                    Color? pipeColor = pipeType != "Util" ? GetPipeLayerColor(pipeType) : null;
+
+                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType, pipeColor);
                     SaveState();
                     UpdateTileGrid();
                     Render();

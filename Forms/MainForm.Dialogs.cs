@@ -49,7 +49,7 @@ public partial class MainForm
         _pipeSettingsForm = new Form
         {
             Text = "Настройки слоёв труб",
-            Size = new Size(400, 350),
+            Size = new Size(520, 350),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -63,16 +63,18 @@ public partial class MainForm
             Dock = DockStyle.Fill,
             Padding = new Padding(10),
             RowCount = 5,
-            ColumnCount = 3,
+            ColumnCount = 4,
             AutoSize = true
         };
 
         panel.Controls.Add(new Label { Text = "Слой", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 0, 0);
         panel.Controls.Add(new Label { Text = "Цвет", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 1, 0);
         panel.Controls.Add(new Label { Text = "", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 2, 0);
+        panel.Controls.Add(new Label { Text = "Вентиляция", Font = new Font("Arial", 10, FontStyle.Bold), AutoSize = true }, 3, 0);
 
         int row = 1;
         var colorButtons = new Dictionary<string, Button>();
+        var ventCombos = new Dictionary<string, ComboBox>();
 
         foreach (var layer in _pipeLayers.Keys)
         {
@@ -111,18 +113,42 @@ public partial class MainForm
                 FlatStyle = FlatStyle.Flat,
                 Tag = layer
             };
+            panel.Controls.Add(btnReset, 2, row);
+
+            // Выбор прототипа, ставящегося на концах труб этого слоя при экспорте —
+            // раньше жёстко зависело от типа трубы (Distra -> насос, остальные ->
+            // скруббер) прямо в YAMLGenerator, теперь это настройка слоя
+            var cmbVent = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = 150,
+                Font = new Font("Arial", 9),
+                Tag = layer
+            };
+            cmbVent.Items.Add("Вентиляция (подача)");
+            cmbVent.Items.Add("Скруббер (вывод)");
+            cmbVent.SelectedIndex = settings.VentProto == "GasVentPump" ? 0 : 1;
+            cmbVent.SelectedIndexChanged += (s, e) =>
+            {
+                settings.VentProto = cmbVent.SelectedIndex == 0 ? "GasVentPump" : "GasVentScrubber";
+            };
+            panel.Controls.Add(cmbVent, 3, row);
+            ventCombos[layer] = cmbVent;
+
             btnReset.Click += (s, e) =>
             {
                 if (PipeSettings.DefaultLayers.TryGetValue(layer, out var defaultSettings))
                 {
                     settings.Color = defaultSettings.Color;
+                    settings.VentProto = defaultSettings.VentProto;
                     if (colorButtons.TryGetValue(layer, out var btn))
                         btn.BackColor = defaultSettings.Color;
+                    if (ventCombos.TryGetValue(layer, out var cmb))
+                        cmb.SelectedIndex = defaultSettings.VentProto == "GasVentPump" ? 0 : 1;
                     UpdatePipeButtonColors();
                     Render();
                 }
             };
-            panel.Controls.Add(btnReset, 2, row);
 
             row++;
         }
@@ -155,6 +181,7 @@ public partial class MainForm
                 if (PipeSettings.DefaultLayers.TryGetValue(layer, out var defaultSettings))
                 {
                     _pipeLayers[layer].Color = defaultSettings.Color;
+                    _pipeLayers[layer].VentProto = defaultSettings.VentProto;
                 }
             }
             UpdatePipeButtonColors();
@@ -168,7 +195,6 @@ public partial class MainForm
         _pipeSettingsForm.FormClosed += (s, e) => { _pipeSettingsForm = null; };
         _pipeSettingsForm.Show(this);
     }
-
     private void ShowWireSettingsDialog()
     {
         if (_wireSettingsForm != null && !_wireSettingsForm.IsDisposed)

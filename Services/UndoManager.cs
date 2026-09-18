@@ -107,7 +107,18 @@ public class GridSnapshot
             .Select(d => new Door { X = d.X, Y = d.Y, Proto = d.Proto })
             .ToList();
         Pipes = grid.Entities.OfType<PipeEntity>()
-            .Select(p => new PipeEntity { X = p.X, Y = p.Y, PipeType = p.PipeType, IsEndpoint = p.IsEndpoint })
+            .Select(p => new PipeEntity
+            {
+                X = p.X,
+                Y = p.Y,
+                PipeType = p.PipeType,
+                IsEndpoint = p.IsEndpoint,
+                CustomColor = p.CustomColor,
+                EndpointType = p.EndpointType,
+                UtilArrowRotation = p.UtilArrowRotation,
+                HasFilterMarker = p.HasFilterMarker,
+                FilterLabel = p.FilterLabel
+            })
             .ToList();
 
         Wires = grid.Entities.OfType<WireEntity>()
@@ -179,7 +190,12 @@ public class GridSnapshot
                 X = pipe.X,
                 Y = pipe.Y,
                 PipeType = pipe.PipeType,
-                IsEndpoint = pipe.IsEndpoint
+                IsEndpoint = pipe.IsEndpoint,
+                CustomColor = pipe.CustomColor,
+                EndpointType = pipe.EndpointType,
+                UtilArrowRotation = pipe.UtilArrowRotation,
+                HasFilterMarker = pipe.HasFilterMarker,
+                FilterLabel = pipe.FilterLabel
             });
         }
 
