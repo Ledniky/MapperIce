@@ -19,4 +19,12 @@ public class PipeEntity : MapEntity
     public Color? CustomColor { get; set; } = null; // нестандартный цвет трубы
     public bool HasFilterMarker { get; set; } = false; // синий квадрат-маркер фильтра
     public string? FilterLabel { get; set; } = null; // текст маркера фильтра
+
+    // Прототип вентиляции конкретно ЭТОГО узла при экспорте (актуально только
+    // если узел — конец трубы, т.е. ровно 1 сосед): "GasVentPump",
+    // "GasVentScrubber" или "None" (прямая труба без вентиляции). null — значение
+    // не запечено (старые узлы/карты до этой правки) — тогда при экспорте
+    // используется прежний дефолт по типу слоя (см. YAMLGenerator).
+    public string? VentProto { get; set; } = null;
+
 }

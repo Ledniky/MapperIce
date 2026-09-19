@@ -31,7 +31,7 @@ public class PipeBuilder
         _pipeEndPoint = (x, y);
     }
 
-    public List<(int x, int y)> FinishDrawing(Grid grid, string pipeType, Color? customColor = null)
+    public List<(int x, int y)> FinishDrawing(Grid grid, string pipeType, Color? customColor = null, string? ventProto = null)
     {
         if (!_isDrawingPipe || _pipeStartPoint == null || _pipeEndPoint == null || grid == null)
         {
@@ -69,7 +69,7 @@ public class PipeBuilder
         foreach (var pos in validPositions)
         {
             bool isEndpoint = pos.Equals(firstPos) || pos.Equals(lastPos);
-            AddPipe(grid, pos.x, pos.y, pipeType, isEndpoint, customColor);
+            AddPipe(grid, pos.x, pos.y, pipeType, isEndpoint, customColor, ventProto);
         }
 
         ResetDrawing();
@@ -135,7 +135,7 @@ public class PipeBuilder
             grid.Entities.Remove(endpoint);
     }
 
-    public void AddPipe(Grid grid, int x, int y, string pipeType, bool isEndpoint = false, Color? customColor = null)
+    public void AddPipe(Grid grid, int x, int y, string pipeType, bool isEndpoint = false, Color? customColor = null, string? ventProto = null)
     {
         if (grid == null) return;
         if (!HasFloorAt(grid, x, y)) return;
@@ -147,8 +147,8 @@ public class PipeBuilder
         if (existingSameType != null)
         {
             // Просто переключаем статус конца на уже существующей сущности,
-            // не создавая вторую. CustomColor НЕ трогаем — точка, поставленная
-            // раньше, сохраняет тот цвет, с которым была создана
+            // не создавая вторую. CustomColor/VentProto НЕ трогаем — точка,
+            // поставленная раньше, сохраняет то, с чем была создана
             existingSameType.IsEndpoint = isEndpoint;
             return;
         }
@@ -159,13 +159,12 @@ public class PipeBuilder
             Y = y,
             PipeType = pipeType,
             IsEndpoint = isEndpoint,
-            CustomColor = customColor
+            CustomColor = customColor,
+            VentProto = ventProto
         };
 
         grid.Entities.Add(pipe);
     }
-    
-    
     public void RemovePipe(Grid grid, int x, int y)
     {
         var pipe = grid.Entities.OfType<PipeEntity>()

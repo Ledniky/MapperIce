@@ -422,29 +422,42 @@ public static class YAMLGenerator
             bool hasColor = settings != null && settings.HasColor;
             string hexColor = hasColor ? GetPipeHexColor(pipeLayers, group.Key) : "";
 
-            string ventProto = settings != null
-                ? settings.VentProto
-                : (group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber");
-            bool noVent = ventProto == "None";
+            // Тип вентиляции теперь хранится НА КАЖДОМ УЗЛЕ (PipeEntity.VentProto),
+            // а не в параметрах слоя — настройка в диалоге лишь задаёт значение,
+            // которое запекается в узел в момент простановки (см. PipeBuilder).
+            // У узла своего значения может не быть (старые карты) — тогда дефолт
+            // по типу слоя, как и раньше.
+            string ResolveVentProto(PipeEntity pipe) =>
+                !string.IsNullOrEmpty(pipe.VentProto)
+                    ? pipe.VentProto!
+                    : (group.Key == "Distra" ? "GasVentPump" : "GasVentScrubber");
 
-            // pipeLayer (компонент AtmosPipeLayers) обязан соответствовать РЕАЛЬНОМУ
-            // слою трубы (Distra/Waste/Normal), а не выбранному типу вентиляции —
-            // иначе вентиляция окажется в атмос-слое чужой сети и физически не
-            // соединится со своей трубой в игре
-            string pipeLayer = group.Key == "Distra" ? "Tertiary" : "Secondary";
-
-            var endpoints = new List<PipeEntity>();
-            if (!noVent)
+            // Явный override AtmosPipeLayers нужен только тем слоям, чьё тело трубы
+            // физически уходит на неосновную сеть (Alt1/Alt2-прототипы): Distra на
+            // Tertiary, Waste на Secondary. Normal использует обычный "GasPipeStraight"
+            // без Alt-суффикса — он уже на дефолтном слое самого прототипа, поэтому
+            // здесь null и компонент вообще не эмитится (как и было изначально —
+            // раньше Normal ошибочно попадал в тот же Secondary, что и Waste, из-за
+            // чего их сети физически сливались в игре).
+            string? pipeLayer = group.Key switch
             {
-                foreach (var pipe in pipeList)
+                "Distra" => "Tertiary",
+                "Waste" => "Secondary",
+                _ => null
+            };
+            var endpointCandidates = new List<PipeEntity>();
+            foreach (var pipe in pipeList)
+            {
+                int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
+                if (neighbors == 1)
                 {
-                    int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
-                    if (neighbors == 1)
-                    {
-                        endpoints.Add(pipe);
-                    }
+                    endpointCandidates.Add(pipe);
                 }
             }
+
+            // "None" на конкретном узле — узел НЕ выделяется под вентиляцию и ниже
+            // попадёт в обычную группировку тела трубы как прямая труба
+            var endpoints = endpointCandidates.Where(p => ResolveVentProto(p) != "None").ToList();
 
             var pipeProtos = new Dictionary<string, List<PipeEntity>>();
 
@@ -503,58 +516,67 @@ public static class YAMLGenerator
                 }
             }
 
-            // MailingUnit — для концов с MailingUnit, самостоятельная мебель на той же клетке
-
-
+            // Группируем концы по фактически выбранному прототипу — у разных узлов
+            // одного слоя он теперь может отличаться (насос/скруббер/ничего),
+            // поэтому один слой может дать несколько отдельных "- proto: ..." блоков
             if (endpoints.Count > 0)
             {
-                sb.AppendLine($"- proto: {ventProto}");
-                sb.AppendLine("  entities:");
-
-                foreach (var endpoint in endpoints)
+                foreach (var ventTypeGroup in endpoints.GroupBy(ResolveVentProto))
                 {
-                    int ventUid = uid;
+                    string ventProto = ventTypeGroup.Key;
 
-                    var key = ((int)endpoint.X, (int)endpoint.Y);
-                    positionToUid[key] = ventUid;
+                    sb.AppendLine($"- proto: {ventProto}");
+                    sb.AppendLine("  entities:");
 
-                    float posX = endpoint.X + 0.5f;
-                    float posY = -endpoint.Y + 0.5f;
-
-                    var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
-                    float ventRotation = 0;
-
-                    if (neighbors.Count > 0)
+                    foreach (var endpoint in ventTypeGroup)
                     {
-                        var (dx, dy) = neighbors[0];
-                        if (dx == 1) ventRotation = (float)(Math.PI / 2);
-                        else if (dx == -1) ventRotation = (float)(-Math.PI / 2);
-                        else if (dy == 1) ventRotation = 0;
-                        else if (dy == -1) ventRotation = (float)Math.PI;
+                        int ventUid = uid;
+
+                        var key = ((int)endpoint.X, (int)endpoint.Y);
+                        positionToUid[key] = ventUid;
+
+                        float posX = endpoint.X + 0.5f;
+                        float posY = -endpoint.Y + 0.5f;
+
+                        var neighbors = GetNeighbors(pipeList, (int)endpoint.X, (int)endpoint.Y);
+                        float ventRotation = 0;
+
+                        if (neighbors.Count > 0)
+                        {
+                            var (dx, dy) = neighbors[0];
+                            if (dx == 1) ventRotation = (float)(Math.PI / 2);
+                            else if (dx == -1) ventRotation = (float)(-Math.PI / 2);
+                            else if (dy == 1) ventRotation = 0;
+                            else if (dy == -1) ventRotation = (float)Math.PI;
+                        }
+
+                        sb.AppendLine($"  - uid: {ventUid}");
+                        sb.AppendLine($"    components:");
+                        sb.AppendLine($"    - type: Transform");
+
+                        if (ventRotation != 0)
+                        {
+                            string rotStr = ventRotation.ToString("0.000000000000000").Replace(',', '.');
+                            sb.AppendLine($"      rot: {rotStr} rad");
+                        }
+
+                        sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
+                        sb.AppendLine($"      parent: 2");
+
+                        if (pipeLayer != null)
+                        {
+                            sb.AppendLine($"    - type: AtmosPipeLayers");
+                            sb.AppendLine($"      pipeLayer: {pipeLayer}");
+                        }
+
+                        if (hasColor)
+                        {
+                            sb.AppendLine($"    - type: AtmosPipeColor");
+                            sb.AppendLine($"      color: '{hexColor}'");
+                        }
+
+                        uid++;
                     }
-
-                    sb.AppendLine($"  - uid: {ventUid}");
-                    sb.AppendLine($"    components:");
-                    sb.AppendLine($"    - type: Transform");
-
-                    if (ventRotation != 0)
-                    {
-                        string rotStr = ventRotation.ToString("0.000000000000000").Replace(',', '.');
-                        sb.AppendLine($"      rot: {rotStr} rad");
-                    }
-
-                    sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: 2");
-                    sb.AppendLine($"    - type: AtmosPipeLayers");
-                    sb.AppendLine($"      pipeLayer: {pipeLayer}");
-
-                    if (hasColor)
-                    {
-                        sb.AppendLine($"    - type: AtmosPipeColor");
-                        sb.AppendLine($"      color: '{hexColor}'");
-                    }
-
-                    uid++;
                 }
             }
         }

@@ -545,6 +545,15 @@ public partial class MainForm
         return _pipeLayers.GetValueOrDefault(layer)?.Color ?? Color.FromArgb(180, 150, 150, 150);
     }
 
+    // Значение по умолчанию для НОВОГО узла этого слоя — не глобальная настройка
+    // экспорта, а то, что запекается в PipeEntity.VentProto в момент простановки
+    // (см. MainForm.MouseInput.cs). Смена этого значения в диалоге не влияет на
+    // уже поставленные узлы.
+    private string? GetPipeLayerVentProto(string layer)
+    {
+        return _pipeLayers.GetValueOrDefault(layer)?.VentProto;
+    }
+
 
     private string GetPipeHexColor(string layer)
     {

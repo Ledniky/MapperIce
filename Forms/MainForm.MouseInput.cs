@@ -282,13 +282,14 @@ public partial class MainForm
                     };
 
                     // Только газовые слои (L2/L1/L3 = Distra/Normal/Waste) получают
-                    // текущий цвет настройки слоя, зафиксированный на самой точке в
-                    // момент простановки. Util не трогаем — у него свой отдельный
-                    // механизм перекраски конкретных точек через ПКМ по маркеру
+                    // текущий цвет и тип вентиляции из настроек слоя, зафиксированные
+                    // на самой точке в момент простановки (PipeEntity.CustomColor /
+                    // VentProto). Util не трогаем — у него свой отдельный механизм
+                    // перекраски/разметки конкретных точек через ПКМ по маркеру
                     Color? pipeColor = pipeType != "Util" ? GetPipeLayerColor(pipeType) : null;
+                    string? pipeVentProto = pipeType != "Util" ? GetPipeLayerVentProto(pipeType) : null;
 
-                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType, pipeColor);
-                    SaveState();
+                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType, pipeColor, pipeVentProto);                    SaveState();
                     UpdateTileGrid();
                     Render();
                 }

@@ -18,12 +18,13 @@ public class PipeSettings
 
     public static Dictionary<string, PipeSettings> DefaultLayers = new()
     {
-        // Цвета взяты из старых хардкодных значений Renderer.GetPipeColor — именно
-        // так трубы выглядели визуально до того, как цвет слоя стал реально влиять
-        // на рендер (раньше DefaultLayers.Color вообще не читался при отрисовке)
-        ["Distra"] = new PipeSettings { Layer = "Distra", Color = Color.FromArgb(180, 100, 200, 255), DisplayName = "Distra", HasColor = true, VentProto = "GasVentPump" },
-        ["Waste"] = new PipeSettings { Layer = "Waste", Color = Color.FromArgb(180, 255, 150, 150), DisplayName = "Waste", HasColor = true, VentProto = "GasVentScrubber" },
-        ["Normal"] = new PipeSettings { Layer = "Normal", Color = Color.FromArgb(180, 200, 200, 200), DisplayName = "Normal", HasColor = false, VentProto = "GasVentScrubber" },
+        // Цвета сверены с эталонным экспортом (AtmosPipeColor в игре): Distra —
+        // #0055CCFF, Waste — #990000FF, оба полностью непрозрачные
+        ["Distra"] = new PipeSettings { Layer = "Distra", Color = Color.FromArgb(255, 0, 85, 204), DisplayName = "Distra", HasColor = true, VentProto = "GasVentPump" },
+        ["Waste"] = new PipeSettings { Layer = "Waste", Color = Color.FromArgb(255, 153, 0, 0), DisplayName = "Waste", HasColor = true, VentProto = "GasVentScrubber" },
+        // L1 (Normal) — по умолчанию без законцовки: конец трубы экспортируется
+        // как обычная прямая труба, без вентиляции/скруббера
+        ["Normal"] = new PipeSettings { Layer = "Normal", Color = Color.FromArgb(180, 200, 200, 200), DisplayName = "Normal", HasColor = false, VentProto = "None" },
         ["Util"] = new PipeSettings { Layer = "Util", Color = Color.FromArgb(180, 100, 150, 50), DisplayName = "Утилизация", HasColor = true }
     };
 }
