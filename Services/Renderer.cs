@@ -1902,7 +1902,7 @@ private void DrawLvCoverageOverlay(Graphics g, List<WireEntity> wires, int tileS
         /// через несуществующий поворот. Теперь: Distra всегда снизу-слева, Waste
         /// всегда сверху-справа, Normal и Util — без сдвига, строго по центру.
         /// </summary>
-        private static (float offsetX, float offsetY) GetPipeTypeOffset(string pipeType)
+        public static (float offsetX, float offsetY) GetPipeTypeOffset(string pipeType)
         {
             const float q = 0.25f; // четверть тайла
 

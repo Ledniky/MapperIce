@@ -109,9 +109,39 @@ public partial class MainForm
                 var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
                 if (fireAlarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
-                var pipe = grid.Entities.OfType<PipeEntity>().FirstOrDefault(p => (int)p.X == tileX && (int)p.Y == tileY);
-                if (pipe != null) { if (canDeletePipes) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); } return; }
+                var pipesHere = grid.Entities.OfType<PipeEntity>()
+                    .Where(p => (int)p.X == tileX && (int)p.Y == tileY)
+                    .ToList();
+                if (pipesHere.Count > 0)
+                {
+                    PipeEntity pipe;
+                    if (pipesHere.Count == 1)
+                    {
+                        pipe = pipesHere[0];
+                    }
+                    else
+                    {
+                        // Несколько труб разных типов на одном тайле — их узлы визуально
+                        // смещены друг от друга (см. Renderer.GetPipeTypeOffset). Удаляем
+                        // ту, чей узел физически ближе к точке клика, а не первую в списке
+                        var (preciseX, preciseY) = GetPrecisePosition(e.Location);
+                        float fracX = preciseX - tileX;
+                        float fracY = preciseY - tileY;
 
+                        pipe = pipesHere
+                            .OrderBy(p =>
+                            {
+                                var (offX, offY) = Renderer.GetPipeTypeOffset(p.PipeType);
+                                float dx = fracX - (0.5f + offX);
+                                float dy = fracY - (0.5f + offY);
+                                return dx * dx + dy * dy;
+                            })
+                            .First();
+                    }
+
+                    if (canDeletePipes) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); }
+                    return;
+                }
                 // Двери и вручную поставленные тайлы всегда удаляемы точечно — как и в области,
                 // для них нет отдельных чекбоксов в DeleteSettings
                 if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); return; }
