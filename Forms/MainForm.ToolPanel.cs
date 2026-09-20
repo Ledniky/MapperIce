@@ -287,211 +287,7 @@ public partial class MainForm
         _toolPanel.Controls.Add(_doorToolCombo);
         y += 40 + 2;
 
-
-        // ТРУБЫ
-        var pipeLabel = new Label
-        {
-            Text = "Трубы:",
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 20,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Arial", 8, FontStyle.Bold),
-            ForeColor = Color.DarkGray
-        };
-        _toolPanel.Controls.Add(pipeLabel);
-        y += 20 + 2;
-
-        var pipePanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 34,
-            BackColor = Color.Transparent
-        };
-
-        int buttonWidth = pipePanel.Width / 4;
-
-        _btnPipeDistra = new Button
-        {
-            Location = new Point(0, 0),
-            Width = buttonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Distra",
-            Text = "L2",
-            Padding = new Padding(0)
-        };
-        _btnPipeDistra.Click += (s, e) =>
-        {
-            _currentPipeLayer = "Distra";
-            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
-        };
-        pipePanel.Controls.Add(_btnPipeDistra);
-
-        _btnPipeNormal = new Button
-        {
-            Location = new Point(buttonWidth, 0),
-            Width = buttonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Normal",
-            Text = "L1",
-            Padding = new Padding(0)
-        };
-        _btnPipeNormal.Click += (s, e) =>
-        {
-            _currentPipeLayer = "Normal";
-            _toolManager.SetTool(ToolManager.Tool.PipeNormal);
-        };
-        pipePanel.Controls.Add(_btnPipeNormal);
-
-        _btnPipeWaste = new Button
-        {
-            Location = new Point(buttonWidth * 2, 0),
-            Width = buttonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Waste",
-            Text = "L3",
-            Padding = new Padding(0)
-        };
-        _btnPipeWaste.Click += (s, e) =>
-        {
-            _currentPipeLayer = "Waste";
-            _toolManager.SetTool(ToolManager.Tool.PipeWaste);
-        };
-        pipePanel.Controls.Add(_btnPipeWaste);
-
-        _btnPipeSettings = new Button
-        {
-            Text = "⚙",
-            Location = new Point(buttonWidth * 3, 0),
-            Width = buttonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Arial", 12)
-        };
-        _btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
-        pipePanel.Controls.Add(_btnPipeSettings);
-
-        pipePanel.Resize += (s, e) =>
-        {
-            int bw = pipePanel.Width / 4;
-            _btnPipeDistra.Width = bw - 1;
-            _btnPipeNormal.Location = new Point(bw, 0);
-            _btnPipeNormal.Width = bw - 1;
-            _btnPipeWaste.Location = new Point(bw * 2, 0);
-            _btnPipeWaste.Width = bw - 1;
-            _btnPipeSettings.Location = new Point(bw * 3, 0);
-            _btnPipeSettings.Width = bw - 1;
-        };
-
-        _toolPanel.Controls.Add(pipePanel);
-        y += 34 + 2;
-
-        // === УТИЛИЗАЦИЯ ===
-        var utilLabel = new Label
-        {
-            Text = "Утилизация:",
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 20,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Arial", 8, FontStyle.Bold),
-            ForeColor = Color.DarkGray
-        };
-        _toolPanel.Controls.Add(utilLabel);
-        y += 20 + 2;
-
-        var utilPanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 34,
-            BackColor = Color.Transparent
-        };
-
-        const int utilBtnWidth = 48;
-        const int utilComboGap = 4;
-
-        _btnPipeUtil = new Button
-        {
-            Location = new Point(0, 0),
-            Width = utilBtnWidth,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Util",
-            Text = "U",
-            Padding = new Padding(0)
-        };
-        _btnPipeUtil.Click += (s, e) =>
-        {
-            _currentPipeLayer = "Util";
-            _toolManager.SetTool(ToolManager.Tool.PipeUtil);
-        };
-        utilPanel.Controls.Add(_btnPipeUtil);
-
-        // Выпадающий список остальных инструментов утилизации — раньше это были
-        // две отдельные кнопки (⚙ настройка стрелок / 🔧🔧 перекраска), теперь
-        // они объединены в один ComboBox, чтобы освободить место в строке
-        _utilToolCombo = new ComboBox
-        {
-            Location = new Point(utilBtnWidth + utilComboGap, 0),
-            Width = utilPanel.Width - utilBtnWidth - utilComboGap,
-            Height = 34,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 28, // реальная высота поля = ItemHeight + рамка; подберите под 34px при необходимости
-            Font = new Font("Arial", 12)
-        };
-        foreach (var label in _utilToolMap.Keys)
-            _utilToolCombo.Items.Add(label);
-        if (_utilToolCombo.Items.Count > 0)
-            _utilToolCombo.SelectedIndex = 0;
-
-        // При OwnerDrawFixed текст сам по себе не рисуется — приходится отрисовывать его вручную,
-        // зато именно благодаря OwnerDraw высота поля перестаёт зависеть от размера шрифта
-        _utilToolCombo.DrawItem += (s, e) =>
-        {
-            e.DrawBackground();
-            if (e.Index >= 0)
-            {
-                string text = _utilToolCombo.Items[e.Index].ToString() ?? "";
-                TextRenderer.DrawText(e.Graphics, text, _utilToolCombo.Font, e.Bounds, _utilToolCombo.ForeColor,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
-            }
-            e.DrawFocusRectangle();
-        };
-
-        _utilToolCombo.SelectedIndexChanged += (s, e) =>
-        {
-            if (_utilToolCombo.SelectedItem is string key && _utilToolMap.TryGetValue(key, out var tool))
-            {
-                _toolManager.SetTool(tool);
-                // Для инструментов сброс не нужен — SetActiveTool сам подсветит пункт
-            }
-        };
-        utilPanel.Controls.Add(_utilToolCombo);
-
-        utilPanel.Resize += (s, e) =>
-        {
-            _utilToolCombo.Width = utilPanel.Width - utilBtnWidth - utilComboGap;
-        };
-
-        _toolPanel.Controls.Add(utilPanel);
-        y += 34 + 2;
-
-        // === ЭЛЕКТРОСЕТЬ ===
+        // ЭЛЕКТРОСЕТЬ
         var wireLabel = new Label
         {
             Text = "Электросеть:",
@@ -668,6 +464,209 @@ public partial class MainForm
         wireRow2Panel.Controls.Add(_powerJunctionCombo);
 
         _toolPanel.Controls.Add(wireRow2Panel);
+        y += 34 + 2;
+
+        // === УТИЛИЗАЦИЯ ===
+        var utilLabel = new Label
+        {
+            Text = "Утилизация:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(utilLabel);
+        y += 20 + 2;
+
+        var utilPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            BackColor = Color.Transparent
+        };
+
+        const int utilBtnWidth = 48;
+        const int utilComboGap = 4;
+
+        _btnPipeUtil = new Button
+        {
+            Location = new Point(0, 0),
+            Width = utilBtnWidth,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Util",
+            Text = "U",
+            Padding = new Padding(0)
+        };
+        _btnPipeUtil.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Util";
+            _toolManager.SetTool(ToolManager.Tool.PipeUtil);
+        };
+        utilPanel.Controls.Add(_btnPipeUtil);
+
+        // Выпадающий список остальных инструментов утилизации — раньше это были
+        // две отдельные кнопки (⚙ настройка стрелок / 🔧🔧 перекраска), теперь
+        // они объединены в один ComboBox, чтобы освободить место в строке
+        _utilToolCombo = new ComboBox
+        {
+            Location = new Point(utilBtnWidth + utilComboGap, 0),
+            Width = utilPanel.Width - utilBtnWidth - utilComboGap,
+            Height = 34,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 28, // реальная высота поля = ItemHeight + рамка; подберите под 34px при необходимости
+            Font = new Font("Arial", 12)
+        };
+        foreach (var label in _utilToolMap.Keys)
+            _utilToolCombo.Items.Add(label);
+        if (_utilToolCombo.Items.Count > 0)
+            _utilToolCombo.SelectedIndex = 0;
+
+        // При OwnerDrawFixed текст сам по себе не рисуется — приходится отрисовывать его вручную,
+        // зато именно благодаря OwnerDraw высота поля перестаёт зависеть от размера шрифта
+        _utilToolCombo.DrawItem += (s, e) =>
+        {
+            e.DrawBackground();
+            if (e.Index >= 0)
+            {
+                string text = _utilToolCombo.Items[e.Index].ToString() ?? "";
+                TextRenderer.DrawText(e.Graphics, text, _utilToolCombo.Font, e.Bounds, _utilToolCombo.ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            }
+            e.DrawFocusRectangle();
+        };
+
+        _utilToolCombo.SelectedIndexChanged += (s, e) =>
+        {
+            if (_utilToolCombo.SelectedItem is string key && _utilToolMap.TryGetValue(key, out var tool))
+            {
+                _toolManager.SetTool(tool);
+                // Для инструментов сброс не нужен — SetActiveTool сам подсветит пункт
+            }
+        };
+        utilPanel.Controls.Add(_utilToolCombo);
+
+        utilPanel.Resize += (s, e) =>
+        {
+            _utilToolCombo.Width = utilPanel.Width - utilBtnWidth - utilComboGap;
+        };
+
+        _toolPanel.Controls.Add(utilPanel);
+        y += 34 + 2;
+
+        // ТРУБЫ
+        var pipeLabel = new Label
+        {
+            Text = "Трубы:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(pipeLabel);
+        y += 20 + 2;
+
+        var pipePanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            BackColor = Color.Transparent
+        };
+
+        int buttonWidth = pipePanel.Width / 4;
+
+        _btnPipeDistra = new Button
+        {
+            Location = new Point(0, 0),
+            Width = buttonWidth - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Distra",
+            Text = "L2",
+            Padding = new Padding(0)
+        };
+        _btnPipeDistra.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Distra";
+            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
+        };
+        pipePanel.Controls.Add(_btnPipeDistra);
+
+        _btnPipeNormal = new Button
+        {
+            Location = new Point(buttonWidth, 0),
+            Width = buttonWidth - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Normal",
+            Text = "L1",
+            Padding = new Padding(0)
+        };
+        _btnPipeNormal.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Normal";
+            _toolManager.SetTool(ToolManager.Tool.PipeNormal);
+        };
+        pipePanel.Controls.Add(_btnPipeNormal);
+
+        _btnPipeWaste = new Button
+        {
+            Location = new Point(buttonWidth * 2, 0),
+            Width = buttonWidth - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Waste",
+            Text = "L3",
+            Padding = new Padding(0)
+        };
+        _btnPipeWaste.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Waste";
+            _toolManager.SetTool(ToolManager.Tool.PipeWaste);
+        };
+        pipePanel.Controls.Add(_btnPipeWaste);
+
+        _btnPipeSettings = new Button
+        {
+            Text = "⚙",
+            Location = new Point(buttonWidth * 3, 0),
+            Width = buttonWidth - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 12)
+        };
+        _btnPipeSettings.Click += (s, e) => ShowPipeSettingsDialog();
+        pipePanel.Controls.Add(_btnPipeSettings);
+
+        pipePanel.Resize += (s, e) =>
+        {
+            int bw = pipePanel.Width / 4;
+            _btnPipeDistra.Width = bw - 1;
+            _btnPipeNormal.Location = new Point(bw, 0);
+            _btnPipeNormal.Width = bw - 1;
+            _btnPipeWaste.Location = new Point(bw * 2, 0);
+            _btnPipeWaste.Width = bw - 1;
+            _btnPipeSettings.Location = new Point(bw * 3, 0);
+            _btnPipeSettings.Width = bw - 1;
+        };
+
+        _toolPanel.Controls.Add(pipePanel);
         y += 34 + 2;
 
         // === СИГНАЛИЗАЦИЯ ===

@@ -154,18 +154,14 @@ public class AlarmNetworkBuilder
         int targetX = x + dx;
         int targetY = y + dy;
 
-        var room = grid.Rooms.FirstOrDefault(r =>
-            targetX >= r.X && targetX < r.X + r.Width &&
-            targetY >= r.Y && targetY < r.Y + r.Height);
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(targetX, targetY));
 
         // Если не нашли - пробуем на 2 клетки дальше
         if (room == null)
         {
             targetX = x + dx * 2;
             targetY = y + dy * 2;
-            room = grid.Rooms.FirstOrDefault(r =>
-                targetX >= r.X && targetX < r.X + r.Width &&
-                targetY >= r.Y && targetY < r.Y + r.Height);
+            room = grid.Rooms.FirstOrDefault(r => r.Contains(targetX, targetY));
         }
 
         return room;
@@ -174,21 +170,18 @@ public class AlarmNetworkBuilder
     /// <summary>
     /// Находит комнату по координатам
     /// </summary>
-    private Room? GetRoomAt(Grid grid, int x, int y)
-    {
-        return grid.Rooms.FirstOrDefault(r => 
-            x >= r.X && x < r.X + r.Width &&
-            y >= r.Y && y < r.Y + r.Height);
-    }
+private Room? GetRoomAt(Grid grid, int x, int y)
+{
+    return grid.Rooms.FirstOrDefault(r => r.Contains(x, y));
+}
     
     /// <summary>
     /// Проверяет, находится ли точка внутри комнаты
     /// </summary>
-    private bool IsInsideRoom(float x, float y, Room room)
-    {
-        return x >= room.X && x < room.X + room.Width &&
-               y >= room.Y && y < room.Y + room.Height;
-    }
+private bool IsInsideRoom(float x, float y, Room room)
+{
+    return room.Contains((int)x, (int)y);
+}
     
     /// <summary>
     /// Находит концы труб (скрубберы и вентиляции)
