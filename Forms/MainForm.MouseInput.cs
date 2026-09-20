@@ -809,12 +809,25 @@ public partial class MainForm
             return;
         }
 
-        // Зум: либо инструмент неактивен (CTRL не важен), либо инструмент активен и CTRL зажат
+        // Зум к курсору: сначала считаем новый масштаб, затем сдвигаем _viewOffset
+        // так, чтобы мировая точка под курсором осталась на том же экранном месте
+        // (та же идея, что и в GetTilePosition/ToRect: screen = world*tileSize - viewOffset,
+        // поэтому при изменении tileSize нужно домножить (курсор+offset) на отношение
+        // масштабов и вычесть обратно координату курсора)
+        float oldScale = _scale;
         float zoomDelta = e.Delta > 0 ? 0.1f : -0.1f;
-        _scale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
+        float newScale = Math.Clamp(_scale + zoomDelta, 0.2f, 3.0f);
+
+        if (newScale != oldScale)
+        {
+            float ratio = newScale / oldScale;
+            _viewOffset.X = (e.Location.X + _viewOffset.X) * ratio - e.Location.X;
+            _viewOffset.Y = (e.Location.Y + _viewOffset.Y) * ratio - e.Location.Y;
+            _scale = newScale;
+        }
+
         Render();
     }
-
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
