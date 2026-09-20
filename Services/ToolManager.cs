@@ -11,6 +11,7 @@ public class ToolManager
         CreateRoom,
         SubtractRoom,
         RestoreRoom,
+        ExpandRoom,
         Delete,
         DeleteArea,
         DeleteSettings,

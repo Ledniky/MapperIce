@@ -80,4 +80,16 @@ public Room Clone()
                y >= Y && y < Y + Height &&
                !RemovedCells.Contains((x, y));
     }
+
+        /// <summary>
+    /// true, если клетка (x,y) принадлежит комнате и при этом её сосед в
+    /// направлении (dx,dy) комнате НЕ принадлежит — то есть на этой стороне
+    /// клетки физически стена. Учитывает RemovedCells через Contains, поэтому
+    /// корректно работает для нерямоугольных комнат, а не только для краёв
+    /// ограничивающего прямоугольника.
+    /// </summary>
+    public bool HasWallOnSide(int x, int y, int dx, int dy)
+    {
+        return Contains(x, y) && !Contains(x + dx, y + dy);
+    }
 }

@@ -208,6 +208,99 @@ public static class RoomSubtractor
         return anyRestored;
     }
 
+
+        /// <summary>
+    /// Возвращает клетки, которые появятся у комнаты при расширении на 1 тайл в
+    /// направлении (dx, dy) от пограничной клетки (cellX, cellY). Расширяется не
+    /// вся сторона ограничивающего прямоугольника, а только непрерывный отрезок
+    /// реальной границы, которому принадлежит эта клетка (соседние по
+    /// перпендикулярной оси клетки, у которых тоже открыта сторона dx,dy) —
+    /// поэтому корректно работает для нерямоугольных/L-образных комнат с
+    /// вырезами. Пустой список — клетка не граница комнаты в эту сторону.
+    /// </summary>
+    public static List<(int x, int y)> GetExpandRunNewCells(Room room, int cellX, int cellY, int dx, int dy)
+    {
+        if (!room.HasWallOnSide(cellX, cellY, dx, dy))
+            return new List<(int x, int y)>();
+
+        var run = new List<(int x, int y)> { (cellX, cellY) };
+
+        // Движение вдоль оси, ПЕРПЕНДИКУЛЯРНОЙ направлению расширения
+        int stepX = dy != 0 ? 1 : 0;
+        int stepY = dx != 0 ? 1 : 0;
+
+        int cx = cellX + stepX, cy = cellY + stepY;
+        while (room.HasWallOnSide(cx, cy, dx, dy))
+        {
+            run.Add((cx, cy));
+            cx += stepX; cy += stepY;
+        }
+
+        cx = cellX - stepX; cy = cellY - stepY;
+        while (room.HasWallOnSide(cx, cy, dx, dy))
+        {
+            run.Add((cx, cy));
+            cx -= stepX; cy -= stepY;
+        }
+
+        return run.Select(c => (x: c.x + dx, y: c.y + dy)).ToList();
+    }
+
+    /// <summary>
+    /// true, если хотя бы одна клетка из newCells уже принадлежит ДРУГОЙ комнате
+    /// грида (не room) — расширение в эти клетки запрещено.
+    /// </summary>
+    public static bool IsExpandBlocked(Grid grid, Room room, List<(int x, int y)> newCells)
+    {
+        return grid.Rooms.Any(other => other != room && newCells.Any(c => other.Contains(c.x, c.y)));
+    }
+
+    /// <summary>
+    /// Применяет "умное" расширение комнаты на 1 тайл от пограничной клетки
+    /// (cellX, cellY) в направлении (dx, dy) — см. GetExpandRunNewCells.
+    /// Прямоугольник комнаты расширяется ровно настолько, чтобы вместить новые
+    /// клетки; всё, что попало в новый прямоугольник, но не было частью старой
+    /// формы и не входит в добавляемый отрезок, помечается как вырезанное
+    /// (RemovedCells) — иначе узкий отрезок растянул бы прямоугольник на всю
+    /// ширину новой строки/столбца.
+    /// </summary>
+    public static bool ExpandRoomBorder(Grid grid, Room room, int cellX, int cellY, int dx, int dy)
+    {
+        var newCells = GetExpandRunNewCells(room, cellX, cellY, dx, dy);
+        if (newCells.Count == 0) return false;
+        if (IsExpandBlocked(grid, room, newCells)) return false;
+
+        var oldCells = new HashSet<(int X, int Y)>();
+        for (int x = room.X; x < room.X + room.Width; x++)
+            for (int y = room.Y; y < room.Y + room.Height; y++)
+                if (room.Contains(x, y))
+                    oldCells.Add((x, y));
+
+        int minX = Math.Min(room.X, newCells.Min(c => c.x));
+        int minY = Math.Min(room.Y, newCells.Min(c => c.y));
+        int maxX = Math.Max(room.X + room.Width - 1, newCells.Max(c => c.x));
+        int maxY = Math.Max(room.Y + room.Height - 1, newCells.Max(c => c.y));
+
+        room.X = minX;
+        room.Y = minY;
+        room.Width = maxX - minX + 1;
+        room.Height = maxY - minY + 1;
+
+        var newCellsSet = new HashSet<(int X, int Y)>(newCells);
+        var removed = new HashSet<(int X, int Y)>();
+        for (int x = room.X; x < room.X + room.Width; x++)
+        {
+            for (int y = room.Y; y < room.Y + room.Height; y++)
+            {
+                if (!oldCells.Contains((x, y)) && !newCellsSet.Contains((x, y)))
+                    removed.Add((x, y));
+            }
+        }
+
+        room.RemovedCells = removed;
+        return true;
+    }
+
     private static void ShrinkBounds(Room room)
     {
         bool shrunk;

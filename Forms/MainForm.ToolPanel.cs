@@ -211,7 +211,24 @@ public partial class MainForm
         _toolPanel.Controls.Add(roomRow2Panel);
         y += 34 + 2;
 
-
+        // Кнопка "Добавить всё" (заглушка)
+        _btnAddAll = new Button
+        {
+            Text = "➕",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Arial", 14)
+        };
+        _btnAddAll.Click += (s, e) =>
+        {
+            _toolManager.SetTool(ToolManager.Tool.ExpandRoom);
+        };
+        _toolPanel.Controls.Add(_btnAddAll);
+        y += 34 + 2;
 
         _doorToolCombo = new ComboBox
         {

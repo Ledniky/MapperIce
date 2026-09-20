@@ -82,7 +82,7 @@ public partial class MainForm
             int tileX = tilePos.x;
             int tileY = tilePos.y;
 
-                        if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
+            if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
             {
                 _magnifierPinnedTile = (tileX, tileY);
                 _magnifierPinned = true;
@@ -233,7 +233,7 @@ public partial class MainForm
                 { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
             }
 
-                        else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
+            else if (_toolManager.CurrentTool == ToolManager.Tool.Passage)
             {
                 var grid = _map.ActiveGrid;
                 // Ищем любую комнату, на периметре которой находится стена
@@ -291,6 +291,30 @@ public partial class MainForm
                 }
             }
 
+
+            else if (_toolManager.CurrentTool == ToolManager.Tool.ExpandRoom)
+            {
+                var grid = _map.ActiveGrid;
+                var target = FindExpandRoomTarget(e.Location);
+                if (target.HasValue)
+                {
+                    var room = target.Value.room;
+                    int dx = target.Value.dx;
+                    int dy = target.Value.dy;
+                    var cellPos = GetTilePosition(e.Location);
+
+                    if (RoomSubtractor.ExpandRoomBorder(grid, room, cellPos.x, cellPos.y, dx, dy))
+                    {
+                        _doorUpdater.RecalculateAllDoors(grid);
+                        RecalculateDecalPatterns();
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                }
+            }
+
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PipeDistra ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ||
                      _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ||
@@ -319,7 +343,7 @@ public partial class MainForm
                     Color? pipeColor = pipeType != "Util" ? GetPipeLayerColor(pipeType) : null;
                     string? pipeVentProto = pipeType != "Util" ? GetPipeLayerVentProto(pipeType) : null;
 
-                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType, pipeColor, pipeVentProto);                    SaveState();
+                    _pipeBuilder.FinishDrawing(_map.ActiveGrid, pipeType, pipeColor, pipeVentProto); SaveState();
                     UpdateTileGrid();
                     Render();
                 }
@@ -395,7 +419,8 @@ public partial class MainForm
                 }
             }
 
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeUtilSettings)            {
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PipeUtilSettings)
+            {
                 // Клик по трубе утилизации — меняем направление стрелки
                 var grid = _map.ActiveGrid;
                 if (grid == null) return;
@@ -459,8 +484,8 @@ public partial class MainForm
                         Render();
                     }
                 }
-            
-            
+
+
             }
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.UtilWrenches)
@@ -557,7 +582,7 @@ public partial class MainForm
                 }
             }
 
-            
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype)
             {
                 if (!string.IsNullOrEmpty(_protoToPlace))
@@ -706,9 +731,9 @@ public partial class MainForm
                     int minY = Math.Min(_lastClickTile.Value.y, tileY);
                     int maxY = Math.Max(_lastClickTile.Value.y, tileY);
 
-                _selectedObjects = GatherObjectsInRect(minX, minY, maxX, maxY);
-                _renderer.SetSelection(_selectedObjects);
-                // Статус удалён — тип комнаты теперь в ComboBox
+                    _selectedObjects = GatherObjectsInRect(minX, minY, maxX, maxY);
+                    _renderer.SetSelection(_selectedObjects);
+                    // Статус удалён — тип комнаты теперь в ComboBox
 
                     BeginMoveDrag(e.Location);
                     Render();
@@ -966,6 +991,28 @@ public partial class MainForm
         {
             _renderer.ClearEntityPreview();
         }
+
+
+        if (_toolManager.CurrentTool == ToolManager.Tool.ExpandRoom)
+        {
+            var target = FindExpandRoomTarget(e.Location);
+            if (target.HasValue)
+            {
+                var cellPos = GetTilePosition(e.Location);
+                _renderer.SetExpandRoomPreview(target.Value.room, cellPos.x, cellPos.y, target.Value.dx, target.Value.dy);
+            }
+            else
+            {
+                _renderer.ClearExpandRoomPreview();
+            }
+            Render();
+            return;
+        }
+        else
+        {
+            _renderer.ClearExpandRoomPreview();
+        }
+
 
         if (_isDeletingArea)
         {
@@ -1316,5 +1363,56 @@ public partial class MainForm
 
             Render();
         }
+    }
+
+
+        /// <summary>
+    /// Определяет, какую комнату и в какую сторону (dx, dy) можно расширить от
+    /// точки под курсором — используется и для подсветки при наведении
+    /// (OnMouseMove), и для самого клика (OnMouseDown), чтобы поведение
+    /// совпадало один в один. Если клетка под курсором — граница сразу с
+    /// нескольких открытых сторон (угол/выступ), направление выбирается по тому,
+    /// к какому краю клетки курсор физически ближе.
+    /// </summary>
+    private (Room room, int dx, int dy)? FindExpandRoomTarget(Point mouseLocation)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return null;
+
+        var tilePos = GetTilePosition(mouseLocation);
+        int tileX = tilePos.x;
+        int tileY = tilePos.y;
+
+        var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+
+        var room = grid.Rooms.FirstOrDefault(r =>
+            r.Contains(tileX, tileY) &&
+            directions.Any(d => r.HasWallOnSide(tileX, tileY, d.Item1, d.Item2)));
+
+        if (room == null) return null;
+
+        var exposed = directions.Where(d => room.HasWallOnSide(tileX, tileY, d.Item1, d.Item2)).ToList();
+        if (exposed.Count == 1) return (room, exposed[0].Item1, exposed[0].Item2);
+
+        var precise = GetPrecisePosition(mouseLocation);
+        float fracX = precise.x - tileX;
+        float fracY = precise.y - tileY;
+
+        (int dx, int dy) best = exposed[0];
+        float bestDist = float.MaxValue;
+        foreach (var (dx, dy) in exposed)
+        {
+            float dist = (dx, dy) switch
+            {
+                (0, -1) => fracY,
+                (0, 1) => 1f - fracY,
+                (-1, 0) => fracX,
+                (1, 0) => 1f - fracX,
+                _ => float.MaxValue
+            };
+            if (dist < bestDist) { bestDist = dist; best = (dx, dy); }
+        }
+
+        return (room, best.dx, best.dy);
     }
 }

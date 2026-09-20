@@ -77,6 +77,7 @@ private ComboBox _doorToolCombo = null!;
     private Image? _wireIconLV;
     private Button _btnSubtractRoom = null!;
     private Button _btnRestoreRoom = null!;
+    private Button _btnAddAll = null!;
     private Room? _restoreTargetRoom = null;
     private Button _btnPipeDistra = null!;
     private Button _btnPipeWaste = null!;
@@ -432,6 +433,7 @@ private ComboBox _doorToolCombo = null!;
         _btnCreateRoom.BackColor = Color.White;
         _btnSubtractRoom.BackColor = Color.White;
         _btnRestoreRoom.BackColor = Color.White;
+        _btnAddAll.BackColor = Color.White;
         _btnDelete.BackColor = Color.White;
         _btnDeleteArea.BackColor = Color.White;
         _btnDeleteSettings.BackColor = Color.White;
@@ -477,6 +479,9 @@ private ComboBox _doorToolCombo = null!;
                 break;
             case ToolManager.Tool.RestoreRoom:
                 _btnRestoreRoom.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.ExpandRoom:
+                _btnAddAll.BackColor = Color.LightBlue;
                 break;
             case ToolManager.Tool.Delete:
                 _btnDelete.BackColor = Color.LightBlue;
@@ -582,7 +587,7 @@ private ComboBox _doorToolCombo = null!;
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule => Cursors.Hand,
             ToolManager.Tool.Magnifier => Cursors.Cross,
-            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall => Cursors.Help,
+            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
             ToolManager.Tool.UtilWrenches => Cursors.Help,
