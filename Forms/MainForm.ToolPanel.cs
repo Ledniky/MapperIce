@@ -226,6 +226,8 @@ public partial class MainForm
         };
         foreach (var label in _doorToolMap.Keys)
             _doorToolCombo.Items.Add(label);
+        if (_doorToolCombo.Items.Count > 0)
+            _doorToolCombo.SelectedIndex = 0;
 
         // Рисуем реальный спрайт прототипа (если есть и уже загружен через
         // GetCachedProtoIcon), иначе — emoji-заглушку из _doorToolIcons.Fallback.
@@ -454,6 +456,8 @@ public partial class MainForm
         };
         foreach (var label in _utilToolMap.Keys)
             _utilToolCombo.Items.Add(label);
+        if (_utilToolCombo.Items.Count > 0)
+            _utilToolCombo.SelectedIndex = 0;
 
         // При OwnerDrawFixed текст сам по себе не рисуется — приходится отрисовывать его вручную,
         // зато именно благодаря OwnerDraw высота поля перестаёт зависеть от размера шрифта
@@ -522,6 +526,8 @@ public partial class MainForm
         };
         foreach (var wt in _wireTypeManager.GetTypes())
             _wireTypeCombo.Items.Add(wt.DisplayName);
+        if (_wireTypeCombo.Items.Count > 0)
+            _wireTypeCombo.SelectedIndex = 0;
         _wireTypeCombo.SelectedIndexChanged += (s, e) =>
         {
             int idx = _wireTypeCombo.SelectedIndex;
@@ -593,7 +599,7 @@ public partial class MainForm
         _toolPanel.Controls.Add(wireRow1Panel);
         y += 34 + 2;
 
-        // Строка 2: выпадающие списки прототипов ЛКП (СВ-НВ) и подстанции (ВВ-СВ) —
+        // Строка 2: выпадающий список прототипов электротехнических переходников (ЛКП/APC и подстанции) —
         // выбор пункта сразу активирует инструмент точечной установки переходника
         var wireRow2Panel = new Panel
         {
@@ -603,33 +609,34 @@ public partial class MainForm
             BackColor = Color.Transparent
         };
 
-        _apcCombo = new ComboBox
+        _powerJunctionCombo = new ComboBox
         {
             Location = new Point(0, 0),
-            Width = (wireRow2Panel.Width / 2) - 1,
+            Width = wireRow2Panel.Width,
             Height = 34,
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 28,
             Font = new Font("Arial", 10)
         };
-        var apcTip = new ToolTip();
-        apcTip.SetToolTip(_apcCombo, "ЛКП (СВ ↔ НВ)");
-        _apcCombo.SelectedIndexChanged += (s, e) =>
+        var powerJunctionTip = new ToolTip();
+        powerJunctionTip.SetToolTip(_powerJunctionCombo, "Электротехнический переходник (ЛКП/Подстанция)");
+        _powerJunctionCombo.SelectedIndexChanged += (s, e) =>
         {
-            if (_apcCombo.SelectedItem is ProtoDisplayItem item)
+            if (_powerJunctionCombo.SelectedItem is ProtoDisplayItem item)
             {
-                _selectedApcProto = item.Id;
-                _toolManager.SetTool(ToolManager.Tool.PlaceApc);
+                _selectedPowerJunctionProto = item.Id;
+                _selectedPowerJunctionType = item.Type;
+                _toolManager.SetTool(item.Type == "APC" ? ToolManager.Tool.PlaceApc : ToolManager.Tool.PlaceSubstation);
             }
         };
-        _apcCombo.DrawItem += (s, e) =>
+        _powerJunctionCombo.DrawItem += (s, e) =>
         {
             e.DrawBackground();
             if (e.Index >= 0)
             {
-                var item = _apcCombo.Items[e.Index] as ProtoDisplayItem;
-                string text = item?.DisplayName ?? _apcCombo.Items[e.Index].ToString() ?? "";
+                var item = _powerJunctionCombo.Items[e.Index] as ProtoDisplayItem;
+                string text = item?.DisplayName ?? _powerJunctionCombo.Items[e.Index].ToString() ?? "";
                 const int iconSize = 24;
                 const int padding = 3;
                 int textX = e.Bounds.Left + padding;
@@ -652,78 +659,13 @@ public partial class MainForm
                     textX = e.Bounds.Left + padding + iconSize + padding;
                 }
 
-                TextRenderer.DrawText(e.Graphics, text, _apcCombo.Font,
+                TextRenderer.DrawText(e.Graphics, text, _powerJunctionCombo.Font,
                     new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height),
-                    _apcCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                    _powerJunctionCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             }
             e.DrawFocusRectangle();
         };
-        wireRow2Panel.Controls.Add(_apcCombo);
-
-        _substationCombo = new ComboBox
-        {
-            Location = new Point((wireRow2Panel.Width / 2) + 1, 0),
-            Width = (wireRow2Panel.Width / 2) - 1,
-            Height = 34,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 28,
-            Font = new Font("Arial", 10)
-        };
-        var subTip = new ToolTip();
-        subTip.SetToolTip(_substationCombo, "Подстанция (ВВ ↔ СВ)");
-        _substationCombo.DrawItem += (s, e) =>
-        {
-            e.DrawBackground();
-            if (e.Index >= 0)
-            {
-                var item = _substationCombo.Items[e.Index] as ProtoDisplayItem;
-                string text = item?.DisplayName ?? _substationCombo.Items[e.Index].ToString() ?? "";
-                const int iconSize = 24;
-                const int padding = 3;
-                int textX = e.Bounds.Left + padding;
-
-                if (item != null)
-                {
-                    _wireJunctionIconCache.TryGetValue(item.Id, out var icon);
-                    if (icon != null)
-                    {
-                        int drawX = e.Bounds.Left + padding + (iconSize - icon.Width) / 2;
-                        int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
-                        e.Graphics.DrawImage(icon, drawX, drawY, icon.Width, icon.Height);
-                    }
-                    else
-                    {
-                        using var placeholderBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0));
-                        int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
-                        e.Graphics.FillRectangle(placeholderBrush, e.Bounds.Left + padding, iconY, iconSize, iconSize);
-                    }
-                    textX = e.Bounds.Left + padding + iconSize + padding;
-                }
-
-                TextRenderer.DrawText(e.Graphics, text, _substationCombo.Font,
-                    new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height),
-                    _substationCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
-            }
-            e.DrawFocusRectangle();
-        };
-        _substationCombo.SelectedIndexChanged += (s, e) =>
-        {
-            if (_substationCombo.SelectedItem is ProtoDisplayItem item)
-            {
-                _selectedSubstationProto = item.Id;
-                _toolManager.SetTool(ToolManager.Tool.PlaceSubstation);
-            }
-        };
-        wireRow2Panel.Controls.Add(_substationCombo);
-
-        wireRow2Panel.Resize += (s, e) =>
-        {
-            int halfW = wireRow2Panel.Width / 2;
-            _apcCombo.Width = halfW - 1;
-            _substationCombo.Location = new Point(halfW + 1, 0);
-            _substationCombo.Width = halfW - 1;
-        };
+        wireRow2Panel.Controls.Add(_powerJunctionCombo);
 
         _toolPanel.Controls.Add(wireRow2Panel);
         y += 34 + 2;
@@ -1115,18 +1057,20 @@ public partial class MainForm
 
 
     /// <summary>
-    /// Наполняет выпадающие списки ЛКП/подстанции ID-шниками из проиндексированного
+    /// Наполняет выпадающий список электротехнических переходников ID-шниками из проиндексированного
     /// репозитория. Вызывается через _indexer.OnIndexingComplete — при первом запуске
     /// список пуст, пока не выбран и не проиндексирован хотя бы один репозиторий.
     /// </summary>
     private void UpdateWireJunctionCombos()
     {
-        if (_apcCombo == null || _substationCombo == null) return;
+        if (_powerJunctionCombo == null) return;
 
         var allIds = _indexer.GetPrototypeIds();
 
-        string? prevApc = _selectedApcProto;
-        _apcCombo.Items.Clear();
+        string? prevProto = _selectedPowerJunctionProto;
+        string? prevType = _selectedPowerJunctionType;
+        _powerJunctionCombo.Items.Clear();
+        
         foreach (var id in allIds.Where(i =>
             i.StartsWith("APC", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Frame", StringComparison.OrdinalIgnoreCase) &&
@@ -1136,13 +1080,9 @@ public partial class MainForm
             !i.Contains("board", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("APC", "").TrimStart('-', '_');
-            _apcCombo.Items.Add(new ProtoDisplayItem(id, displayName));
+            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "APC"));
         }
-        if (prevApc != null && _apcCombo.Items.Cast<ProtoDisplayItem>().Any(p => p.Id == prevApc))
-            _apcCombo.SelectedItem = _apcCombo.Items.Cast<ProtoDisplayItem>().First(p => p.Id == prevApc);
-
-        string? prevSub = _selectedSubstationProto;
-        _substationCombo.Items.Clear();
+        
         foreach (var id in allIds.Where(i =>
             i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("MachineCircuit", StringComparison.OrdinalIgnoreCase) &&
@@ -1150,17 +1090,28 @@ public partial class MainForm
             !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("Substation", "").TrimStart('-', '_');
-            _substationCombo.Items.Add(new ProtoDisplayItem(id, displayName));
+            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "Substation"));
         }
-        if (prevSub != null && _substationCombo.Items.Cast<ProtoDisplayItem>().Any(p => p.Id == prevSub))
-            _substationCombo.SelectedItem = _substationCombo.Items.Cast<ProtoDisplayItem>().First(p => p.Id == prevSub);
+        
+        // Восстановление выбранного элемента
+        if (prevProto != null && prevType != null)
+        {
+            var selectedItem = _powerJunctionCombo.Items.Cast<ProtoDisplayItem>()
+                .FirstOrDefault(p => p.Id == prevProto && p.Type == prevType);
+            if (selectedItem != null)
+                _powerJunctionCombo.SelectedItem = selectedItem;
+        }
+        else if (_powerJunctionCombo.Items.Count > 0)
+        {
+            _powerJunctionCombo.SelectedIndex = 0;
+        }
 
         LoadWireJunctionIcons();
     }
 
     /// <summary>
     /// Синхронно (как LoadDoorComboIcons) подгружает иконки для всех пунктов
-    /// _apcCombo/_substationCombo — GetPrototypeIcon уже поддерживает
+    /// _powerJunctionCombo — GetPrototypeIcon уже поддерживает
     /// многослойные прототипы (берёт первый видимый слой, см. репозиторную
     /// панель). Без этого иконки были бы видны только после наведения курсора,
     /// т.к. закрытый ComboBox сам себя не перерисовывает по завершении
@@ -1172,15 +1123,13 @@ public partial class MainForm
             kvp.Value?.Dispose();
         _wireJunctionIconCache.Clear();
 
-        foreach (var item in _apcCombo.Items.Cast<ProtoDisplayItem>()
-                     .Concat(_substationCombo.Items.Cast<ProtoDisplayItem>()))
+        foreach (var item in _powerJunctionCombo.Items.Cast<ProtoDisplayItem>())
         {
             if (!_wireJunctionIconCache.ContainsKey(item.Id))
                 _wireJunctionIconCache[item.Id] = GetPrototypeIcon(item.Id);
         }
 
-        _apcCombo.Invalidate();
-        _substationCombo.Invalidate();
+        _powerJunctionCombo.Invalidate();
     }
 
     /// <summary>
@@ -1202,17 +1151,19 @@ public partial class MainForm
 
 
     /// <summary>
-    /// Обёртка для отображения прототипа в ComboBox: хранит оригинальный ID
-    /// и отформатированное имя для отображения.
+    /// Обёртка для отображения прототипа в ComboBox: хранит оригинальный ID,
+    /// отформатированное имя для отображения и тип (APC или Substation).
     /// </summary>
     private class ProtoDisplayItem
     {
         public string Id { get; }
         public string DisplayName { get; }
-        public ProtoDisplayItem(string id, string displayName)
+        public string Type { get; } // "APC" или "Substation"
+        public ProtoDisplayItem(string id, string displayName, string type)
         {
             Id = id;
             DisplayName = displayName;
+            Type = type;
         }
         public override string ToString() => DisplayName;
     }

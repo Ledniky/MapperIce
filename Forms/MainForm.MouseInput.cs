@@ -355,7 +355,8 @@ public partial class MainForm
                 // физически совпадают провод ВВ и провод СВ (как дверь — только
                 // там, где есть граница комнаты)
                 var grid = _map.ActiveGrid;
-                if (grid != null && !string.IsNullOrEmpty(_selectedSubstationProto) &&
+                if (grid != null && !string.IsNullOrEmpty(_selectedPowerJunctionProto) &&
+                    _selectedPowerJunctionType == "Substation" &&
                     _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") &&
                     _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV"))
                 {
@@ -364,7 +365,7 @@ public partial class MainForm
 
                     if (!alreadyThere)
                     {
-                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedSubstationProto });
+                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedPowerJunctionProto });
                         SaveState();
                         UpdateTileGrid();
                         Render();
@@ -376,7 +377,8 @@ public partial class MainForm
             {
                 // ЛКП — переходник СВ↔НВ, та же логика, что у подстанции
                 var grid = _map.ActiveGrid;
-                if (grid != null && !string.IsNullOrEmpty(_selectedApcProto) &&
+                if (grid != null && !string.IsNullOrEmpty(_selectedPowerJunctionProto) &&
+                    _selectedPowerJunctionType == "APC" &&
                     _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") &&
                     _wireBuilder.HasWireOfType(grid, tileX, tileY, "LV"))
                 {
@@ -385,7 +387,7 @@ public partial class MainForm
 
                     if (!alreadyThere)
                     {
-                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedApcProto });
+                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedPowerJunctionProto });
                         SaveState();
                         UpdateTileGrid();
                         Render();

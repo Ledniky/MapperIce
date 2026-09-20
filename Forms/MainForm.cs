@@ -67,7 +67,7 @@ private ComboBox _doorToolCombo = null!;
     // открытия/наведения на список для появления текстур
     private Image? _doorIconAirlock;
     private Image? _doorIconAirlockGlass;
-    // Кэш иконок для _apcCombo/_substationCombo — грузится синхронно в
+    // Кэш иконок для _powerJunctionCombo — грузится синхронно в
     // LoadWireJunctionIcons сразу после заполнения списков, как и door-иконки,
     // чтобы не зависеть от ленивой фоновой подгрузки и лишнего Invalidate
     private readonly Dictionary<string, Image?> _wireJunctionIconCache = new();
@@ -95,8 +95,7 @@ private ComboBox _doorToolCombo = null!;
     private ComboBox _wireTypeCombo = null!;
     private Button? _btnWireSettings;
     private Form? _wireSettingsForm = null;
-    private ComboBox _apcCombo = null!;
-    private ComboBox _substationCombo = null!;
+    private ComboBox _powerJunctionCombo = null!;
     private ComboBox _repoSelector = null!;
     private Button _btnAddRepo = null!;
     private Button _btnRemoveRepo = null!;
@@ -127,8 +126,8 @@ private ComboBox _doorToolCombo = null!;
     private Button _btnAlarmSettings = null!;
     private string _currentPipeLayer = "Distra";
     private string _currentWireLayer = "HV";
-    private string? _selectedSubstationProto = null;
-    private string? _selectedApcProto = null;
+    private string? _selectedPowerJunctionProto = null;
+    private string? _selectedPowerJunctionType = null; // "APC" или "Substation"
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
     private float _currentAlarmRotation = 0;
@@ -443,8 +442,7 @@ private ComboBox _doorToolCombo = null!;
         if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
         if (_utilToolCombo != null) _utilToolCombo.BackColor = Color.White;
         if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.White;
-        if (_substationCombo != null) _substationCombo.BackColor = Color.White;
-        if (_apcCombo != null) _apcCombo.BackColor = Color.White;
+        if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = Color.White;
         if (_btnMove != null) _btnMove.BackColor = Color.White;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
@@ -572,11 +570,8 @@ private ComboBox _doorToolCombo = null!;
             case ToolManager.Tool.WireLV:
                 if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.LightBlue;
                 break;
-            case ToolManager.Tool.PlaceSubstation:
-                if (_substationCombo != null) _substationCombo.BackColor = Color.LightBlue;
-                break;
-            case ToolManager.Tool.PlaceApc:
-                if (_apcCombo != null) _apcCombo.BackColor = Color.LightBlue;
+            case ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc:
+                if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = Color.LightBlue;
                 break;
         
         }

@@ -62,8 +62,7 @@ listContainer.Controls.Add(_protoList);
                 _pendingIconRedraw = false;
                 if (!_protoList.IsDisposed) _protoList.Invalidate();
                 if (_doorToolCombo != null && !_doorToolCombo.IsDisposed) _doorToolCombo.Invalidate();
-                if (_apcCombo != null && !_apcCombo.IsDisposed) _apcCombo.Invalidate();
-                if (_substationCombo != null && !_substationCombo.IsDisposed) _substationCombo.Invalidate();
+                if (_powerJunctionCombo != null && !_powerJunctionCombo.IsDisposed) _powerJunctionCombo.Invalidate();
             }
         };
         _iconRedrawTimer.Start();
