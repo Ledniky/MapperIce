@@ -2452,35 +2452,36 @@ public class Renderer
     }
 
 
-    private void DrawExpandRoomPreview(Graphics g, float scale, PointF viewOffset)
-    {
-        if (!_showExpandPreview || _expandPreviewRoom == null) return;
-        if (_currentMap?.ActiveGrid == null) return;
-
-        var newCells = RoomSubtractor.GetExpandRunNewCells(
-            _expandPreviewRoom, _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
-        if (newCells.Count == 0) return;
-
-        bool blocked = RoomSubtractor.IsExpandBlocked(_currentMap.ActiveGrid, _expandPreviewRoom, newCells);
-
-        int tileSize = (int)(Constants.TILE_SIZE * scale);
-        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid);
-        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
-        var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
-
-        Color fillColor = blocked ? Color.FromArgb(150, 220, 40, 40) : Color.FromArgb(150, 40, 220, 90);
-        Color lineColor = blocked ? Color.DarkRed : Color.DarkGreen;
-        using var brush = new SolidBrush(fillColor);
-        using var pen = new Pen(lineColor, 2);
-
-        foreach (var (cx, cy) in newCells)
+        private void DrawExpandRoomPreview(Graphics g, float scale, PointF viewOffset)
         {
-            var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
-            g.FillRectangle(brush, rect);
-            g.DrawRectangle(pen, rect);
+            if (!_showExpandPreview || _expandPreviewRoom == null) return;
+            if (_currentMap?.ActiveGrid == null) return;
+
+            var newCells = RoomSubtractor.GetExpandRunNewCells(
+                _expandPreviewRoom, _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
+            if (newCells.Count == 0) return;
+
+            int tileSize = (int)(Constants.TILE_SIZE * scale);
+            int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid);
+            float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+            var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
+
+            using var freeBrush = new SolidBrush(Color.FromArgb(150, 40, 220, 90));
+            using var freePen = new Pen(Color.DarkGreen, 2);
+            using var blockedBrush = new SolidBrush(Color.FromArgb(150, 220, 40, 40));
+            using var blockedPen = new Pen(Color.DarkRed, 2);
+
+            foreach (var (cx, cy) in newCells)
+            {
+                bool blocked = RoomSubtractor.IsCellBlocked(_currentMap.ActiveGrid, _expandPreviewRoom, (cx, cy));
+                var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
+                g.FillRectangle(blocked ? blockedBrush : freeBrush, rect);
+                g.DrawRectangle(blocked ? blockedPen : freePen, rect);
+            }
         }
-    }
-    private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
+        
+        
+            private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
     {
         if (!ShowAlarmConnections) return;
         if (alarms.Count == 0) return;

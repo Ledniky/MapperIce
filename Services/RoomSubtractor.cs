@@ -247,12 +247,28 @@ public static class RoomSubtractor
     }
 
     /// <summary>
-    /// true, если хотя бы одна клетка из newCells уже принадлежит ДРУГОЙ комнате
-    /// грида (не room) — расширение в эти клетки запрещено.
+    /// true, если конкретная клетка cell уже принадлежит ДРУГОЙ комнате грида
+    /// (не room) — то есть занята и расширяться в неё нельзя. Проверяется по
+    /// одной клетке, а не по всему отрезку — так соседняя комната, вклинившаяся
+    /// только в часть границы (в том числе в крайнюю клетку отрезка), не
+    /// блокирует расширение целиком, а лишь "выключает" именно эту клетку.
     /// </summary>
-    public static bool IsExpandBlocked(Grid grid, Room room, List<(int x, int y)> newCells)
+    public static bool IsCellBlocked(Grid grid, Room room, (int x, int y) cell)
     {
-        return grid.Rooms.Any(other => other != room && newCells.Any(c => other.Contains(c.x, c.y)));
+        var other = grid.Rooms.FirstOrDefault(r => r != room && r.Contains(cell.x, cell.y));
+        if (other == null) return false; // свободно
+
+        // Занято другой комнатой — но если это ЛЮБАЯ её граничная (стеновая)
+        // клетка, открытая хоть с одной стороны (неважно, с какой именно —
+        // это может быть боковая стена соседней комнаты, а не обязательно
+        // смотрящая точно в сторону нашего расширения), разрешаем расширение
+        // туда: обе комнаты разделят одну физическую клетку под общую стену,
+        // как и SnapAdjacentOverlap при обычном создании комнаты впритык.
+        // Блокируем только настоящую внутреннюю территорию (пол) чужой
+        // комнаты — клетку, у которой нет ни одной открытой стороны.
+        var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+        bool otherIsBoundary = directions.Any(d => other.HasWallOnSide(cell.x, cell.y, d.Item1, d.Item2));
+        return !otherIsBoundary;
     }
 
     /// <summary>
@@ -268,7 +284,15 @@ public static class RoomSubtractor
     {
         var newCells = GetExpandRunNewCells(room, cellX, cellY, dx, dy);
         if (newCells.Count == 0) return false;
-        if (IsExpandBlocked(grid, room, newCells)) return false;
+
+        // Клетки, которые реально свободны — их и займём. Занятые (в том числе
+        // на краю отрезка) просто пропускаем, а не блокируем расширение целиком:
+        // прямоугольник всё равно растягивается на весь отрезок (включая занятые
+        // клетки), но занятые останутся вырезом (RemovedCells), а не территорией
+        // комнаты — так соседняя комната "обходится", а свободная часть границы
+        // расширяется как обычно.
+        var addableCells = newCells.Where(c => !IsCellBlocked(grid, room, c)).ToList();
+        if (addableCells.Count == 0) return false;
 
         var oldCells = new HashSet<(int X, int Y)>();
         for (int x = room.X; x < room.X + room.Width; x++)
@@ -286,13 +310,13 @@ public static class RoomSubtractor
         room.Width = maxX - minX + 1;
         room.Height = maxY - minY + 1;
 
-        var newCellsSet = new HashSet<(int X, int Y)>(newCells);
+        var addableSet = new HashSet<(int X, int Y)>(addableCells);
         var removed = new HashSet<(int X, int Y)>();
         for (int x = room.X; x < room.X + room.Width; x++)
         {
             for (int y = room.Y; y < room.Y + room.Height; y++)
             {
-                if (!oldCells.Contains((x, y)) && !newCellsSet.Contains((x, y)))
+                if (!oldCells.Contains((x, y)) && !addableSet.Contains((x, y)))
                     removed.Add((x, y));
             }
         }
