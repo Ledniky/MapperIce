@@ -1130,7 +1130,8 @@ public partial class MainForm
             !i.Contains("Electronics", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Switch", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("MachineCircuit", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("board", StringComparison.OrdinalIgnoreCase)))
+            !i.Contains("board", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Flatpack", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("APC", "").TrimStart('-', '_');
             _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "APC"));
@@ -1140,7 +1141,8 @@ public partial class MainForm
             i.StartsWith("Substation", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("MachineCircuit", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("board", StringComparison.OrdinalIgnoreCase)&&
-            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase)))
+            !i.Contains("Frame", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Flatpack", StringComparison.OrdinalIgnoreCase)))
         {
             var displayName = id.Replace("Substation", "").TrimStart('-', '_');
             _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "Substation"));
