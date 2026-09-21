@@ -171,7 +171,7 @@ public partial class MainForm
         _toolPanel.Controls.Add(roomRow1Panel);
         y += 34 + 2;
 
-        // Строка 2: вычесть и восстановить
+        // Строка 2: вычесть, восстановить и добавить всё (по 33% каждая)
         var roomRow2Panel = new Panel
         {
             Location = new Point(leftMargin + 2, y),
@@ -180,11 +180,13 @@ public partial class MainForm
             BackColor = Color.Transparent
         };
 
+        int btnWidth = roomRow2Panel.Width / 3;
+
         _btnSubtractRoom = new Button
         {
             Text = "✂️",
             Location = new Point(0, 0),
-            Width = (roomRow2Panel.Width / 2) - 1,
+            Width = btnWidth - 1,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
@@ -200,8 +202,8 @@ public partial class MainForm
         _btnRestoreRoom = new Button
         {
             Text = "🔨",
-            Location = new Point((roomRow2Panel.Width / 2) + 1, 0),
-            Width = (roomRow2Panel.Width / 2) - 1,
+            Location = new Point(btnWidth, 0),
+            Width = btnWidth - 1,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
@@ -214,23 +216,11 @@ public partial class MainForm
         };
         roomRow2Panel.Controls.Add(_btnRestoreRoom);
 
-        roomRow2Panel.Resize += (s, e) =>
-        {
-            int halfW = roomRow2Panel.Width / 2;
-            _btnSubtractRoom.Width = halfW - 1;
-            _btnRestoreRoom.Location = new Point(halfW + 1, 0);
-            _btnRestoreRoom.Width = halfW - 1;
-        };
-
-        _toolPanel.Controls.Add(roomRow2Panel);
-        y += 34 + 2;
-
-        // Кнопка "Добавить всё" (заглушка)
         _btnAddAll = new Button
         {
             Text = "➕",
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
+            Location = new Point(btnWidth * 2, 0),
+            Width = btnWidth - 1,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
@@ -241,7 +231,19 @@ public partial class MainForm
         {
             _toolManager.SetTool(ToolManager.Tool.ExpandRoom);
         };
-        _toolPanel.Controls.Add(_btnAddAll);
+        roomRow2Panel.Controls.Add(_btnAddAll);
+
+        roomRow2Panel.Resize += (s, e) =>
+        {
+            int bw = roomRow2Panel.Width / 3;
+            _btnSubtractRoom.Width = bw - 1;
+            _btnRestoreRoom.Location = new Point(bw, 0);
+            _btnRestoreRoom.Width = bw - 1;
+            _btnAddAll.Location = new Point(bw * 2, 0);
+            _btnAddAll.Width = bw - 1;
+        };
+
+        _toolPanel.Controls.Add(roomRow2Panel);
         y += 34 + 2;
 
         _doorToolCombo = new ComboBox
