@@ -47,6 +47,20 @@ public partial class MainForm
         _toolPanel.Controls.Add(title);
         y += 35 + 2;
 
+        // === ЗАГОЛОВОК СЕКЦИИ ===
+        var roomsLabel = new Label
+        {
+            Text = "Комнаты:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _toolPanel.Controls.Add(roomsLabel);
+        y += 20 + 2;
+
         // === ВЫБОР ТИПА КОМНАТЫ (ComboBox с ToolTip) ===
         _roomTypeCombo = new ComboBox
         {
