@@ -50,7 +50,8 @@ private ComboBox _doorToolCombo = null!;
         { "Дверь", ToolManager.Tool.Door },
         { "Дверь (стекло)", ToolManager.Tool.DoorGlass },
         { "Проход", ToolManager.Tool.Passage },
-        { "Восстановить стену", ToolManager.Tool.RestoreWall }
+        { "Восстановить стену", ToolManager.Tool.RestoreWall },
+        { "Заменить на окно", ToolManager.Tool.ReplaceWallWithWindow }
     };
     // Для пунктов с реальным прототипом (двери) — Id для GetCachedProtoIcon.
     // ProtoId == null -> у пункта нет спрайта, всегда рисуется Fallback-эмодзи
@@ -60,7 +61,8 @@ private ComboBox _doorToolCombo = null!;
         { "Дверь", ("Airlock", "🚪") },
         { "Дверь (стекло)", ("AirlockGlass", "🔲") },
         { "Проход", (null, "▢") },
-        { "Восстановить стену", (null, "🧱") }
+        { "Восстановить стену", (null, "🧱") },
+        { "Заменить на окно", (null, "🪟") }
     };
     // Готовые заранее (синхронно) иконки для _doorToolCombo — в отличие от
     // GetCachedProtoIcon, без асинхронной догрузки, чтобы не ждать повторного
@@ -129,6 +131,7 @@ private ComboBox _doorToolCombo = null!;
     private string _currentWireLayer = "HV";
     private string? _selectedPowerJunctionProto = null;
     private string? _selectedPowerJunctionType = null; // "APC" или "Substation"
+    private string? _selectedWindowProto = null;
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
     private float _currentAlarmRotation = 0;
@@ -263,6 +266,7 @@ private ComboBox _doorToolCombo = null!;
             ClearProtoIconCache();
             UpdatePrototypeList();
             UpdateWireJunctionCombos();
+            UpdateWindowCombo();
             LoadDoorComboIcons();
             LoadWireTypeIcons();
             Render();
@@ -587,7 +591,7 @@ private ComboBox _doorToolCombo = null!;
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule => Cursors.Hand,
             ToolManager.Tool.Magnifier => Cursors.Cross,
-            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom => Cursors.Help,
+            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom or ToolManager.Tool.ReplaceWallWithWindow => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
             ToolManager.Tool.UtilWrenches => Cursors.Help,

@@ -310,9 +310,30 @@ public partial class MainForm
 
         _doorToolCombo.SelectedIndexChanged += (s, e) =>
         {
-            if (_doorToolCombo.SelectedItem is string key && _doorToolMap.TryGetValue(key, out var tool))
+            if (_doorToolCombo.SelectedItem is string key)
             {
-                _toolManager.SetTool(tool);
+                // Проверяем, является ли пункт прототипом окна (начинается с 🪟)
+                if (key.StartsWith("🪟 "))
+                {
+                    // Извлекаем ID прототипа — убираем префикс "🪟 "
+                    string protoName = key.Substring(3);
+                    // Ищем полный ID в индексированных прототипах
+                    var allIds = _indexer.GetPrototypeIds();
+                    string? foundId = allIds.FirstOrDefault(id =>
+                        id.Replace("Window", "").TrimStart('-', '_') == protoName ||
+                        id.EndsWith(protoName, StringComparison.OrdinalIgnoreCase));
+                    if (foundId != null)
+                    {
+                        _selectedWindowProto = foundId;
+                        _toolManager.SetTool(ToolManager.Tool.ReplaceWallWithWindow);
+                        return;
+                    }
+                }
+
+                if (_doorToolMap.TryGetValue(key, out var tool))
+                {
+                    _toolManager.SetTool(tool);
+                }
             }
         };
         _toolPanel.Controls.Add(_doorToolCombo);
@@ -1177,6 +1198,51 @@ public partial class MainForm
         _wireIconMV = GetPrototypeIcon("CableMV", "mvcable_15");
         _wireIconLV = GetPrototypeIcon("CableApcExtension", "lvcable_15");
         if (_wireTypeCombo != null && !_wireTypeCombo.IsDisposed) _wireTypeCombo.Invalidate();
+    }
+
+    /// <summary>
+    /// Наполняет выпадающий список окон прототипами, содержащими "Window",
+    /// но НЕ содержащими "Directional" и "Diagonal".
+    /// </summary>
+    private void UpdateWindowCombo()
+    {
+        if (_doorToolCombo == null) return;
+
+        var allIds = _indexer.GetPrototypeIds();
+
+        string? prevProto = _selectedWindowProto;
+        _doorToolCombo.Items.Clear();
+
+        // Восстанавливаем старый список + добавляем новый пункт
+        foreach (var label in _doorToolMap.Keys)
+            _doorToolCombo.Items.Add(label);
+
+        foreach (var id in allIds.Where(i =>
+            i.Contains("Window", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Directional", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Diagonal", StringComparison.OrdinalIgnoreCase)))
+        {
+            var displayName = id.Replace("Window", "").TrimStart('-', '_');
+            if (string.IsNullOrEmpty(displayName)) displayName = "Window";
+            _doorToolCombo.Items.Add($"🪟 {displayName}");
+        }
+
+        if (_doorToolCombo.Items.Count > 0)
+            _doorToolCombo.SelectedIndex = 0;
+
+        // Восстанавливаем выбранное окно
+        if (prevProto != null)
+        {
+            for (int i = 0; i < _doorToolCombo.Items.Count; i++)
+            {
+                var item = _doorToolCombo.Items[i].ToString();
+                if (item != null && item.EndsWith(prevProto, StringComparison.OrdinalIgnoreCase))
+                {
+                    _doorToolCombo.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
     }
 
 

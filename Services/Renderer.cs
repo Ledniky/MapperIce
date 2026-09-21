@@ -2545,7 +2545,10 @@ public class Renderer
 
             DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
             {
-                using var brush = new SolidBrush(Color.FromArgb(180, 255, 0, 255));
+                bool isWindow = protoId.Contains("Window", StringComparison.OrdinalIgnoreCase);
+                using var brush = new SolidBrush(isWindow
+                    ? Color.FromArgb(180, 0, 120, 215)   // синий — окно
+                    : Color.FromArgb(180, 255, 0, 255)); // розовый — остальное
                 gg.FillRectangle(brush, r);
                 using var pen = new Pen(Color.Black, 1);
                 gg.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
@@ -2553,8 +2556,10 @@ public class Renderer
                 if (tileSize > 16)
                 {
                     using var font = new Font("Segoe UI", 6);
-                    using var textBrush = new SolidBrush(Color.White);
-                    string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
+                    using var textBrush = isWindow
+                        ? new SolidBrush(Color.FromArgb(200, 200, 230, 255))
+                        : new SolidBrush(Color.White);
+                    string label = isWindow ? "🪟" : (protoId.Length > 8 ? protoId.Substring(0, 8) : protoId);
                     gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
                 }
             }, rotation);

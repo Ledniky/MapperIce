@@ -291,6 +291,38 @@ public partial class MainForm
                 }
             }
 
+            else if (_toolManager.CurrentTool == ToolManager.Tool.ReplaceWallWithWindow)
+            {
+                var grid = _map.ActiveGrid;
+                var room = grid.Rooms.FirstOrDefault(r =>
+                    tileX >= r.X && tileX < r.X + r.Width &&
+                    tileY >= r.Y && tileY < r.Y + r.Height);
+
+                if (room != null)
+                {
+                    bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
+                                    tileY == room.Y || tileY == room.Y + room.Height - 1;
+
+                    if (isOnEdge && _tileGrid.IsWall(tileX, tileY))
+                    {
+                        // Удаляем тайл стены
+                        _tileGrid.SetTile(tileX, tileY, TileContent.Empty, null, null, 0);
+                        // Добавляем сущность-окно
+                        string windowProto = _selectedWindowProto ?? "Window";
+                        grid.Entities.Add(new MapEntity
+                        {
+                            X = tileX + 0.5f,
+                            Y = tileY + 0.5f,
+                            Proto = windowProto
+                        });
+                        RecalculateDecalPatterns();
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                }
+            }
+
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.ExpandRoom)
             {

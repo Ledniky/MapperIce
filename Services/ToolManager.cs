@@ -36,7 +36,8 @@ public class ToolManager
         WireMV,
         WireLV,
         PlaceSubstation,
-        PlaceApc
+        PlaceApc,
+        ReplaceWallWithWindow
     }
 
     private Tool _currentTool = Tool.None;
