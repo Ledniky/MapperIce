@@ -75,13 +75,22 @@ public class DecalPatternBuilder
         return IsOrthogonalBoundaryWall(room, x, y) || IsConcavePinchWall(room, x, y);
     }
 
-    private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
-    {
-        if (!room.Contains(x, y)) return true;
-        if (IsWallCell(room, x, y)) return true;
-        if (IsDoorAnywhereInGrid(grid, x, y)) return true;
-        return false;
-    }
+private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
+{
+    if (!room.Contains(x, y)) return true;
+    if (IsWallCell(room, x, y)) return true;
+    if (IsDoorAnywhereInGrid(grid, x, y)) return true;
+    return false;
+}
+
+// НОВОЕ: препятствие для классификации формы (Side/Corner/DeadEnd) должно
+// учитывать только настоящие стены — дверь на этой стороне не должна
+// "склеивать" направление двери в общий контур стены, иначе для двери
+// с соседней стеной вместо двух отдельных декалей получится один угол
+private static bool IsWallObstacleSide(Grid grid, Room room, int x, int y)
+{
+    return IsObstacleSide(grid, room, x, y) && !IsDoorAnywhereInGrid(grid, x, y);
+}
 
     private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
     {
@@ -111,20 +120,27 @@ public class DecalPatternBuilder
         return false;
     }
 
-    private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+    // НОВОЕ, рядом с IsObstacleForArea
+private static bool IsWallObstacleForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+{
+    return IsObstacleForArea(grid, room, area, x, y) && !IsDoorAnywhereInGrid(grid, x, y);
+}
+
+
+private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+{
+    return new NeighborMask
     {
-        return new NeighborMask
-        {
-            N = IsObstacleForArea(grid, room, area, x, y - 1),
-            S = IsObstacleForArea(grid, room, area, x, y + 1),
-            E = IsObstacleForArea(grid, room, area, x + 1, y),
-            W = IsObstacleForArea(grid, room, area, x - 1, y),
-            NE = IsObstacleForArea(grid, room, area, x + 1, y - 1),
-            NW = IsObstacleForArea(grid, room, area, x - 1, y - 1),
-            SE = IsObstacleForArea(grid, room, area, x + 1, y + 1),
-            SW = IsObstacleForArea(grid, room, area, x - 1, y + 1),
-        };
-    }
+        N = IsWallObstacleForArea(grid, room, area, x, y - 1),
+        S = IsWallObstacleForArea(grid, room, area, x, y + 1),
+        E = IsWallObstacleForArea(grid, room, area, x + 1, y),
+        W = IsWallObstacleForArea(grid, room, area, x - 1, y),
+        NE = IsWallObstacleForArea(grid, room, area, x + 1, y - 1),
+        NW = IsWallObstacleForArea(grid, room, area, x - 1, y - 1),
+        SE = IsWallObstacleForArea(grid, room, area, x + 1, y + 1),
+        SW = IsWallObstacleForArea(grid, room, area, x - 1, y + 1),
+    };
+}
 
     private struct NeighborMask
     {
@@ -132,20 +148,21 @@ public class DecalPatternBuilder
         public int OrthoCount => (N ? 1 : 0) + (S ? 1 : 0) + (E ? 1 : 0) + (W ? 1 : 0);
     }
 
-    private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y)
+
+private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y)
+{
+    return new NeighborMask
     {
-        return new NeighborMask
-        {
-            N = IsObstacleSide(grid, room, x, y - 1),
-            S = IsObstacleSide(grid, room, x, y + 1),
-            E = IsObstacleSide(grid, room, x + 1, y),
-            W = IsObstacleSide(grid, room, x - 1, y),
-            NE = IsObstacleSide(grid, room, x + 1, y - 1),
-            NW = IsObstacleSide(grid, room, x - 1, y - 1),
-            SE = IsObstacleSide(grid, room, x + 1, y + 1),
-            SW = IsObstacleSide(grid, room, x - 1, y + 1),
-        };
-    }
+        N = IsWallObstacleSide(grid, room, x, y - 1),
+        S = IsWallObstacleSide(grid, room, x, y + 1),
+        E = IsWallObstacleSide(grid, room, x + 1, y),
+        W = IsWallObstacleSide(grid, room, x - 1, y),
+        NE = IsWallObstacleSide(grid, room, x + 1, y - 1),
+        NW = IsWallObstacleSide(grid, room, x - 1, y - 1),
+        SE = IsWallObstacleSide(grid, room, x + 1, y + 1),
+        SW = IsWallObstacleSide(grid, room, x - 1, y + 1),
+    };
+}
 
     public void RecalculateForRoom(Grid grid, Room room)
     {
@@ -209,14 +226,16 @@ public class DecalPatternBuilder
 
                 var mask = GetNeighborMask(grid, room, x, y);
 
-                if (IsDoorAnywhereInGrid(grid, x, y - 1) || IsDoorAnywhereInGrid(grid, x, y + 1) ||
-                    IsDoorAnywhereInGrid(grid, x + 1, y) || IsDoorAnywhereInGrid(grid, x - 1, y))
-                {
-                    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.Door, ownerId, result);
-                    continue;
-                }
+if (IsDoorAnywhereInGrid(grid, x, y - 1))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x, y + 1))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x + 1, y))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x - 1, y))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
 
-                foreach (var (position, cornerDir) in ClassifyPositions(mask))
+foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 {
                     if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
                         or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
@@ -269,14 +288,16 @@ public class DecalPatternBuilder
                 // стены комнаты — поэтому GetNeighborMaskForArea, а не GetNeighborMask.
                 var mask = GetNeighborMaskForArea(grid, room, area, x, y);
 
-                if (IsDoorAnywhereInGrid(grid, x, y - 1) || IsDoorAnywhereInGrid(grid, x, y + 1) ||
-                    IsDoorAnywhereInGrid(grid, x + 1, y) || IsDoorAnywhereInGrid(grid, x - 1, y))
-                {
-                    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.Door, ownerId, result);
-                    continue;
-                }
+if (IsDoorAnywhereInGrid(grid, x, y - 1))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x, y + 1))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x + 1, y))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
+if (IsDoorAnywhereInGrid(grid, x - 1, y))
+    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
 
-                foreach (var (position, cornerDir) in ClassifyPositions(mask))
+foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 {
                     if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
                         or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)

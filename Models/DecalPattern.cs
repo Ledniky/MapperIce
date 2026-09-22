@@ -7,7 +7,7 @@ public enum DecalPosition
     OuterCornerNE, OuterCornerNW, OuterCornerSE, OuterCornerSW,
     InnerCornerNE, InnerCornerNW, InnerCornerSE, InnerCornerSW,
     DeadEndN, DeadEndS, DeadEndE, DeadEndW,
-    Door
+    DoorN, DoorS, DoorE, DoorW
 }
 
 public enum DecalPackSource { Extracted, Custom }
