@@ -387,6 +387,24 @@ public partial class MainForm
                 };
                 row.Controls.Add(modeCombo);
 
+                var chkDoorAsWall = new CheckBox
+                {
+                    Text = "Дверь как стена",
+                    Location = new Point(340, 33),
+                    Width = 140,
+                    Checked = layer.TreatDoorAsWall
+                };
+                var doorAsWallTip = new ToolTip();
+                doorAsWallTip.SetToolTip(chkDoorAsWall,
+                    "Включено — дверь считается обычной стеной, узор идёт по контуру без разрыва (без отдельной декали двери).\n" +
+                    "Выключено — дверь получает свою декаль по стороне (DoorN/S/E/W), а стена строится в обход неё.");
+                chkDoorAsWall.CheckedChanged += (s, e) =>
+                {
+                    layer.TreatDoorAsWall = chkDoorAsWall.Checked;
+                    ApplyLiveChanges();
+                };
+                row.Controls.Add(chkDoorAsWall);
+
                 listPanel.Controls.Add(row);
                 rowY += 66;
             }

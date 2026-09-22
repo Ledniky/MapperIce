@@ -1269,7 +1269,7 @@ public class Renderer
 
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
     {
-        var renderQueue = new List<(double WorldY, int DrawDepthOffset, int InsertOrder, Action draw)>();
+        var renderQueue = new List<(double WorldY, int DrawDepthOffset, int LayerOrder, int InsertOrder, Action draw)>();
         int _insertCounter = 0;
 
         // Пол
@@ -1284,7 +1284,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
             var t = tile;
-            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
+            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
         }
 
         // Пол под дверями
@@ -1300,7 +1300,7 @@ public class Renderer
                 }
                 if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
                 var t = tile;
-                renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
+                renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
             }
         }
 
@@ -1316,7 +1316,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Walls");
             var t = tile;
-            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
+            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
         }
 
         // Двери
@@ -1331,7 +1331,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Doors");
             var t = tile;
-            renderQueue.Add((t.Y, dd, _insertCounter++, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
         }
 
         // Декали
@@ -1345,7 +1345,8 @@ public class Renderer
                 if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
             }
             var d = decal;
-            renderQueue.Add((d.Y, dd, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
+            int layerOrder = d.PatternLayerIndex;
+            renderQueue.Add((d.Y, dd, layerOrder, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
         }
 
         // Огнешлюзы
@@ -1359,7 +1360,7 @@ public class Renderer
                 if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
             }
             var f = firelock;
-            renderQueue.Add((f.Y, dd, _insertCounter++, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
         }
 
         // Сигнализации (AirAlarm / FireAlarm) — теперь внутри общей сортировки
@@ -1374,7 +1375,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
             var a = entity;
-            renderQueue.Add((a.Y, dd, _insertCounter++, () => DrawSingleAlarm(g, a, tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100))));
+            renderQueue.Add((a.Y, dd, 0, _insertCounter++, () => DrawSingleAlarm(g, a, tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100))));
         }
         foreach (var entity in grid.Entities.OfType<FireAlarmEntity>())
         {
@@ -1387,7 +1388,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
             var f = entity;
-            renderQueue.Add((f.Y, dd, _insertCounter++, () => DrawSingleAlarm(g, f, tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100))));
+            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleAlarm(g, f, tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100))));
         }
 
         // Generic entities (без труб, огнешлюзов и сигнализаций — у них свои
@@ -1405,15 +1406,19 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
             var e = entity;
-            renderQueue.Add((e.Y, dd, _insertCounter++, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((e.Y, dd, 0, _insertCounter++, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
-        // затем внутри одного слоя по Y (меньше Y = дальше на экране = заднее)
+        // затем по порядку слоя декали (LayerOrder — как настроено в окне Decal Rule;
+        // для всего, что не декаль, всегда 0, поэтому на них это не влияет),
+        // и только затем внутри всего этого — по Y (меньше Y = дальше на экране = заднее)
         renderQueue.Sort((a, b) =>
         {
             int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
             if (ddComp != 0) return ddComp;
+            int layerComp = a.LayerOrder.CompareTo(b.LayerOrder);
+            if (layerComp != 0) return layerComp;
             return a.WorldY.CompareTo(b.WorldY);
         });
 
@@ -2452,36 +2457,36 @@ public class Renderer
     }
 
 
-        private void DrawExpandRoomPreview(Graphics g, float scale, PointF viewOffset)
+    private void DrawExpandRoomPreview(Graphics g, float scale, PointF viewOffset)
+    {
+        if (!_showExpandPreview || _expandPreviewRoom == null) return;
+        if (_currentMap?.ActiveGrid == null) return;
+
+        var newCells = RoomSubtractor.GetExpandRunNewCells(
+            _expandPreviewRoom, _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
+        if (newCells.Count == 0) return;
+
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
+
+        using var freeBrush = new SolidBrush(Color.FromArgb(150, 40, 220, 90));
+        using var freePen = new Pen(Color.DarkGreen, 2);
+        using var blockedBrush = new SolidBrush(Color.FromArgb(150, 220, 40, 40));
+        using var blockedPen = new Pen(Color.DarkRed, 2);
+
+        foreach (var (cx, cy) in newCells)
         {
-            if (!_showExpandPreview || _expandPreviewRoom == null) return;
-            if (_currentMap?.ActiveGrid == null) return;
-
-            var newCells = RoomSubtractor.GetExpandRunNewCells(
-                _expandPreviewRoom, _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
-            if (newCells.Count == 0) return;
-
-            int tileSize = (int)(Constants.TILE_SIZE * scale);
-            int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid);
-            float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
-            var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
-
-            using var freeBrush = new SolidBrush(Color.FromArgb(150, 40, 220, 90));
-            using var freePen = new Pen(Color.DarkGreen, 2);
-            using var blockedBrush = new SolidBrush(Color.FromArgb(150, 220, 40, 40));
-            using var blockedPen = new Pen(Color.DarkRed, 2);
-
-            foreach (var (cx, cy) in newCells)
-            {
-                bool blocked = RoomSubtractor.IsCellBlocked(_currentMap.ActiveGrid, _expandPreviewRoom, (cx, cy));
-                var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
-                g.FillRectangle(blocked ? blockedBrush : freeBrush, rect);
-                g.DrawRectangle(blocked ? blockedPen : freePen, rect);
-            }
+            bool blocked = RoomSubtractor.IsCellBlocked(_currentMap.ActiveGrid, _expandPreviewRoom, (cx, cy));
+            var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
+            g.FillRectangle(blocked ? blockedBrush : freeBrush, rect);
+            g.DrawRectangle(blocked ? blockedPen : freePen, rect);
         }
-        
-        
-            private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
+    }
+
+
+    private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
     {
         if (!ShowAlarmConnections) return;
         if (alarms.Count == 0) return;

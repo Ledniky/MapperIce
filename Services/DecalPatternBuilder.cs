@@ -127,18 +127,22 @@ private static bool IsWallObstacleForArea(Grid grid, Room room, ManualDecalArea 
 }
 
 
-private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
+private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y, bool treatDoorAsWall)
 {
+    bool Obstacle(int nx, int ny) => treatDoorAsWall
+        ? IsObstacleForArea(grid, room, area, nx, ny)
+        : IsObstacleForArea(grid, room, area, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+
     return new NeighborMask
     {
-        N = IsWallObstacleForArea(grid, room, area, x, y - 1),
-        S = IsWallObstacleForArea(grid, room, area, x, y + 1),
-        E = IsWallObstacleForArea(grid, room, area, x + 1, y),
-        W = IsWallObstacleForArea(grid, room, area, x - 1, y),
-        NE = IsWallObstacleForArea(grid, room, area, x + 1, y - 1),
-        NW = IsWallObstacleForArea(grid, room, area, x - 1, y - 1),
-        SE = IsWallObstacleForArea(grid, room, area, x + 1, y + 1),
-        SW = IsWallObstacleForArea(grid, room, area, x - 1, y + 1),
+        N = Obstacle(x, y - 1),
+        S = Obstacle(x, y + 1),
+        E = Obstacle(x + 1, y),
+        W = Obstacle(x - 1, y),
+        NE = Obstacle(x + 1, y - 1),
+        NW = Obstacle(x - 1, y - 1),
+        SE = Obstacle(x + 1, y + 1),
+        SW = Obstacle(x - 1, y + 1),
     };
 }
 
@@ -149,18 +153,22 @@ private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualD
     }
 
 
-private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y)
+private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, bool treatDoorAsWall)
 {
+    bool Obstacle(int nx, int ny) => treatDoorAsWall
+        ? IsObstacleSide(grid, room, nx, ny)
+        : IsObstacleSide(grid, room, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+
     return new NeighborMask
     {
-        N = IsWallObstacleSide(grid, room, x, y - 1),
-        S = IsWallObstacleSide(grid, room, x, y + 1),
-        E = IsWallObstacleSide(grid, room, x + 1, y),
-        W = IsWallObstacleSide(grid, room, x - 1, y),
-        NE = IsWallObstacleSide(grid, room, x + 1, y - 1),
-        NW = IsWallObstacleSide(grid, room, x - 1, y - 1),
-        SE = IsWallObstacleSide(grid, room, x + 1, y + 1),
-        SW = IsWallObstacleSide(grid, room, x - 1, y + 1),
+        N = Obstacle(x, y - 1),
+        S = Obstacle(x, y + 1),
+        E = Obstacle(x + 1, y),
+        W = Obstacle(x - 1, y),
+        NE = Obstacle(x + 1, y - 1),
+        NW = Obstacle(x - 1, y - 1),
+        SE = Obstacle(x + 1, y + 1),
+        SW = Obstacle(x - 1, y + 1),
     };
 }
 
@@ -224,16 +232,19 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y)
                 if (room.RemovedCells.Contains((x, y))) continue;
                 if (IsWallCell(room, x, y)) continue;
 
-                var mask = GetNeighborMask(grid, room, x, y);
+var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
 
-if (IsDoorAnywhereInGrid(grid, x, y - 1))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x, y + 1))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x + 1, y))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x - 1, y))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
+if (!layer.TreatDoorAsWall)
+{
+    if (IsDoorAnywhereInGrid(grid, x, y - 1))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x, y + 1))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x + 1, y))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x - 1, y))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
+}
 
 foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 {
@@ -286,16 +297,19 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 // Ключевое отличие от авто-режима по периметру комнаты: тут границей
                 // "стен" для тайлрула служит сам прямоугольник area, а не реальные
                 // стены комнаты — поэтому GetNeighborMaskForArea, а не GetNeighborMask.
-                var mask = GetNeighborMaskForArea(grid, room, area, x, y);
+var mask = GetNeighborMaskForArea(grid, room, area, x, y, layer.TreatDoorAsWall);
 
-if (IsDoorAnywhereInGrid(grid, x, y - 1))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x, y + 1))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x + 1, y))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
-if (IsDoorAnywhereInGrid(grid, x - 1, y))
-    AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
+if (!layer.TreatDoorAsWall)
+{
+    if (IsDoorAnywhereInGrid(grid, x, y - 1))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x, y + 1))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x + 1, y))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
+    if (IsDoorAnywhereInGrid(grid, x - 1, y))
+        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
+}
 
 foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 {

@@ -51,19 +51,15 @@ public class DecalLayer
     public string Name { get; set; } = "Слой";
     public string? SourcePackId { get; set; }
     public bool Enabled { get; set; } = true;
-
-    // null = использовать цвет пака по умолчанию. Задан = переопределение цвета
-    // именно для этого узла (типа комнаты в Наследовании) или конкретной комнаты —
-    // так разные отделы/комнаты могут красить один и тот же пак по-разному, не трогая
-    // сам пак и не влияя друг на друга.
     public string? Color { get; set; } = null;
-
-    // Режим теперь задаётся ПО СЛОЮ, а не для всей комнаты сразу — один слой может
-    // идти по периметру автоматически, а другой (например, декоративные пятна/пятна
-    // ржавчины) быть расставлен вручную по своим областям, и оба живут в одной комнате
-    // одновременно.
     public DecalPatternMode Mode { get; set; } = DecalPatternMode.Auto;
     public List<ManualDecalArea> ManualAreas { get; set; } = new();
+
+    // true — дверь на границе слоя считается обычной стеной: узор Side/Corner/
+    // DeadEnd идёт по контуру без разрыва, отдельная направленная декаль двери
+    // НЕ ставится. false (по умолчанию) — дверь получает свою декаль DoorN/S/E/W,
+    // а контур стены строится в обход неё (сторона с дверью не в счёт).
+    public bool TreatDoorAsWall { get; set; } = false;
 
     public DecalLayer Clone()
     {
@@ -74,11 +70,11 @@ public class DecalLayer
             Enabled = Enabled,
             Color = Color,
             Mode = Mode,
-            ManualAreas = ManualAreas.Select(a => a.Clone()).ToList()
+            ManualAreas = ManualAreas.Select(a => a.Clone()).ToList(),
+            TreatDoorAsWall = TreatDoorAsWall
         };
     }
 }
-
 
 public class DecalRuleSet
 {
