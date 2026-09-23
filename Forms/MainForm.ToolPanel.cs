@@ -74,7 +74,7 @@ public partial class MainForm
         };
         _roomTypeCombo.DisplayMember = "DisplayName";
         _roomTypeCombo.ValueMember = "Name";
-        _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.DisplayName).ToList();
+        _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.Category).ThenBy(t => t.DisplayName).ToList();
         var selectedRoomType = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
         _roomTypeCombo.SelectedItem = selectedRoomType;
         _roomTypeCombo.SelectedIndexChanged += (s, e) =>
