@@ -75,6 +75,19 @@ public class DecalPatternBuilder
         return IsOrthogonalBoundaryWall(room, x, y) || IsConcavePinchWall(room, x, y);
     }
 
+
+        // Есть ли реальный пол (не стеновое кольцо) хоть у одной комнаты грида в этой
+    // клетке — используется для клетки двери: если "за дверью" пол другой комнаты,
+    // сторона считается открытой (как проход), а не тупиком.
+    private static bool IsFloorOfAnyRoom(Grid grid, int x, int y)
+    {
+        foreach (var r in grid.Rooms)
+        {
+            if (r.Contains(x, y) && !IsWallCell(r, x, y)) return true;
+        }
+        return false;
+    }
+
 private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
 {
     if (!room.Contains(x, y)) return true;
@@ -129,9 +142,17 @@ private static bool IsWallObstacleForArea(Grid grid, Room room, ManualDecalArea 
 
 private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y, bool treatDoorAsWall)
 {
-    bool Obstacle(int nx, int ny) => treatDoorAsWall
-        ? IsObstacleForArea(grid, room, area, nx, ny)
-        : IsObstacleForArea(grid, room, area, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+    bool currentIsDoor = IsDoorAnywhereInGrid(grid, x, y);
+
+    bool Obstacle(int nx, int ny)
+    {
+        if (currentIsDoor && !room.Contains(nx, ny))
+            return !IsFloorOfAnyRoom(grid, nx, ny);
+
+        return treatDoorAsWall
+            ? IsObstacleForArea(grid, room, area, nx, ny)
+            : IsObstacleForArea(grid, room, area, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+    }
 
     return new NeighborMask
     {
@@ -155,9 +176,17 @@ private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualD
 
 private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, bool treatDoorAsWall)
 {
-    bool Obstacle(int nx, int ny) => treatDoorAsWall
-        ? IsObstacleSide(grid, room, nx, ny)
-        : IsObstacleSide(grid, room, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+    bool currentIsDoor = IsDoorAnywhereInGrid(grid, x, y);
+
+    bool Obstacle(int nx, int ny)
+    {
+        if (currentIsDoor && !room.Contains(nx, ny))
+            return !IsFloorOfAnyRoom(grid, nx, ny);
+
+        return treatDoorAsWall
+            ? IsObstacleSide(grid, room, nx, ny)
+            : IsObstacleSide(grid, room, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
+    }
 
     return new NeighborMask
     {
@@ -230,7 +259,9 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
             for (int y = room.Y; y < room.Y + room.Height; y++)
             {
                 if (room.RemovedCells.Contains((x, y))) continue;
-                if (IsWallCell(room, x, y)) continue;
+
+                bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
+                if (IsWallCell(room, x, y) && !(!layer.TreatDoorAsWall && isDoorHere)) continue;
 
 var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
 
@@ -292,7 +323,9 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
             for (int y = area.Y; y < area.Y + area.Height; y++)
             {
                 if (!room.Contains(x, y)) continue;
-                if (IsWallCell(room, x, y)) continue;
+
+                bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
+                if (IsWallCell(room, x, y) && !(!layer.TreatDoorAsWall && isDoorHere)) continue;
 
                 // Ключевое отличие от авто-режима по периметру комнаты: тут границей
                 // "стен" для тайлрула служит сам прямоугольник area, а не реальные
