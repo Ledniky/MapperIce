@@ -15,6 +15,7 @@ public abstract class MedicalPlusRoomType : RoomType
 public class MedicalBreakRoom : MedicalPlusRoomType
 {
     public override string Name => "MedicalBreakRoom";
+    public override string DisplayName => "Комната отдыха медиков";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 120, 200, 240);
@@ -25,6 +26,7 @@ public class MedicalBreakRoom : MedicalPlusRoomType
 public class Cryogenetics : MedicalPlusRoomType
 {
     public override string Name => "Cryogenetics";
+    public override string DisplayName => "Крионика";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 220, 255);
@@ -35,6 +37,7 @@ public class Cryogenetics : MedicalPlusRoomType
 public class Paramedic : MedicalPlusRoomType
 {
     public override string Name => "Paramedic";
+    public override string DisplayName => "Парамедик";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 200, 220);
@@ -45,6 +48,7 @@ public class Paramedic : MedicalPlusRoomType
 public class Psychologist : MedicalPlusRoomType
 {
     public override string Name => "Psychologist";
+    public override string DisplayName => "Психолог";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 220);
@@ -55,6 +59,7 @@ public class Psychologist : MedicalPlusRoomType
 public class MedicalStorage : MedicalPlusRoomType
 {
     public override string Name => "MedicalStorage";
+    public override string DisplayName => "Медсклад";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 190, 210);

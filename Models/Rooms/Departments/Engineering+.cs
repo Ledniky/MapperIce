@@ -16,6 +16,7 @@ public abstract class EngineeringPlusRoomType : RoomType
 public class GravityGenerator : EngineeringPlusRoomType
 {
     public override string Name => "GravityGenerator";
+    public override string DisplayName => "Генератор гравитации";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 180, 220);
@@ -26,6 +27,7 @@ public class GravityGenerator : EngineeringPlusRoomType
 public class Supermatter : EngineeringPlusRoomType
 {
     public override string Name => "Supermatter";
+    public override string DisplayName => "Суперматерия";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 200, 100);
@@ -36,6 +38,7 @@ public class Supermatter : EngineeringPlusRoomType
 public class Solars : EngineeringPlusRoomType
 {
     public override string Name => "Solars";
+    public override string DisplayName => "Солнечные панели";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 220, 200, 100);
@@ -46,6 +49,7 @@ public class Solars : EngineeringPlusRoomType
 public class Telecoms : EngineeringPlusRoomType
 {
     public override string Name => "Telecoms";
+    public override string DisplayName => "Телекоммуникации";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 180, 200);
@@ -56,6 +60,7 @@ public class Telecoms : EngineeringPlusRoomType
 public class Router : EngineeringPlusRoomType
 {
     public override string Name => "Router";
+    public override string DisplayName => "Маршрутизатор";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 140, 170, 190);

@@ -19,6 +19,7 @@ public abstract class CargoRoomType : RoomType
 public class Cargo : CargoRoomType
 {
     public override string Name => "Cargo";
+    public override string DisplayName => "Снабжение";
     public override string Description => "Комната снабжения. Основной отсек для хранения и распределения ресурсов станции.";
     public override string DoorProto => "AirlockCargoLocked";
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
@@ -30,7 +31,8 @@ public class Cargo : CargoRoomType
 public class Salvage : CargoRoomType
 {
     public override string Name => "Salvage";
-    public override string Description => "Спасательная комната. Отсек для восстановления и утилизации космического мусора.";
+    public override string DisplayName => "Утилизаторская";
+    public override string Description => "Комната утилизаторов. Отсек для восстановления и утилизации космического мусора.";
     public override string DoorProto => "AirlockSalvageLocked";
     public override string GlassDoorProto => "AirlockSalvageGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 141, 28, 153);
@@ -41,6 +43,7 @@ public class Salvage : CargoRoomType
 public class Mining : CargoRoomType
 {
     public override string Name => "Mining";
+    public override string DisplayName => "Шахтёрский";
     public override string Description => "Шахта. Отсек для добычи полезных ископаемых и переработки руды.";
     public override string DoorProto => "AirlockMiningLocked";
     public override string GlassDoorProto => "AirlockMiningGlassLocked";
@@ -49,13 +52,10 @@ public class Mining : CargoRoomType
     public override int Priority => 30;
 }
 
-// ============================================================
-// КАБИНЕТЫ СНАБЖЕНИЯ
-// ============================================================
-
 public class Quartermaster : CargoRoomType
 {
     public override string Name => "Quartermaster";
+    public override string DisplayName => "Кватермастер";
     public override string Description => "Кабинет кватермастера. Офис руководителя отдела снабжения и логистики.";
     public override string DoorProto => "AirlockQuartermasterLocked";
     public override string GlassDoorProto => "AirlockQuartermasterGlassLocked";

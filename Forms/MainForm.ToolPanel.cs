@@ -72,13 +72,16 @@ public partial class MainForm
             BackColor = Color.White,
             ForeColor = Color.Black
         };
-        _roomTypeCombo.DataSource = _roomTypeManager.GetAllTypeNames().OrderBy(n => n).ToList();
-        _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+        _roomTypeCombo.DisplayMember = "DisplayName";
+        _roomTypeCombo.ValueMember = "Name";
+        _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.DisplayName).ToList();
+        var selectedRoomType = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
+        _roomTypeCombo.SelectedItem = selectedRoomType;
         _roomTypeCombo.SelectedIndexChanged += (s, e) =>
         {
-            if (_roomTypeCombo.SelectedItem != null)
+            if (_roomTypeCombo.SelectedItem is RoomType rt)
             {
-                _roomTypeManager.SelectType(_roomTypeCombo.SelectedItem.ToString()!);
+                _roomTypeManager.SelectType(rt.Name);
                 if (_currentRoom != null)
                 {
                     _roomTypeManager.ApplyTypeToRoom(_currentRoom);
@@ -89,7 +92,7 @@ public partial class MainForm
         };
         _roomTypeCombo.MouseHover += (s, e) =>
         {
-            var roomType = _roomTypeManager.GetRoomType(_roomTypeCombo.SelectedItem?.ToString());
+            var roomType = _roomTypeCombo.SelectedItem as RoomType;
             if (roomType != null && !string.IsNullOrEmpty(roomType.Description))
             {
                 _roomTypeTooltip.SetToolTip(_roomTypeCombo, roomType.Description);
@@ -113,12 +116,12 @@ public partial class MainForm
             {
                 _roomTypeCombo.Invoke(new Action(() =>
                 {
-                    _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+                    _roomTypeCombo.SelectedItem = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
                 }));
             }
             else
             {
-                _roomTypeCombo.SelectedItem = _roomTypeManager.SelectedType;
+                _roomTypeCombo.SelectedItem = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
             }
         };
 
@@ -1293,9 +1296,9 @@ public partial class MainForm
         foreach (var category in _roomTypeManager.GetCategories().OrderBy(c => c.Key))
         {
             var node = new TreeNode(category.Key);
-            foreach (var type in category.Value.OrderBy(t => t.Name))
+            foreach (var type in category.Value.OrderBy(t => t.DisplayName))
             {
-                node.Nodes.Add(new TreeNode(type.Name)
+                node.Nodes.Add(new TreeNode(type.DisplayName)
                 {
                     Tag = type,
                     ForeColor = type.IsCustom ? Color.Blue : Color.Black

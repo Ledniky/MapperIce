@@ -19,6 +19,7 @@ public abstract class CommandRoomType : RoomType
 public class Command : CommandRoomType
 {
     public override string Name => "Command";
+    public override string DisplayName => "Командование";
     public override string Description => "Комната командования. Основной командный отсек для координации действий экипажа.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
@@ -30,7 +31,8 @@ public class Command : CommandRoomType
 public class EVA : CommandRoomType
 {
     public override string Name => "EVA";
-    public override string Description => "Внешняя космическая комната. Шлюз для выхода в открытый космос и внешних работ.";
+    public override string DisplayName => "ЕВА (ВКД)";
+    public override string Description => "Хранилище скафандров";
     public override string DoorProto => "AirlockEVALocked";
     public override string GlassDoorProto => "AirlockEVAGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 80, 150, 200);
@@ -41,6 +43,7 @@ public class EVA : CommandRoomType
 public class Vault : CommandRoomType
 {
     public override string Name => "Vault";
+    public override string DisplayName => "Хранилище";
     public override string Description => "Хранилище. Укреплённое помещение с высокосекьюрными дверями для хранения ценных ресурсов.";
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "HighSecCommandLocked";
@@ -50,13 +53,10 @@ public class Vault : CommandRoomType
     public override int Priority => 150;
 }
 
-// ============================================================
-// КАБИНЕТЫ КОМАНДОВАНИЯ
-// ============================================================
-
 public class Captain : CommandRoomType
 {
     public override string Name => "Captain";
+    public override string DisplayName => "Капитан";
     public override string Description => "Капитанская каюта. Личные покои капитана станции с максимальной защитой.";
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockCaptainLocked";
@@ -69,6 +69,7 @@ public class Captain : CommandRoomType
 public class HeadOfPersonnel : CommandRoomType
 {
     public override string Name => "HeadOfPersonnel";
+    public override string DisplayName => "Глава персоонала";
     public override string Description => "Кабинет начальника кадров. Офис руководителя отдела кадров и управления персоналом.";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
@@ -80,6 +81,7 @@ public class HeadOfPersonnel : CommandRoomType
 public class Bridge : CommandRoomType
 {
     public override string Name => "Bridge";
+    public override string DisplayName => "Мостик";
     public override string Description => "Мостик. Центральная командная точка управления станцией с полным обзором.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";

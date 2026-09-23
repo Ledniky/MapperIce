@@ -19,6 +19,7 @@ public abstract class ServiceRoomType : RoomType
 public class Service : ServiceRoomType
 {
     public override string Name => "Service";
+    public override string DisplayName => "Сервис";
     public override string Description => "Комната сервиса. Базовое помещение для обслуживания и бытовых нужд экипажа.";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
@@ -30,6 +31,7 @@ public class Service : ServiceRoomType
 public class Janitor : ServiceRoomType
 {
     public override string Name => "Janitor";
+    public override string DisplayName => "Уборщик";
     public override string Description => "Комната уборщика. Помещение для хранения уборочного оборудования и химии.";
     public override string DoorProto => "AirlockJanitorLocked";
     public override string GlassDoorProto => "AirlockJanitorGlassLocked";
@@ -41,6 +43,7 @@ public class Janitor : ServiceRoomType
 public class Kitchen : ServiceRoomType
 {
     public override string Name => "Kitchen";
+    public override string DisplayName => "Кухня";
     public override string Description => "Кухня. Помещение для приготовления пищи и хранения продуктов.";
     public override string DoorProto => "AirlockKitchenLocked";
     public override string GlassDoorProto => "AirlockKitchenGlassLocked";
@@ -52,6 +55,7 @@ public class Kitchen : ServiceRoomType
 public class Bar : ServiceRoomType
 {
     public override string Name => "Bar";
+    public override string DisplayName => "Бар";
     public override string Description => "Бар. Место отдыха экипажа с тёмным интерьером для подачи напитков.";
     public override string DoorProto => "AirlockBarLocked";
     public override string GlassDoorProto => "AirlockBarGlassLocked";
@@ -63,6 +67,7 @@ public class Bar : ServiceRoomType
 public class Hydroponics : ServiceRoomType
 {
     public override string Name => "Hydroponics";
+    public override string DisplayName => "Гидропоника";
     public override string Description => "Гидропоника. Оранжерея для выращивания растений и овощей без почвы.";
     public override string DoorProto => "AirlockHydroponicsLocked";
     public override string GlassDoorProto => "AirlockHydroGlassLocked";
@@ -74,7 +79,8 @@ public class Hydroponics : ServiceRoomType
 public class Chapel : ServiceRoomType
 {
     public override string Name => "Chapel";
-    public override string Description => "Часовня. Место для молитв и духовных размышлений с тёплым интерьером.";
+    public override string DisplayName => "Церковь";
+    public override string Description => "Церковь. Место для молитв и духовных размышлений с тёплым интерьером.";
     public override string DoorProto => "AirlockChapelLocked";
     public override string GlassDoorProto => "AirlockChapelGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 150);
@@ -85,6 +91,7 @@ public class Chapel : ServiceRoomType
 public class Theatre : ServiceRoomType
 {
     public override string Name => "Theatre";
+    public override string DisplayName => "Театр";
     public override string Description => "Театр. Зрительный зал для развлечений и культурных мероприятий экипажа.";
     public override string DoorProto => "AirlockTheatreLocked";
     public override string GlassDoorProto => "AirlockTheatreGlassLocked";
@@ -93,13 +100,10 @@ public class Theatre : ServiceRoomType
     public override int Priority => 10;
 }
 
-// ============================================================
-// КАБИНЕТЫ СЕРВИСА
-// ============================================================
-
 public class Lawyer : ServiceRoomType
 {
     public override string Name => "Lawyer";
+    public override string DisplayName => "Офис адвокат";
     public override string Description => "Кабинет адвоката. Офис для юридических консультаций и представительства.";
     public override string DoorProto => "AirlockLawyerLocked";
     public override string GlassDoorProto => "AirlockLawyerGlassLocked";

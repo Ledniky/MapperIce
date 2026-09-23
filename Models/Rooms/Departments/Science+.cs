@@ -15,6 +15,7 @@ public abstract class SciencePlusRoomType : RoomType
 public class Anomalistics : SciencePlusRoomType
 {
     public override string Name => "Anomalistics";
+    public override string DisplayName => "Аномалистика";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 100, 220);
@@ -25,6 +26,7 @@ public class Anomalistics : SciencePlusRoomType
 public class Robotics : SciencePlusRoomType
 {
     public override string Name => "Robotics";
+    public override string DisplayName => "Робототехника";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 150, 200);
@@ -35,6 +37,7 @@ public class Robotics : SciencePlusRoomType
 public class Xenobiology : SciencePlusRoomType
 {
     public override string Name => "Xenobiology";
+    public override string DisplayName => "Ксенобиология";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 120, 200, 120);
@@ -45,6 +48,7 @@ public class Xenobiology : SciencePlusRoomType
 public class AtmosStorage : SciencePlusRoomType
 {
     public override string Name => "AtmosStorage";
+    public override string DisplayName => "Атмо-склад";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 150, 80);

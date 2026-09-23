@@ -22,7 +22,7 @@ public partial class MainForm
 
         _decalRuleForm = new Form
         {
-            Text = $"Decal Rule — комната {room.RoomType}",
+            Text = $"Decal Rule — комната {_roomTypeManager.GetRoomType(room.RoomType).DisplayName}",
             Size = new Size(formWidth, formHeight),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
@@ -244,7 +244,7 @@ public partial class MainForm
                         MessageBox.Show("Пак не найден.");
                         return;
                     }
-                    var clone = _decalPackManager.CloneForOwnUse(source, $"{source.Name} ({room.RoomType} room)");
+                    var clone = _decalPackManager.CloneForOwnUse(source, $"{source.Name} ({_roomTypeManager.GetRoomType(room.RoomType).DisplayName} room)");
                     layer.SourcePackId = clone.Id;
                     RebuildList();
                     ApplyLiveChanges();
@@ -439,7 +439,7 @@ public partial class MainForm
             if (inheritedRule == null || inheritedRule.Layers.Count == 0)
             {
                 MessageBox.Show(
-                    $"Для типа «{room.RoomType}» (и его предков) не задано ни одного правила в окне «Наследование декалей».",
+                    $"Для типа «{_roomTypeManager.GetRoomType(room.RoomType).DisplayName}» (и его предков) не задано ни одного правила в окне «Наследование декалей».",
                     "Унаследовать");
                 return;
             }

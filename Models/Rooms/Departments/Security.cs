@@ -20,6 +20,7 @@ public abstract class SecurityRoomType : RoomType
 public class Security : SecurityRoomType
 {
     public override string Name => "Security";
+    public override string DisplayName => "Безопасность";
     public override string Description => "Комната безопасности. Основной отсек для патрулирования и обеспечения порядка на станции.";
     public override string DoorProto => "AirlockSecurityLocked";
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
@@ -31,7 +32,8 @@ public class Security : SecurityRoomType
 public class Brig : SecurityRoomType
 {
     public override string Name => "Brig";
-    public override string Description => "Тюрьма. Изолятор для содержания задержанных с усиленными стенами и дверями.";
+    public override string DisplayName => "Бриг";
+    public override string Description => "Бриг. Изолятор для содержания задержанных с усиленными стенами и дверями.";
     public override string DoorProto => "AirlockBrigLocked";
     public override string GlassDoorProto => "AirlockBrigGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 50, 50);
@@ -42,6 +44,7 @@ public class Brig : SecurityRoomType
 public class Armory : SecurityRoomType
 {
     public override string Name => "Armory";
+    public override string DisplayName => "Оружейная";
     public override string Description => "Оружейная. Хранилище оружия и снаряжения для отдела безопасности.";
     public override string DoorProto => "AirlockArmoryLocked";
     public override string GlassDoorProto => "AirlockArmoryGlassLocked";
@@ -53,6 +56,7 @@ public class Armory : SecurityRoomType
 public class Detective : SecurityRoomType
 {
     public override string Name => "Detective";
+    public override string DisplayName => "Детектив";
     public override string Description => "Кабинет детектива. Офис для расследований и допросов с тёплой цветовой гаммой.";
     public override string DoorProto => "AirlockDetectiveLocked";
     public override string GlassDoorProto => "AirlockDetectiveGlassLocked";
@@ -61,14 +65,11 @@ public class Detective : SecurityRoomType
     public override int Priority => 60;
 }
 
-// ============================================================
-// КАБИНЕТЫ БЕЗОПАСНОСТИ
-// ============================================================
-
 public class Warden : Armory
 {
     public override string Name => "Warden";
-    public override string Description => "Кабинет надзирателя. Офис руководителя тюрьмы с белым полом.";
+    public override string DisplayName => "Смотритель";
+    public override string Description => "Кабинет смотриеля. Офис руководителя тюрьмы с белым полом.";
     public override string DoorProto => "AirlockWardenLocked";
     public override string GlassDoorProto => "AirlockWardenGlassLocked";
     public override string FloorProto => "FloorWhite";
@@ -80,7 +81,8 @@ public class Warden : Armory
 public class HeadOfSecurity : SecurityRoomType
 {
     public override string Name => "HeadOfSecurity";
-    public override string Description => "Кабинет начальника службы безопасности. Офис руководителя всех силовых структур станции.";
+    public override string DisplayName => "Глава службы безопасности";
+    public override string Description => "Кабинет Глава службы безопасности. Офис руководителя всех силовых структур станции.";
     public override string FloorProto => "FloorDark";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 222, 58, 58);

@@ -9,6 +9,8 @@ namespace MapperIce.Models;
 public abstract class RoomType
 {
     public abstract string Name { get; }
+    /// <summary>Отображаемое имя типа комнаты на русском языке (только для UI)</summary>
+    public virtual string DisplayName => Name;
     public virtual string Description => "";
     public virtual string Pack => "Vanilla";
     public virtual string Category => "Common";
@@ -51,6 +53,7 @@ public abstract class AntagRoomType : RoomType
 public class General : CommonRoomType
 {
     public override string Name => "General";
+    public override string DisplayName => "Общее";
     public override string Description => "Общая комната без специализации. Коридоры, холлы и базовые помещения.";
     public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
     public override int Priority => 0;
@@ -59,6 +62,7 @@ public class General : CommonRoomType
 public class Vox : CommonRoomType
 {
     public override string Name => "Vox";
+    public override string DisplayName => "Vox";
     public override string Description => "Комната для речевых дронов Vox. Оснащена воздушной сигнализацией.";
     public override Color FillColor => Color.FromArgb(100, 254, 1, 64);
     public override string? AirAlarmProto => "AirAlarmVox";
@@ -68,6 +72,7 @@ public class Vox : CommonRoomType
 public class Technical : CommonRoomType
 {
     public override string Name => "Technical";
+    public override string DisplayName => "Техника";
     public override string Description => "Техническое помещение. Обшитое деревянными панелями, с усиленными дверями.";
     public override string DoorProto => "AirlockMaintLocked";
     public override string FloorProto => "Plating";
@@ -80,6 +85,7 @@ public class Technical : CommonRoomType
 public class Hallway : CommonRoomType
 {
     public override string Name => "Hallway";
+    public override string DisplayName => "Коридор";
     public override string Description => "Коридор. Светлое помещение с кафельным полом для основных проходов.";
     public override Color FillColor => Color.FromArgb(100, 230, 230, 240);
     public override Color LineColor => Color.FromArgb(255, 200, 200, 210);
@@ -89,6 +95,7 @@ public class Hallway : CommonRoomType
 public class BaseRoom : CommonRoomType
 {
     public override string Name => "BaseRoom";
+    public override string DisplayName => "Базовое";
     public override bool IsHidden => true;
     public override int Priority => 0;
 }
@@ -100,6 +107,7 @@ public class BaseRoom : CommonRoomType
 public class Syndicate : AntagRoomType
 {
     public override string Name => "Syndicate";
+    public override string DisplayName => "Синдикат";
     public override string Description => "Комната синдиката. Бандитское помещение с усиленными дверями для тайных операций.";
     public override string DoorProto => "AirlockSyndicateLocked";
     public override string GlassDoorProto => "AirlockSyndicateGlassLocked";
@@ -111,6 +119,7 @@ public class Syndicate : AntagRoomType
 public class Nukeop : AntagRoomType
 {
     public override string Name => "Nukeop";
+    public override string DisplayName => "Ядерная операция";
     public override string Description => "Ядерная операционная комната. Особое помещение для ядерной команды с максимальной изоляцией.";
     public override string DoorProto => "AirlockSyndicateNukeopLocked";
     public override string GlassDoorProto => "AirlockSyndicateNukeopGlassLocked";
@@ -135,6 +144,7 @@ public class CustomRoomType : RoomType
     }
 
     public override string Name => Data.Name;
+    public override string DisplayName => string.IsNullOrEmpty(Data.DisplayName) ? Data.Name : Data.DisplayName;
     public override string Description => string.IsNullOrEmpty(Data.Description) ? $"Кастомный тип: {Data.Name}" : Data.Description;
     public override string Pack => Data.Pack;
     public override string Category => Data.Category;
@@ -168,6 +178,7 @@ public class CustomRoomType : RoomType
 public class CustomRoomTypeData
 {
     public string Name { get; set; } = "";
+    public string DisplayName { get; set; } = "";
     public string Pack { get; set; } = "Custom";
     public string Category { get; set; } = "Custom";
     public string WallProto { get; set; } = "WallSolid";

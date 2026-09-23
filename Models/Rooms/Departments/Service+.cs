@@ -15,6 +15,7 @@ public abstract class ServicePlusRoomType : RoomType
 public class Library : ServicePlusRoomType
 {
     public override string Name => "Library";
+    public override string DisplayName => "Библиотека";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 130);
@@ -25,6 +26,7 @@ public class Library : ServicePlusRoomType
 public class Gym : ServicePlusRoomType
 {
     public override string Name => "Gym";
+    public override string DisplayName => "Тренажёрный зал";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 200, 150);
@@ -35,6 +37,7 @@ public class Gym : ServicePlusRoomType
 public class Garden : ServicePlusRoomType
 {
     public override string Name => "Garden";
+    public override string DisplayName => "Сад";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 200, 100);
@@ -45,6 +48,7 @@ public class Garden : ServicePlusRoomType
 public class Dorms : ServicePlusRoomType
 {
     public override string Name => "Dorms";
+    public override string DisplayName => "Общежитие (Дормы)";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 180, 200);
@@ -55,6 +59,7 @@ public class Dorms : ServicePlusRoomType
 public class Toilets : ServicePlusRoomType
 {
     public override string Name => "Toilets";
+    public override string DisplayName => "Туалет";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 220, 230);
@@ -65,6 +70,7 @@ public class Toilets : ServicePlusRoomType
 public class LockerRoom : ServicePlusRoomType
 {
     public override string Name => "LockerRoom";
+    public override string DisplayName => "Раздевалка";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 190, 180);
@@ -75,6 +81,7 @@ public class LockerRoom : ServicePlusRoomType
 public class Arcade : ServicePlusRoomType
 {
     public override string Name => "Arcade";
+    public override string DisplayName => "Зал аркадных автоматов";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 150, 200);
@@ -85,6 +92,7 @@ public class Arcade : ServicePlusRoomType
 public class Park : ServicePlusRoomType
 {
     public override string Name => "Park";
+    public override string DisplayName => "Парк";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 100, 220, 100);
@@ -95,6 +103,7 @@ public class Park : ServicePlusRoomType
 public class Courtroom : ServicePlusRoomType
 {
     public override string Name => "Courtroom";
+    public override string DisplayName => "Суд";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 170, 150);
@@ -109,6 +118,7 @@ public class Courtroom : ServicePlusRoomType
 public class BarBackroom : ServicePlusRoomType
 {
     public override string Name => "BarBackroom";
+    public override string DisplayName => "Задняя комната бара";
     public override string DoorProto => "AirlockMaintLocked";
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 120, 100);
@@ -119,6 +129,7 @@ public class BarBackroom : ServicePlusRoomType
 public class ChapelMorgue : ServicePlusRoomType
 {
     public override string Name => "ChapelMorgue";
+    public override string DisplayName => "Морг церкви";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 140);
     public override Color LineColor => Color.FromArgb(255, 180, 160, 140);
     public override int Priority => 15;
@@ -127,6 +138,7 @@ public class ChapelMorgue : ServicePlusRoomType
 public class KitchenBackroom : ServicePlusRoomType
 {
     public override string Name => "KitchenBackroom";
+    public override string DisplayName => "Задняя комната кухни";
     public override string DoorProto => "AirlockMaintLocked";
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 160, 120);

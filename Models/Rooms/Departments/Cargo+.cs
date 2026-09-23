@@ -15,6 +15,7 @@ public abstract class CargoPlusRoomType : RoomType
 public class CargoOffice : CargoPlusRoomType
 {
     public override string Name => "CargoOffice";
+    public override string DisplayName => "Офис снабжения";
     public override string DoorProto => "AirlockCargoLocked";
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 110, 30);
@@ -25,6 +26,7 @@ public class CargoOffice : CargoPlusRoomType
 public class Mailroom : CargoPlusRoomType
 {
     public override string Name => "Mailroom";
+    public override string DisplayName => "Почта";
     public override string DoorProto => "AirlockCargoLocked";
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 170, 100, 20);
@@ -35,6 +37,7 @@ public class Mailroom : CargoPlusRoomType
 public class Recycling : CargoPlusRoomType
 {
     public override string Name => "Recycling";
+    public override string DisplayName => "Переработка";
     public override string DoorProto => "AirlockCargoLocked";
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 120, 40);

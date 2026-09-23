@@ -299,9 +299,9 @@ public partial class RoomTypeDialog : Form
                     categoryNode.ForeColor = color;
                 }
 
-                foreach (var type in category.Value.OrderBy(t => t.Name))
+                foreach (var type in category.Value.OrderBy(t => t.DisplayName))
                 {
-                    var typeNode = new TreeNode(type.Name)
+                    var typeNode = new TreeNode(type.DisplayName)
                     {
                         Tag = new CategoryNode { Name = type.Name, Level = NodeLevel.Type, Pack = pack.Key, RoomType = type },
                         ForeColor = type.IsCustom ? Color.Blue : Color.Black
@@ -437,7 +437,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
 
         var titleLabel = new Label
         {
-            Text = $"✏️ Редактирование: {type.Name}",
+            Text = $"✏️ Редактирование: {type.DisplayName}",
             Location = new Point(5, 5),
             Size = new Size(panelWidth - 10, 25),
             Font = new Font("Segoe UI", 10, FontStyle.Bold),
@@ -999,7 +999,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
             return;
         }
 
-        if (MessageBox.Show($"Удалить тип '{_selectedType.Name}'?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+        if (MessageBox.Show($"Удалить тип '{_selectedType.DisplayName}'?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
         {
             _manager.DeleteCustomType(_selectedType.Name);
             _selectedType = null;
@@ -1146,7 +1146,7 @@ private void ExportSingleType()
 
     using var saveFileDialog = new SaveFileDialog
     {
-        Title = $"Экспорт типа: {_selectedType.Name}",
+        Title = $"Экспорт типа: {_selectedType.DisplayName}",
         Filter = "JSON файлы (*.json)|*.json|Все файлы (*.*)|*.*",
         FilterIndex = 1,
         RestoreDirectory = true,
@@ -1158,7 +1158,7 @@ private void ExportSingleType()
         try
         {
             _manager.ExportType(_selectedType.Name, saveFileDialog.FileName);
-            MessageBox.Show($"Тип '{_selectedType.Name}' успешно экспортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show($"Тип '{_selectedType.DisplayName}' успешно экспортирован!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {

@@ -520,6 +520,14 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
         return _types.Keys.ToList();
     }
 
+    /// <summary>
+    /// Возвращает все типы комнат (для привязки к ComboBox с DisplayMember/ValueMember).
+    /// </summary>
+    public List<RoomType> GetAllRoomTypes()
+    {
+        return _types.Values.ToList();
+    }
+
     public bool TypeExists(string typeName)
     {
         return _types.ContainsKey(typeName);

@@ -19,6 +19,7 @@ public abstract class MedicalRoomType : RoomType
 public class Medical : MedicalRoomType
 {
     public override string Name => "Medical";
+    public override string DisplayName => "Медицинский отсек";
     public override string Description => "Медицинская комната. Основной медицинский отсек для лечения и диагностики.";
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
@@ -30,6 +31,7 @@ public class Medical : MedicalRoomType
 public class Virology : MedicalRoomType
 {
     public override string Name => "Virology";
+    public override string DisplayName => "Вирусология";
     public override string Description => "Вирусная лаборатория. Герметичное помещение с усиленными стенами для работы с опасными патогенами.";
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockVirologyLocked";
@@ -42,6 +44,7 @@ public class Virology : MedicalRoomType
 public class Chemistry : MedicalRoomType
 {
     public override string Name => "Chemistry";
+    public override string DisplayName => "Химическая лаб.";
     public override string Description => "Химическая лаборатория. Помещение для приготовления лекарств и химических реакций.";
     public override string DoorProto => "AirlockChemistryLocked";
     public override string GlassDoorProto => "AirlockChemistryGlassLocked";
@@ -53,6 +56,7 @@ public class Chemistry : MedicalRoomType
 public class Morgue : MedicalRoomType
 {
     public override string Name => "Morgue";
+    public override string DisplayName => "Морг";
     public override string Description => "Морг. Холодильное помещение для хранения тел и проведения вскрытий.";
     public override string DoorProto => "AirlockMedicalMorgueLocked";
     public override string GlassDoorProto => "AirlockMedicalMorgueGlassLocked";
@@ -61,13 +65,10 @@ public class Morgue : MedicalRoomType
     public override int Priority => 30;
 }
 
-// ============================================================
-// КАБИНЕТЫ МЕДИЦИНЫ
-// ============================================================
-
 public class ChiefMedicalOfficer : MedicalRoomType
 {
     public override string Name => "ChiefMedicalOfficer";
+    public override string DisplayName => "Главный врач";
     public override string Description => "Кабинет главного врача. Офис руководителя медицинского отдела станции.";
     public override string DoorProto => "AirlockChiefMedicalOfficerLocked";
     public override string GlassDoorProto => "AirlockChiefMedicalOfficerGlassLocked";
