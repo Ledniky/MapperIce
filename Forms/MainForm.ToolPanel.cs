@@ -70,13 +70,36 @@ public partial class MainForm
             DropDownStyle = ComboBoxStyle.DropDownList,
             Font = new Font("Arial", 9),
             BackColor = Color.White,
-            ForeColor = Color.Black
+            ForeColor = Color.Black,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 17
         };
         _roomTypeCombo.DisplayMember = "DisplayName";
         _roomTypeCombo.ValueMember = "Name";
         _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.Category).ThenBy(t => t.DisplayName).ToList();
         var selectedRoomType = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
         _roomTypeCombo.SelectedItem = selectedRoomType;
+
+_roomTypeCombo.DrawItem += (s, e) =>
+{
+    if (e.Index < 0) return;
+    e.DrawBackground();
+
+    if (_roomTypeCombo.Items[e.Index] is RoomType rt)
+    {
+        bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        var textColor = selected ? SystemColors.HighlightText : NormalizeForText(rt.LineColor);
+        using (var textBrush = new SolidBrush(textColor))
+        {
+            var font = e.Font ?? _roomTypeCombo.Font;
+            float textY = e.Bounds.Top + (e.Bounds.Height - font.Height) / 2f;
+            e.Graphics.DrawString(rt.DisplayName, font, textBrush, e.Bounds.Left + 4, textY);
+        }
+    }
+
+    e.DrawFocusRectangle();
+};
+
         _roomTypeCombo.SelectedIndexChanged += (s, e) =>
         {
             if (_roomTypeCombo.SelectedItem is RoomType rt)
@@ -1206,6 +1229,58 @@ public partial class MainForm
         _wireIconLV = GetPrototypeIcon("CableApcExtension", "lvcable_15");
         if (_wireTypeCombo != null && !_wireTypeCombo.IsDisposed) _wireTypeCombo.Invalidate();
     }
+
+
+/// <summary>
+/// Приводит произвольный цвет к фиксированной насыщенности и светлоте,
+/// оставляя только исходный оттенок (Hue). Нужно, чтобы цвета типов комнат
+/// в выпадающем списке не сливались с белым фоном (у части типов LineColor
+/// изначально слишком светлый/блёклый).
+/// </summary>
+private static Color NormalizeForText(Color source, float saturation = 0.65f, float lightness = 0.35f)
+{
+    float hue = source.GetHue();
+    float origSaturation = source.GetSaturation();
+
+    // Практически серые/бесцветные исходники (например General, Hallway) —
+    // не тянем их в случайный оттенок через Hue=0, а красим нейтральным тёмно-серым
+    if (origSaturation < 0.05f)
+        return Color.FromArgb(60, 60, 60);
+
+    return ColorFromAhsl(hue, saturation, lightness);
+}
+
+private static Color ColorFromAhsl(float hue, float saturation, float lightness)
+{
+    if (saturation == 0)
+    {
+        int gray = (int)(lightness * 255);
+        return Color.FromArgb(gray, gray, gray);
+    }
+
+    float q = lightness < 0.5f
+        ? lightness * (1 + saturation)
+        : lightness + saturation - lightness * saturation;
+    float p = 2 * lightness - q;
+    float hk = hue / 360f;
+
+    float r = HueToRgb(p, q, hk + 1f / 3f);
+    float g = HueToRgb(p, q, hk);
+    float b = HueToRgb(p, q, hk - 1f / 3f);
+
+    return Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
+}
+
+private static float HueToRgb(float p, float q, float t)
+{
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1f / 6f) return p + (q - p) * 6f * t;
+    if (t < 1f / 2f) return q;
+    if (t < 2f / 3f) return p + (q - p) * (2f / 3f - t) * 6f;
+    return p;
+}
+
 
     /// <summary>
     /// Наполняет выпадающий список окон прототипами, содержащими "Window",

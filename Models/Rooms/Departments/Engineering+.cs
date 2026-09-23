@@ -6,7 +6,7 @@ namespace MapperIce.Models;
 // ДОПОЛНИТЕЛЬНЫЕ КОМНАТЫ ИНЖЕНЕРИИ (Engineering+)
 // ============================================================
 
-public abstract class EngineeringPlusRoomType : RoomType
+public abstract class EngineeringPlusRoomType : EngineeringRoomType
 {
     public override string Category => "Engineering+";
     public override string FloorProto => "FloorSteel";
@@ -19,8 +19,6 @@ public class GravityGenerator : EngineeringPlusRoomType
     public override string DisplayName => "Генератор гравитации";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 180, 180, 220);
-    public override Color LineColor => Color.FromArgb(255, 180, 180, 220);
     public override int Priority => 10;
 }
 
@@ -30,8 +28,6 @@ public class Supermatter : EngineeringPlusRoomType
     public override string DisplayName => "Суперматерия";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 200, 200, 100);
-    public override Color LineColor => Color.FromArgb(255, 200, 200, 100);
     public override int Priority => 10;
 }
 
@@ -41,8 +37,6 @@ public class Solars : EngineeringPlusRoomType
     public override string DisplayName => "Солнечные панели";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 220, 200, 100);
-    public override Color LineColor => Color.FromArgb(255, 220, 200, 100);
     public override int Priority => 10;
 }
 
@@ -52,8 +46,6 @@ public class Telecoms : EngineeringPlusRoomType
     public override string DisplayName => "Телекоммуникации";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 150, 180, 200);
-    public override Color LineColor => Color.FromArgb(255, 150, 180, 200);
     public override int Priority => 10;
 }
 
@@ -63,7 +55,5 @@ public class Router : EngineeringPlusRoomType
     public override string DisplayName => "Маршрутизатор";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 140, 170, 190);
-    public override Color LineColor => Color.FromArgb(255, 140, 170, 190);
     public override int Priority => 10;
 }

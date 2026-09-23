@@ -34,6 +34,8 @@ public abstract class RoomType
 public abstract class CommonRoomType : RoomType
 {
     public override string Category => "Common";
+    public override Color LineColor => Color.FromArgb(255, 180, 180, 180);
+    public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
 }
 
 // ============================================================
@@ -55,24 +57,24 @@ public class General : CommonRoomType
     public override string Name => "General";
     public override string DisplayName => "Общее";
     public override string Description => "Общая комната без специализации. Коридоры, холлы и базовые помещения.";
-    public override Color FillColor => Color.FromArgb(100, 220, 220, 220);
     public override int Priority => 0;
 }
 
 public class Vox : CommonRoomType
 {
     public override string Name => "Vox";
-    public override string DisplayName => "Vox";
-    public override string Description => "Комната для речевых дронов Vox. Оснащена воздушной сигнализацией.";
-    public override Color FillColor => Color.FromArgb(100, 254, 1, 64);
+    public override string DisplayName => "Вокс";
+    public override string Description => "Комната для рассы воксов. Оснащена отдельной воздушной сигнализацией.";
     public override string? AirAlarmProto => "AirAlarmVox";
+    public override Color FillColor => Color.FromArgb(100, 254, 1, 230);
+    public override Color LineColor => Color.FromArgb(100, 254, 1, 180);
     public override int Priority => 15;
 }
 
 public class Technical : CommonRoomType
 {
     public override string Name => "Technical";
-    public override string DisplayName => "Техника";
+    public override string DisplayName => "Техи";
     public override string Description => "Техническое помещение. Обшитое деревянными панелями, с усиленными дверями.";
     public override string DoorProto => "AirlockMaintLocked";
     public override string FloorProto => "Plating";
@@ -87,8 +89,6 @@ public class Hallway : CommonRoomType
     public override string Name => "Hallway";
     public override string DisplayName => "Коридор";
     public override string Description => "Коридор. Светлое помещение с кафельным полом для основных проходов.";
-    public override Color FillColor => Color.FromArgb(100, 230, 230, 240);
-    public override Color LineColor => Color.FromArgb(255, 200, 200, 210);
     public override int Priority => 0;
 }
 

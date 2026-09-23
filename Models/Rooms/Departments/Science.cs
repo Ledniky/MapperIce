@@ -10,6 +10,8 @@ public abstract class ScienceRoomType : RoomType
 {
     public override string Category => "Science";
     public override string FloorProto => "FloorSteel";
+    public override Color FillColor => Color.FromArgb(100, 211, 129, 201);
+    public override Color LineColor => Color.FromArgb(255, 211, 129, 201);
 }
 
 // ============================================================
@@ -23,8 +25,6 @@ public class Science : ScienceRoomType
     public override string Description => "Научная комната. Основной лабораторный отсек для научных исследований и экспериментов.";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 211, 129, 201);
-    public override Color LineColor => Color.FromArgb(255, 211, 129, 201);
     public override int Priority => 15;
 }
 

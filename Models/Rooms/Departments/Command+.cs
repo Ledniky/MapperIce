@@ -6,10 +6,11 @@ namespace MapperIce.Models;
 // ДОПОЛНИТЕЛЬНЫЕ КОМНАТЫ КОМАНДОВАНИЯ (Command+)
 // ============================================================
 
-public abstract class CommandPlusRoomType : RoomType
+public abstract class CommandPlusRoomType : CommandRoomType
 {
     public override string Category => "Command+";
     public override string FloorProto => "FloorSteel";
+
 }
 
 public class ConferenceRoom : CommandPlusRoomType
@@ -18,8 +19,6 @@ public class ConferenceRoom : CommandPlusRoomType
     public override string DisplayName => "Конференц-зал";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 80, 100, 140);
-    public override Color LineColor => Color.FromArgb(255, 80, 100, 140);
     public override int Priority => 150;
 }
 
@@ -42,8 +41,6 @@ public class AI : CommandPlusRoomType
     public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockAI";
     public override string GlassDoorProto => "AirlockAIGlass";
-    public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
-    public override Color LineColor => Color.FromArgb(255, 30, 50, 100);
     public override int Priority => 170;
 }
 
@@ -52,7 +49,5 @@ public class SatelliteAI : CommandPlusRoomType
     public override string Name => "Satellite";
     public override string DisplayName => "Спутник ИИ";
     public override string WallProto => "WallReinforced";
-    public override Color FillColor => Color.FromArgb(100, 150, 150, 180);
-    public override Color LineColor => Color.FromArgb(255, 150, 150, 180);
     public override int Priority => 160;
 }

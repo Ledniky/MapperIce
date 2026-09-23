@@ -48,8 +48,6 @@ public class External : EngineeringRoomType
     public override string Description => "Внешняя инженерная комната. Открытый отсек для внешних работ и обслуживания корпуса станции.";
     public override string DoorProto => "AirlockExternalLocked";
     public override string GlassDoorProto => "AirlockExternalGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 100, 180, 220);
-    public override Color LineColor => Color.FromArgb(255, 100, 180, 220);
     public override int Priority => 50;
 }
 

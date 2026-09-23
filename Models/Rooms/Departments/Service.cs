@@ -47,8 +47,8 @@ public class Kitchen : ServiceRoomType
     public override string Description => "Кухня. Помещение для приготовления пищи и хранения продуктов.";
     public override string DoorProto => "AirlockKitchenLocked";
     public override string GlassDoorProto => "AirlockKitchenGlassLocked";
-    public override Color FillColor => Color.FromArgb(100, 200, 180, 100);
-    public override Color LineColor => Color.FromArgb(255, 200, 180, 100);
+    public override Color FillColor => Color.FromArgb(237, 142, 142, 100);
+    public override Color LineColor => Color.FromArgb(224, 123, 123, 100);
     public override int Priority => 10;
 }
 
