@@ -315,6 +315,11 @@ public partial class MainForm
                             Y = tileY + 0.5f,
                             Proto = windowProto
                         });
+                        // Запоминаем клетку как "окно" в самой комнате — иначе
+                        // BuildFromRooms при следующем UpdateTileGrid() заново
+                        // поставит сюда стену (он перестраивает стены с нуля
+                        // из геометрии комнаты, а не из текущего _tileGrid)
+                        room.Windows.Add((tileX, tileY));
                         RecalculateDecalPatterns();
                         UpdateTileGrid();
                         SaveState();

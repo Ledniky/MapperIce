@@ -419,6 +419,20 @@ listContainer.Controls.Add(_protoList);
             }
         }
 
+        // Invoke требует уже созданного дескриптора окна. При старте, если
+        // индексация из кэша завершается очень быстро (как сейчас), фоновая
+        // задача ниже успевает вызвать Invoke раньше, чем форма создаёт хэндл —
+        // обычный Invoke в этот момент кидает InvalidOperationException.
+        // Вместо падения ждём HandleCreated, если хэндла ещё нет
+        void SafeInvoke(Action action)
+        {
+            if (_protoList.IsDisposed) return;
+            if (_protoList.IsHandleCreated)
+                _protoList.Invoke(action);
+            else
+                _protoList.HandleCreated += (s, e) => { if (!_protoList.IsDisposed) _protoList.Invoke(action); };
+        }
+
         Task.Run(() =>
         {
             try
@@ -485,7 +499,7 @@ listContainer.Controls.Add(_protoList);
 
                 if (token.IsCancellationRequested) return;
 
-                _protoList.Invoke(() =>
+                SafeInvoke(() =>
                 {
                     _protoList.Items.Clear();
                     if (result.Count == 0)
@@ -499,7 +513,7 @@ listContainer.Controls.Add(_protoList);
             }
             catch (Exception ex)
             {
-                _protoList.Invoke(() =>
+                SafeInvoke(() =>
                 {
                     _protoList.Items.Clear();
                     _protoList.Items.Add($"Ошибка: {ex.Message}");

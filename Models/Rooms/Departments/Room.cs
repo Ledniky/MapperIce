@@ -19,7 +19,11 @@ public class Room
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
     public List<(int X, int Y)> Passages { get; set; } = new();
-    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;    
+    // Клетки на границе комнаты, где стена заменена на окно (инструмент
+    // "Заменить на окно") — BuildFromRooms пропускает их так же, как Passages,
+    // иначе стена восстанавливается заново при следующей пересборке TileGrid
+    public List<(int X, int Y)> Windows { get; set; } = new();
+    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto; 
     public DecalRuleSet AutoDecalRule { get; set; } = new();
     public List<ManualDecalArea> ManualDecalAreas { get; set; } = new();
 
@@ -68,6 +72,7 @@ public Room Clone()
         }
 
         clone.Passages = new List<(int X, int Y)>(Passages);
+        clone.Windows = new List<(int X, int Y)>(Windows);
 
         return clone;
     }

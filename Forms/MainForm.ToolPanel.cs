@@ -7,6 +7,12 @@ namespace MapperIce.Forms;
 
 public partial class MainForm
 {
+    // label ("🪟 <название>") -> полный ID прототипа окна, заполняется в
+    // UpdateWindowCombo. Раньше ID восстанавливался обратным Replace/EndsWith
+    // из текста пункта — при коллизиях после трансформации (разные ID дающие
+    // одинаковое отображаемое имя) это молча не находило совпадение, и клик
+    // по стене не переключал инструмент
+    private readonly Dictionary<string, string> _windowProtoIdCache = new();
 
     // === ПАНЕЛЬ ИНСТРУМЕНТОВ ===
     private void CreateToolPanel()
@@ -314,6 +320,11 @@ _roomTypeCombo.DrawItem += (s, e) =>
                         _ => null
                     };
                 }
+                else if (label.StartsWith("🪟 "))
+                {
+                    fallback = "🪟";
+                    _windowIconCache.TryGetValue(label, out icon);
+                }
 
                 if (icon != null)
                 {
@@ -343,15 +354,14 @@ _roomTypeCombo.DrawItem += (s, e) =>
                 // Проверяем, является ли пункт прототипом окна (начинается с 🪟)
                 if (key.StartsWith("🪟 "))
                 {
-                    // Извлекаем ID прототипа — убираем префикс "🪟 "
-                    string protoName = key.Substring(3);
-                    // Ищем полный ID в индексированных прототипах
-                    var allIds = _indexer.GetPrototypeIds();
-                    string? foundId = allIds.FirstOrDefault(id =>
-                        id.Replace("Window", "").TrimStart('-', '_') == protoName ||
-                        id.EndsWith(protoName, StringComparison.OrdinalIgnoreCase));
-                    if (foundId != null)
+                    // Берём точный ID напрямую из кэша label->id (заполняется в
+                    // UpdateWindowCombo) вместо того чтобы угадывать его обратным
+                    // Replace/EndsWith по тексту пункта — EndsWith цеплял любой ID,
+                    // заканчивающийся на то же слово (например, AirlockAssemblyMining
+                    // вместо настоящего окна "Mining")
+                    if (_windowProtoIdCache.TryGetValue(key, out var foundId))
                     {
+                        System.Diagnostics.Debug.WriteLine($"[WindowSelect] key='{key}' found={foundId != null} id='{foundId}'");
                         _selectedWindowProto = foundId;
                         _toolManager.SetTool(ToolManager.Tool.ReplaceWallWithWindow);
                         return;
@@ -1295,36 +1305,77 @@ private static float HueToRgb(float p, float q, float t)
         string? prevProto = _selectedWindowProto;
         _doorToolCombo.Items.Clear();
 
+        foreach (var oldIcon in _windowIconCache.Values)
+            oldIcon?.Dispose();
+        _windowIconCache.Clear();
+        _windowProtoIdCache.Clear();
+
         // Восстанавливаем старый список + добавляем новый пункт
         foreach (var label in _doorToolMap.Keys)
             _doorToolCombo.Items.Add(label);
 
-        foreach (var id in allIds.Where(i =>
+        var windowIds = allIds.Where(i =>
             i.Contains("Window", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Directional", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Diagonal", StringComparison.OrdinalIgnoreCase)))
+            !i.Contains("Diagonal", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Shutters", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Button", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("RCD", StringComparison.OrdinalIgnoreCase) &&
+            !i.Contains("Base", StringComparison.OrdinalIgnoreCase) &&
+            (_indexer.FindPrototype(i)?.IsStructure ?? false))
+            .ToList();
+
+        string GetWindowDisplayName(string protoId)
         {
-            var displayName = id.Replace("Window", "").TrimStart('-', '_');
-            if (string.IsNullOrEmpty(displayName)) displayName = "Window";
-            _doorToolCombo.Items.Add($"🪟 {displayName}");
+            var name = protoId.Replace("Window", "").TrimStart('-', '_');
+            return string.IsNullOrEmpty(name) ? "Window" : name;
         }
 
+        // Считаем, сколько разных ID дают одинаковое отображаемое имя — если
+        // несколько ID схлопываются в один и тот же текст пункта, каждый пункт
+        // становится неотличим от другого, и в словарь label->id (см. ниже)
+        // записывается только последний из них, а остальные при выборе тихо
+        // подставляют чужой прототип
+        var displayNameCounts = windowIds
+            .GroupBy(GetWindowDisplayName)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var id in windowIds)
+        {
+            var displayName = GetWindowDisplayName(id);
+            var label = displayNameCounts[displayName] > 1
+                ? $"🪟 {displayName} [{id}]"
+                : $"🪟 {displayName}";
+            _doorToolCombo.Items.Add(label);
+            _windowIconCache[label] = GetPrototypeIcon(id);
+            _windowProtoIdCache[label] = id;
+        }
+
+        // Решётка — отдельный прототип без "Window" в ID, поэтому не проходит
+        // фильтр windowIds. Добавляем вручную, тем же префиксом 🪟 и тем же
+        // способом (кэш иконки + кэш ID), чтобы дальше работал тот же
+        // механизм выбора/клика, что и для окон, без отдельной ветки кода
         if (_doorToolCombo.Items.Count > 0)
             _doorToolCombo.SelectedIndex = 0;
 
         // Восстанавливаем выбранное окно
+                // Восстанавливаем выбранное окно
         if (prevProto != null)
         {
             for (int i = 0; i < _doorToolCombo.Items.Count; i++)
             {
                 var item = _doorToolCombo.Items[i].ToString();
-                if (item != null && item.EndsWith(prevProto, StringComparison.OrdinalIgnoreCase))
+                if (item != null &&
+                    _windowProtoIdCache.TryGetValue(item, out var itemProtoId) &&
+                    itemProtoId == prevProto)
                 {
                     _doorToolCombo.SelectedIndex = i;
                     break;
                 }
             }
         }
+
+        _doorToolCombo.Invalidate();
     }
 
 

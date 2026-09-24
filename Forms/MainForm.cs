@@ -50,8 +50,7 @@ private ComboBox _doorToolCombo = null!;
         { "Дверь", ToolManager.Tool.Door },
         { "Дверь (стекло)", ToolManager.Tool.DoorGlass },
         { "Проход", ToolManager.Tool.Passage },
-        { "Восстановить стену", ToolManager.Tool.RestoreWall },
-        { "Заменить на окно", ToolManager.Tool.ReplaceWallWithWindow }
+        { "Восстановить стену", ToolManager.Tool.RestoreWall }
     };
     // Для пунктов с реальным прототипом (двери) — Id для GetCachedProtoIcon.
     // ProtoId == null -> у пункта нет спрайта, всегда рисуется Fallback-эмодзи
@@ -73,7 +72,11 @@ private ComboBox _doorToolCombo = null!;
     // LoadWireJunctionIcons сразу после заполнения списков, как и door-иконки,
     // чтобы не зависеть от ленивой фоновой подгрузки и лишнего Invalidate
     private readonly Dictionary<string, Image?> _wireJunctionIconCache = new();
-    // Готовые иконки для _wireTypeCombo — CableHV, CableMV, CableApcExtension
+    // Кэш иконок для пунктов-окон в _doorToolCombo (ключ — текст пункта,
+    // напр. "🪟 Reinforced") — грузится синхронно в UpdateWindowCombo,
+    // как и остальные комбо-иконки, чтобы не зависеть от ленивой подгрузки
+    private readonly Dictionary<string, Image?> _windowIconCache = new();
+        // Готовые иконки для _wireTypeCombo — CableHV, CableMV, CableApcExtension
     private Image? _wireIconHV;
     private Image? _wireIconMV;
     private Image? _wireIconLV;
