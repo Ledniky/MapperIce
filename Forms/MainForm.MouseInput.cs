@@ -315,6 +315,13 @@ public partial class MainForm
                             Y = tileY + 0.5f,
                             Proto = windowProto
                         });
+                        // Добавляем сущность-решётку под окном (в том же тайле)
+                        grid.Entities.Add(new MapEntity
+                        {
+                            X = tileX + 0.5f,
+                            Y = tileY + 0.5f,
+                            Proto = "Grille"
+                        });
                         // Запоминаем клетку как "окно" в самой комнате — иначе
                         // BuildFromRooms при следующем UpdateTileGrid() заново
                         // поставит сюда стену (он перестраивает стены с нуля
