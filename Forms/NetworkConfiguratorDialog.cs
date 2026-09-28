@@ -45,8 +45,8 @@ public class NetworkConfiguratorDialog : Form
         _setCanvasPickMode = setCanvasPickMode;
 
         Text = "Конфигуратор сетей";
-        Size = new Size(820, 480);
-        MinimumSize = new Size(680, 420);
+        Size = new Size(820, 600);
+        MinimumSize = new Size(680, 500);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
 
@@ -127,7 +127,7 @@ public class NetworkConfiguratorDialog : Form
 
         _btnUnlink.Text = "Удалить связь";
         _btnUnlink.Location = new Point(12, 432);
-        _btnUnlink.Size = new Size(120, 28);
+        _btnUnlink.Size = new Size(100, 40);
         _btnUnlink.FlatStyle = FlatStyle.Flat;
         _btnUnlink.BackColor = Color.FromArgb(250, 235, 235);
         _btnUnlink.Click += (s, e) => RemoveSelectedLink();
@@ -135,8 +135,8 @@ public class NetworkConfiguratorDialog : Form
 
         // Кнопка «Выделить» — выбор объекта на канвасе кликом
         _btnPick.Text = "🔍 Выделить";
-        _btnPick.Location = new Point(140, 432);
-        _btnPick.Size = new Size(120, 28);
+        _btnPick.Location = new Point(122, 432);
+        _btnPick.Size = new Size(100, 40);
         _btnPick.FlatStyle = FlatStyle.Flat;
         _btnPick.BackColor = Color.FromArgb(225, 235, 250);
         _btnPick.Click += (s, e) => TogglePickMode();

@@ -1368,7 +1368,7 @@ public class Renderer
         int NodeScreenX(float wx) => (int)((wx + 0.5f + gridOffset.X) * tileSize - viewOffset.X);
         int NodeScreenY(float wy) => (int)((wy + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y);
 
-        using var dimPen = new Pen(Color.FromArgb(120, 120, 120), 2);
+        using var dimPen = new Pen(Color.FromArgb(90, 255, 220, 60), 2);
         using var brightPen = new Pen(Color.FromArgb(255, 255, 220, 60), 3);
 
         foreach (var entity in linksEntities)
