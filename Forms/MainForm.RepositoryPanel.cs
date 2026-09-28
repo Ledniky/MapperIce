@@ -46,7 +46,7 @@ public partial class MainForm
             Font = new Font("Consolas", 9),
             IntegralHeight = false,
             DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 32
+            ItemHeight = 46
         };
 _protoList.DoubleClick += OnPrototypeDoubleClick;
 _protoList.DrawItem += ProtoList_DrawItem;
@@ -789,13 +789,15 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
 
         // В ListBox.Items по-прежнему лежит настоящий id (drag&drop, выбор,
         // ArmPrototypePlacement и т.п. завязаны именно на него) — здесь подменяем
-        // ТОЛЬКО отображаемый текст на русское название, если оно нашлось и содержит кириллицу
-        string? displayText = id;
+        // ТОЛЬКО отображаемый текст на русское название, если оно нашлось и содержит
+        // кириллицу. При этом под локализованным именем второй строкой рисуется сам id.
+        bool hasLocalizedName = false;
+        string? localizedName = null;
         if (isRealProto)
         {
-            var localizedName = _indexer.FindPrototype(id!)?.LocalizedName;
-            if (!string.IsNullOrWhiteSpace(localizedName) && localizedName.Any(c => c >= '\u0400' && c <= '\u04FF'))
-                displayText = localizedName;
+            localizedName = _indexer.FindPrototype(id!)?.LocalizedName;
+            hasLocalizedName = !string.IsNullOrWhiteSpace(localizedName) &&
+                               localizedName.Any(c => c >= '\u0400' && c <= '\u04FF');
         }
 
         if (isRealProto)
@@ -820,8 +822,31 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             textX = e.Bounds.Left + padding;
         }
 
-        var textFont = new Font(e.Font.FontFamily, 12, e.Font.Style);
-        TextRenderer.DrawText(e.Graphics, displayText, textFont, new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height), e.ForeColor, TextFormatFlags.VerticalCenter);
+        // Двухстрочный вариант: сверху локализованное имя, под ним — настоящий id.
+        // Для прототипов без локализации (или служебных пунктов) — одна строка по центру.
+        if (hasLocalizedName)
+        {
+            var nameFont = new Font(e.Font.FontFamily, 12, e.Font.Style);
+            var idFont = new Font(e.Font.FontFamily, 9, e.Font.Style);
+
+            int line1H = 22;
+            int line2H = 18;
+            var r1 = new Rectangle(textX, e.Bounds.Top + 3, e.Bounds.Right - textX, line1H);
+            var r2 = new Rectangle(textX, e.Bounds.Top + 3 + line1H, e.Bounds.Right - textX, line2H);
+
+            TextRenderer.DrawText(e.Graphics, localizedName!, nameFont, r1, e.ForeColor,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, id!, idFont, r2, Color.Gray,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        }
+        else
+        {
+            string? displayText = id;
+            var textFont = new Font(e.Font.FontFamily, 12, e.Font.Style);
+            TextRenderer.DrawText(e.Graphics, displayText, textFont,
+                new Rectangle(textX, e.Bounds.Top, e.Bounds.Right - textX, e.Bounds.Height),
+                e.ForeColor, TextFormatFlags.VerticalCenter);
+        }
 
         e.DrawFocusRectangle();
     }

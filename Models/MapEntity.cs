@@ -15,4 +15,10 @@ public class MapEntity
     /// Чем меньше — тем ниже сущность на экране.
     /// </summary>
     public int DrawDepthOffset { get; set; } = 0;
+
+    /// <summary>
+    /// Связи беспроводной сети (для «кнопок/рычагов» с компонентом DeviceLinkSource):
+    /// какие порты источника куда ведут. Пустой список — связей нет.
+    /// </summary>
+    public List<EntityNetworkLink> NetworkLinks { get; set; } = new();
 }

@@ -969,6 +969,38 @@ _roomTypeCombo.DrawItem += (s, e) =>
         _toolPanel.Controls.Add(magnifierRowPanel);
         y += 34 + 2;
 
+        // Кнопка-заглушка "Спей. возможности" — пока открывает окно-заглушку
+        _btnSpyCapabilities = new Button
+        {
+            Text = "Спей. возможности",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnSpyCapabilities.Click += (s, e) => ShowSpyCapabilitiesStub();
+        _toolPanel.Controls.Add(_btnSpyCapabilities);
+        y += 34 + 2;
+
+        // Кнопка «Конфигуратор сетей» — связывание кнопок/рычагов с устройствами
+        _btnNetworkConfigurator = new Button
+        {
+            Text = "Конфигуратор сетей",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnNetworkConfigurator.Click += (s, e) => ShowNetworkConfigurator();
+        _toolPanel.Controls.Add(_btnNetworkConfigurator);
+        y += 34 + 2;
+
         var decalRuleLabel = new Label
         {
             Text = "Decal Rule:",

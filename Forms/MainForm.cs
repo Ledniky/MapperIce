@@ -126,6 +126,7 @@ private ComboBox _doorToolCombo = null!;
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
     private bool _showWires = true;
+    private bool _showNetworkLinks = false;
     private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
     private Form? _pipeSettingsForm = null;
     private Form? _utilSettingsForm = null;
@@ -194,6 +195,15 @@ private ComboBox _doorToolCombo = null!;
     private readonly DrawDepthManager _drawDepthManager = new();
     private Form? _projectSettingsForm = null;
     private Button? _btnProjectSettings;
+    private Button? _btnSpyCapabilities;
+    private Form? _spyCapabilitiesForm;
+    private Button? _btnNetworkConfigurator;
+    private Form? _networkConfiguratorForm;
+    // Режим выбора объекта на канвасе (кнопка «Выделить» в конфигураторе сетей)
+    private bool _networkPickMode = false;
+    // Позиции клеток (тайлов), участвующих в связях выбранного устройства —
+    // для подсветки линий сети на канвасе
+    private readonly HashSet<(int x, int y)> _networkHighlightPositions = new();
     // ===== Интерактивное редактирование ручной области декалей на канвасе =====
     private ManualDecalArea? _editingDecalArea = null;
     private Room? _editingDecalAreaRoom = null;
@@ -679,6 +689,8 @@ private ComboBox _doorToolCombo = null!;
         _renderer.ShowPipeOverlay = _showPipeOverlay;
         _renderer.ShowAlarmConnections = _showAlarmConnections;
         _renderer.ShowWires = _showWires;
+        _renderer.ShowNetworkLinks = _showNetworkLinks;
+        _renderer.NetworkHighlightPositions = _networkHighlightPositions;
 
         if (_map.ActiveGrid != null)
         {
@@ -741,6 +753,35 @@ private ComboBox _doorToolCombo = null!;
         float worldY = (mouseLocation.Y + _viewOffset.Y - gridOffsetY) / tileSize;
 
         return (worldX, worldY);
+    }
+
+    /// <summary>
+    /// Режим «Выделить» из конфигуратора сетей: находит ближайшую к клику сущность
+    /// (по мировому расстоянию) и передаёт её в окно конфигуратора для выделения.
+    /// Работает независимо от того, целая координата у сущности или центр тайла.
+    /// </summary>
+    private void PickEntityByClick(Point clientPoint)
+    {
+        if (_map.ActiveGrid == null) return;
+        var w = GetPrecisePosition(clientPoint);
+
+        MapEntity? best = null;
+        float bestD = float.MaxValue;
+        foreach (var ent in _map.ActiveGrid.Entities.OfType<MapEntity>())
+        {
+            if (string.IsNullOrEmpty(ent.Proto)) continue;
+            float dx = ent.X - w.x;
+            float dy = ent.Y - w.y;
+            float d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; best = ent; }
+        }
+
+        if (best != null && bestD <= 0.5f && _networkConfiguratorForm is NetworkConfiguratorDialog dlg)
+        {
+            // Ctrl/Shift — «и» (добавить к выделению), без модификатора — «или» (заменить)
+            bool add = (ModifierKeys & (Keys.Shift | Keys.Control)) != 0;
+            dlg.SelectEntity(best, add);
+        }
     }
 
 

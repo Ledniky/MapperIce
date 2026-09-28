@@ -1588,6 +1588,15 @@ public static class YAMLGenerator
 
         if (generic.Count == 0) return;
 
+        // Заранее назначаем uid всем generic-сущностям и запоминаем позицию->uid,
+        // чтобы ниже можно было ссылаться на цель связи (DeviceLinkSource.linkedPorts)
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var e in generic)
+        {
+            posToUid[((int)Math.Round(e.X), (int)Math.Round(e.Y))] = uid;
+            uid++;
+        }
+
         foreach (var group in generic.GroupBy(e => e.Proto))
         {
             sb.AppendLine($"- proto: {group.Key}");
@@ -1595,10 +1604,13 @@ public static class YAMLGenerator
 
             foreach (var entity in group)
             {
+                var cell = ((int)Math.Round(entity.X), (int)Math.Round(entity.Y));
+                int thisUid = posToUid[cell];
+
                 float posX = entity.X;
                 float posY = -entity.Y + 1.0f;
 
-                sb.AppendLine($"  - uid: {uid}");
+                sb.AppendLine($"  - uid: {thisUid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
 
@@ -1610,7 +1622,26 @@ public static class YAMLGenerator
 
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
                 sb.AppendLine($"      parent: 2");
-                uid++;
+
+                // Связи беспроводной сети (для кнопок/рычагов): DeviceLinkSource.linkedPorts
+                if (entity.NetworkLinks != null && entity.NetworkLinks.Count > 0)
+                {
+                    sb.AppendLine($"    - type: DeviceLinkSource");
+                    sb.AppendLine($"      linkedPorts:");
+
+                    foreach (var targetGroup in entity.NetworkLinks.GroupBy(l => (l.TargetX, l.TargetY)))
+                    {
+                        if (!posToUid.TryGetValue(((int)Math.Round(targetGroup.Key.TargetX), (int)Math.Round(targetGroup.Key.TargetY)), out int targetUid))
+                            continue;
+
+                        sb.AppendLine($"        {targetUid}:");
+                        foreach (var link in targetGroup)
+                        {
+                            sb.AppendLine($"        - - {link.SourcePort}");
+                            sb.AppendLine($"          - {link.TargetPort}");
+                        }
+                    }
+                }
             }
         }
     }

@@ -140,7 +140,8 @@ public class GridSnapshot
         GenericEntities = grid.Entities
             .Where(e => e is not PipeEntity && e is not WireEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity)
-            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation })
+            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation,
+                                         NetworkLinks = e.NetworkLinks.Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort }).ToList() })
             .ToList();
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
@@ -239,7 +240,8 @@ public class GridSnapshot
                 X = entity.X,
                 Y = entity.Y,
                 ParentGridUid = entity.ParentGridUid,
-                Rotation = entity.Rotation
+                Rotation = entity.Rotation,
+                NetworkLinks = entity.NetworkLinks.Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort }).ToList()
             });
         }
 

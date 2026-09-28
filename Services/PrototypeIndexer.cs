@@ -721,6 +721,177 @@ public class PrototypeIndexer
         return false;
     }
 
+    // ===== Беспроводная сеть (DeviceNetwork): кнопки/рычаги → устройства =====
+
+    /// <summary>true, если прототип (или его предок) имеет компонент DeviceLinkSource.</summary>
+    public bool HasDeviceLinkSource(string id) => HasComponentTransitive(id, "DeviceLinkSource");
+
+    /// <summary>true, если прототип (или его предок) имеет компонент DeviceLinkSink.</summary>
+    public bool HasDeviceLinkSink(string id) => HasComponentTransitive(id, "DeviceLinkSink");
+
+    /// <summary>true, если прототип (или его предок) имеет указанный компонент.</summary>
+    public bool HasComponent(string id, string component) => HasComponentTransitive(id, component);
+
+    /// <summary>Порты источника (DeviceLinkSource) с учётом наследования по цепочке parent:.</summary>
+    public List<string> GetDeviceLinkSourcePorts(string id) => GetDeviceLinkPorts(id, "DeviceLinkSource");
+
+    /// <summary>Порты приёмника (DeviceLinkSink) с учётом наследования по цепочке parent:.</summary>
+    public List<string> GetDeviceLinkSinkPorts(string id) => GetDeviceLinkPorts(id, "DeviceLinkSink");
+
+    private bool HasComponentTransitive(string id, string component)
+    {
+        var visited = new HashSet<string>();
+        var stack = new List<string> { id };
+        while (stack.Count > 0)
+        {
+            var cur = stack[^1];
+            stack.RemoveAt(stack.Count - 1);
+            if (!visited.Add(cur)) continue;
+
+            var p = FindPrototype(cur);
+            if (p == null) continue;
+            if (p.Components.Contains(component)) return true;
+
+            foreach (var par in p.Parents) stack.Add(par);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Собирает значения списка "ports:" компонента (DeviceLinkSource/DeviceLinkSink)
+    /// у прототипа и его предков. Порты могут быть либо встроенными ("ports: [On, Off]"),
+    /// либо многострочными ("ports:\n    - On\n    - Off").
+    /// </summary>
+    private List<string> GetDeviceLinkPorts(string id, string component)
+    {
+        var result = new List<string>();
+        var visited = new HashSet<string>();
+        var stack = new List<string> { id };
+
+        while (stack.Count > 0)
+        {
+            var cur = stack[^1];
+            stack.RemoveAt(stack.Count - 1);
+            if (!visited.Add(cur)) continue;
+
+            var p = FindPrototype(cur);
+            if (p == null) continue;
+
+            if (!string.IsNullOrEmpty(p.FilePath) && File.Exists(p.FilePath))
+            {
+                var block = ExtractProtoBlock(p.FilePath, cur);
+                if (block != null)
+                {
+                    var compBlock = ExtractComponentBlock(block, component);
+                    foreach (var port in ParseDevicePorts(compBlock))
+                        if (!result.Contains(port))
+                            result.Add(port);
+                }
+            }
+
+            foreach (var par in p.Parents) stack.Add(par);
+        }
+
+        return result;
+    }
+
+    /// <summary>Извлекает из файла блок конкретного прототипа (по id) с отступами.</summary>
+    private string? ExtractProtoBlock(string filePath, string targetId)
+    {
+        string content;
+        try { content = File.ReadAllText(filePath); }
+        catch { return null; }
+
+        var lines = content.Split('\n');
+        string block = "";
+        string id = "";
+        bool inBlock = false;
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+
+            if (trimmed.StartsWith("- type:") && indent == 0)
+            {
+                if (inBlock && id == targetId) return block;
+                block = line + "\n";
+                inBlock = true;
+                id = "";
+                var im = Regex.Match(line, @"id:\s*(\S+)");
+                if (im.Success) id = im.Groups[1].Value;
+            }
+            else if (inBlock)
+            {
+                if (trimmed.StartsWith("- type:") && indent == 0)
+                {
+                    if (id == targetId) return block;
+                    block = line + "\n";
+                    id = "";
+                    var im = Regex.Match(line, @"id:\s*(\S+)");
+                    if (im.Success) id = im.Groups[1].Value;
+                }
+                else
+                {
+                    block += line + "\n";
+                    if (string.IsNullOrEmpty(id))
+                    {
+                        var im = Regex.Match(line, @"id:\s*(\S+)");
+                        if (im.Success) id = im.Groups[1].Value;
+                    }
+                }
+            }
+        }
+
+        return (inBlock && id == targetId) ? block : null;
+    }
+
+    private List<string> ParseDevicePorts(string componentBlock)
+    {
+        var result = new List<string>();
+
+        var inline = Regex.Match(componentBlock, @"ports:\s*\[([^\]]*)\]");
+        if (inline.Success)
+        {
+            foreach (var p in inline.Groups[1].Value.Split(','))
+            {
+                var t = p.Trim();
+                if (t.Length > 0 && !result.Contains(t)) result.Add(t);
+            }
+            return result;
+        }
+
+        var lines = componentBlock.Replace("\r\n", "\n").Split('\n');
+        bool inPorts = false;
+        int portsIndent = -1;
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+
+            if (trimmed == "ports:")
+            {
+                inPorts = true;
+                portsIndent = indent;
+                continue;
+            }
+
+            if (inPorts)
+            {
+                if (indent <= portsIndent)
+                {
+                    inPorts = false;
+                    continue;
+                }
+                var pm = Regex.Match(trimmed, @"^-\s*(\S+)");
+                if (pm.Success && !result.Contains(pm.Groups[1].Value))
+                    result.Add(pm.Groups[1].Value);
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Проверяет, является ли прототип структурой: ищем BaseStructure в цепочке
     /// родителей, НО если среди родителей есть BaseStructureDynamic — это не структура.

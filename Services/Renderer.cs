@@ -40,6 +40,12 @@ public class Renderer
     private AlarmNetwork? _currentNetwork;
     public bool ShowAlarmConnections { get; set; } = true;
 
+    // Связи беспроводной сети (кнопки/рычаги → устройства)
+    /// <summary>true — рисовать ВСЕ связи сети (зелёная кнопка в верхней панели).</summary>
+    public bool ShowNetworkLinks { get; set; } = false;
+    /// <summary>Клетки, участвующие в связях выбранного устройства — их связи рисуются ярко.</summary>
+    public HashSet<(int x, int y)> NetworkHighlightPositions { get; set; } = new();
+
     // Предпросмотр сигнализации
     private bool _showAlarmPreview = false;
     private int _previewX;
@@ -1342,6 +1348,65 @@ public class Renderer
 
     #region Объединённый рендеринг по DrawDepth
 
+    /// <summary>
+    /// Рисует линии связей беспроводной сети (кнопки/рычаги → устройства).
+    /// Показываются, если включён общий режим ShowNetworkLinks (все связи),
+    /// либо связи, в которых участвуют клетки из NetworkHighlightPositions
+    /// (выбранное устройство — рисуются ярко).
+    /// </summary>
+    private void DrawEntityNetworkLinks(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        bool showAll = ShowNetworkLinks;
+        var hi = NetworkHighlightPositions;
+        if (!showAll && (hi == null || hi.Count == 0)) return;
+
+        var linksEntities = grid.Entities.OfType<MapEntity>()
+            .Where(e => e.NetworkLinks != null && e.NetworkLinks.Count > 0)
+            .ToList();
+        if (linksEntities.Count == 0) return;
+
+        int NodeScreenX(float wx) => (int)((wx + 0.5f + gridOffset.X) * tileSize - viewOffset.X);
+        int NodeScreenY(float wy) => (int)((wy + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y);
+
+        using var dimPen = new Pen(Color.FromArgb(120, 120, 120), 2);
+        using var brightPen = new Pen(Color.FromArgb(255, 255, 220, 60), 3);
+
+        foreach (var entity in linksEntities)
+        {
+            var srcCell = ((int)Math.Round(entity.X), (int)Math.Round(entity.Y));
+            bool srcSelected = hi != null && hi.Contains(srcCell);
+
+            int sx = NodeScreenX(entity.X);
+            int sy = NodeScreenY(entity.Y);
+
+            foreach (var link in entity.NetworkLinks)
+            {
+                var tgtCell = ((int)Math.Round(link.TargetX), (int)Math.Round(link.TargetY));
+                bool tgtSelected = hi != null && hi.Contains(tgtCell);
+
+                if (!showAll && !srcSelected && !tgtSelected) continue;
+
+                int tx = NodeScreenX(link.TargetX);
+                int ty = NodeScreenY(link.TargetY);
+
+                bool emphasize = hi != null && hi.Count > 0 && (srcSelected || tgtSelected);
+
+                // ВАЖНО: не оборачивать в using общий pen — иначе первый же DrawLine
+                // диспоузит его, и следующий вызов бросает "Parameter is not valid".
+                // dim/brightPen живут весь метод и диспоузятся в его конце.
+                var pen = emphasize ? brightPen : dimPen;
+                g.DrawLine(pen, sx, sy, tx, ty);
+
+                if (emphasize)
+                {
+                    using var dotBrush = new SolidBrush(Color.FromArgb(255, 255, 220, 60));
+                    g.FillEllipse(dotBrush, sx - 3, sy - 3, 6, 6);
+                    g.FillEllipse(dotBrush, tx - 3, ty - 3, 6, 6);
+                }
+            }
+        }
+    }
+
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
     {
         var renderQueue = new List<(double WorldY, int DrawDepthOffset, int LayerOrder, int InsertOrder, Action draw)>();
@@ -1501,6 +1566,9 @@ public class Renderer
         {
             item.draw();
         }
+
+        // Связи беспроводной сети — поверх всего слоя
+        DrawEntityNetworkLinks(g, grid, tileSize, viewOffset, gridOffset);
     }
 
     private void DrawSingleTile(Graphics g, float worldX, float worldY, string protoId, int tileSize, PointF viewOffset, PointF gridOffset, bool isFloor, float opacity)

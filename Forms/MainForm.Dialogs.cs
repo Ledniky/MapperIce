@@ -1445,4 +1445,81 @@ public partial class MainForm
         _projectSettingsForm.FormClosed += (s, e) => { _projectSettingsForm = null; };
         _projectSettingsForm.Show(this);
     }
+
+    /// <summary>
+    /// Окно-заглушка для кнопки "Спей. возможности" — пока просто показывает
+    /// пустое окно с сообщением. Повторный клик по кнопке закрывает его.
+    /// </summary>
+    private void ShowSpyCapabilitiesStub()
+    {
+        if (_spyCapabilitiesForm != null && !_spyCapabilitiesForm.IsDisposed)
+        {
+            _spyCapabilitiesForm.Close();
+            _spyCapabilitiesForm = null;
+            return;
+        }
+
+        _spyCapabilitiesForm = new Form
+        {
+            Text = "Спей. возможности",
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ClientSize = new Size(360, 120),
+            ShowInTaskbar = false
+        };
+
+        _spyCapabilitiesForm.Controls.Add(new Label
+        {
+            Text = "Функция в разработке",
+            Location = new Point(0, 0),
+            Size = _spyCapabilitiesForm.ClientSize,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Arial", 12)
+        });
+
+        _spyCapabilitiesForm.FormClosed += (s, e) => { _spyCapabilitiesForm = null; };
+        _spyCapabilitiesForm.Show(this);
+    }
+
+    /// <summary>
+    /// Открывает окно «Конфигуратор сетей» — связывание кнопок/рычагов с устройствами.
+    /// Повторный клик по кнопке закрывает окно.
+    /// </summary>
+    private void ShowNetworkConfigurator()
+    {
+        if (_networkConfiguratorForm != null && !_networkConfiguratorForm.IsDisposed)
+        {
+            _networkConfiguratorForm.Close();
+            _networkConfiguratorForm = null;
+            return;
+        }
+
+        if (_map.ActiveGrid == null)
+        {
+            MessageBox.Show("Нет активного слоя", "Конфигуратор сетей", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _networkConfiguratorForm = new NetworkConfiguratorDialog(
+            _map.ActiveGrid,
+            _indexer,
+            positions =>
+            {
+                _networkHighlightPositions.Clear();
+                foreach (var p in positions)
+                    _networkHighlightPositions.Add(p);
+                Render();
+            },
+            () => Render(),
+            enabled =>
+            {
+                _networkPickMode = enabled;
+                _canvas.Cursor = enabled ? Cursors.Cross : Cursors.Default;
+            });
+
+        _networkConfiguratorForm.FormClosed += (s, e) => { _networkConfiguratorForm = null; };
+        _networkConfiguratorForm.Show(this);
+    }
 }

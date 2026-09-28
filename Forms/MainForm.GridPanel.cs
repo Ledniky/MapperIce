@@ -66,10 +66,10 @@ public partial class MainForm
         _flagsPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 244, // фиксированная ширина: 10 (отступ слева) + 5×40 (кнопки) + 4×6 (зазоры) + 10 (отступ справа)
+            Width = 290, // 10 + 6×40 (кнопки) + 5×6 (зазоры) + 10
             Height = 55,
             BackColor = Color.FromArgb(220, 220, 220),
-            Margin = new Padding(4, 0, 14, 0) // правый отступ 10px от экрана + 4px
+            Margin = new Padding(4, 0, 14, 0)
         };
         CreateToggleButtonsInPanel(_flagsPanel);
 
@@ -160,6 +160,17 @@ public partial class MainForm
             Render();
         });
         parentPanel.Controls.Add(btnWire);
+        xPos += 46;
+
+        // 📡 Связи сетей (кнопки/рычаги → устройства)
+        if (_uiToggleSettings.NetworkLinksOn.HasValue) _showNetworkLinks = _uiToggleSettings.NetworkLinksOn.Value;
+        var btnNetwork = CreateToggleBtn("📡", "❌", "Связи сетей (кнопки/рычаги → устройства)", xPos, yPos, _uiToggleSettings.NetworkLinksOn ?? false, v =>
+        {
+            _showNetworkLinks = v;
+            SaveUiToggleSettings(s => s.NetworkLinksOn = v);
+            Render();
+        });
+        parentPanel.Controls.Add(btnNetwork);
     }
     private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, bool initialState, Action<bool> onToggle)
     {
@@ -665,6 +676,7 @@ public partial class MainForm
         public bool? AlarmConnectionsOn { get; set; }
         public bool? SnapToGridOn { get; set; }
         public bool? WiresOn { get; set; }
+        public bool? NetworkLinksOn { get; set; }
     }
 
     private static string GetUiSettingsPath()

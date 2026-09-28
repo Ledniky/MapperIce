@@ -82,6 +82,15 @@ public partial class MainForm
             int tileX = tilePos.x;
             int tileY = tilePos.y;
 
+            // Режим выбора объекта из конфигуратора сетей: клик выделяет сущность
+            // в окне (передатчик или приёмник), в каком бы списке она ни была
+            if (_networkPickMode)
+            {
+                PickEntityByClick(e.Location);
+                Render();
+                return;
+            }
+
             if (_toolManager.CurrentTool == ToolManager.Tool.Magnifier)
             {
                 _magnifierPinnedTile = (tileX, tileY);
@@ -1124,6 +1133,10 @@ public partial class MainForm
             HandleDecalAreaEditMouseUp(e);
             return;
         }
+
+        // В режиме выбора объекта из конфигуратора сетей отпускание ЛКМ ничего не делает
+        if (_networkPickMode && e.Button == MouseButtons.Left)
+            return;
 
         if (_isBoxSelecting)
         {
