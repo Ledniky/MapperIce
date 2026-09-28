@@ -281,6 +281,16 @@ private ComboBox _doorToolCombo = null!;
         _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };        UpdateBuffer();
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // ComboBox, привязанный через DataSource, начинает работать через
+        // BindingContext формы только после подключения к окну, поэтому выбор
+        // типа комнаты повторно применяем здесь — иначе отображался бы самый
+        // верхний пункт списка («Синдикат»), а не реально активный тип спавна
+        SyncRoomTypeComboSelection();
+    }
+
 
     // === UNDO/REDO ===
     private void SaveState()

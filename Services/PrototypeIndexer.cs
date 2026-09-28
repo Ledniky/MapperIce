@@ -692,6 +692,36 @@ public class PrototypeIndexer
     }
 
     /// <summary>
+    /// Проверяет, является ли прототип окном ONI: true, если сам id — это базовое
+    /// окно "Window" или хотя бы один из его предков (по цепочке parent:) имеет
+    /// id "Window". Нужно, чтобы решётка ставилась только под настоящими окнами,
+    /// а не под всеми прототипами, у которых в названии есть слово "Window".
+    /// </summary>
+    public bool IsWindow(string id)
+    {
+        if (id == "Window") return true;
+
+        var visited = new HashSet<string>();
+        var stack = new List<string>(_prototypes.TryGetValue(id, out var start) && start != null
+            ? start.Parents
+            : Enumerable.Empty<string>());
+
+        while (stack.Count > 0)
+        {
+            var current = stack[stack.Count - 1];
+            stack.RemoveAt(stack.Count - 1);
+
+            if (!visited.Add(current)) continue;
+            if (current == "Window") return true;
+
+            if (_prototypes.TryGetValue(current, out var proto) && proto != null)
+                stack.AddRange(proto.Parents);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Проверяет, является ли прототип структурой: ищем BaseStructure в цепочке
     /// родителей, НО если среди родителей есть BaseStructureDynamic — это не структура.
     /// </summary>

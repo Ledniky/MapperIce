@@ -315,13 +315,18 @@ public partial class MainForm
                             Y = tileY + 0.5f,
                             Proto = windowProto
                         });
-                        // Добавляем сущность-решётку под окном (в том же тайле)
-                        grid.Entities.Add(new MapEntity
+                        // Добавляем сущность-решётку под окном (в том же тайле) —
+                        // только если окно унаследовано от базового "Window" (проверка
+                        // по цепочке parent:), иначе решётка не ставится
+                        if (_indexer.IsWindow(windowProto))
                         {
-                            X = tileX + 0.5f,
-                            Y = tileY + 0.5f,
-                            Proto = "Grille"
-                        });
+                            grid.Entities.Add(new MapEntity
+                            {
+                                X = tileX + 0.5f,
+                                Y = tileY + 0.5f,
+                                Proto = "Grille"
+                            });
+                        }
                         // Запоминаем клетку как "окно" в самой комнате — иначе
                         // BuildFromRooms при следующем UpdateTileGrid() заново
                         // поставит сюда стену (он перестраивает стены с нуля
@@ -1222,7 +1227,16 @@ public partial class MainForm
                         _doorUpdater.TryRemoveDoor(grid, x, y);
 
                 var rooms = grid.Rooms.Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY)).ToList();
-                foreach (var room in rooms) grid.Rooms.Remove(room);
+                foreach (var room in rooms)
+                {
+                    // Удаляем декали, сгенерированные Decal Rule для этой комнаты
+                    // (идентифицируются по PatternOwnerId = room.GetHashCode()). Их
+                    // координаты могут выходить за выделенную область (периметр,
+                    // смещённые offset-декали), поэтому фильтр по рамке их не ловит.
+                    int ownerId = room.GetHashCode();
+                    grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
+                    grid.Rooms.Remove(room);
+                }
 
                 if (rooms.Count > 0)
                     _doorUpdater.RecalculateAllDoors(grid);
@@ -1243,7 +1257,15 @@ public partial class MainForm
                         .ToList();
                     foreach (var room in roomsToRemove)
                     {
-                        // Удаляем декали, принадлежащие удаляемой комнате
+                        // Удаляем декали, сгенерированные Decal Rule для этой комнаты
+                        // (PatternOwnerId = room.GetHashCode()). Их положение может
+                        // выходить за прямоугольную рамку, поэтому нужен выборочный
+                        // фильтр по владельцу, а не только по координатам.
+                        int ownerId = room.GetHashCode();
+                        grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
+
+                        // Плюс удаляем все декали внутри прямоугольника комнаты
+                        // (ручные декали с левой панели)
                         var roomDecals = grid.Decals
                             .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
                                         d.Y >= room.Y && d.Y < room.Y + room.Height)

@@ -83,8 +83,6 @@ public partial class MainForm
         _roomTypeCombo.DisplayMember = "DisplayName";
         _roomTypeCombo.ValueMember = "Name";
         _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.Category).ThenBy(t => t.DisplayName).ToList();
-        var selectedRoomType = _roomTypeManager.GetRoomType(_roomTypeManager.SelectedType);
-        _roomTypeCombo.SelectedItem = selectedRoomType;
 
 _roomTypeCombo.DrawItem += (s, e) =>
 {
@@ -1142,6 +1140,24 @@ _roomTypeCombo.DrawItem += (s, e) =>
         });
 
         Controls.Add(_toolPanel);
+    }
+
+    /// <summary>
+    /// Приводит выбранный пункт списка типов комнат к реально активному типу спавна
+    /// (_roomTypeManager.SelectedType). Нужно вызывать, только когда ComboBox уже
+    /// подключён к форме: с DataSource комбобокс начинает работать через
+    /// BindingContext формы лишь после этого, и любая установка SelectedItem/
+    /// SelectedValue до подключения игнорируется (остаётся первый по сортировке
+    /// пункт «Синдикат»). Здесь выбираем пункт по Name напрямую через индекс.
+    /// </summary>
+    private void SyncRoomTypeComboSelection()
+    {
+        if (_roomTypeCombo == null || _roomTypeCombo.IsDisposed) return;
+        if (_roomTypeCombo.Items.Count == 0) return;
+
+        var list = _roomTypeCombo.Items.Cast<RoomType>().ToList();
+        int idx = list.FindIndex(t => t.Name == _roomTypeManager.SelectedType);
+        _roomTypeCombo.SelectedIndex = idx < 0 ? 0 : idx;
     }
 
 
