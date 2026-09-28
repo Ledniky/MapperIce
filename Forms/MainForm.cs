@@ -43,6 +43,10 @@ public partial class MainForm : Form
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
     private Button _btnRoomSettings = null!;
+    // Путь к проекту, с которым работаем в этом сеансе: последний открытый файл
+    // или последний путь «Сохранить как». Используется Ctrl+S для быстрого
+    // сохранения в тот же файл. null — файл ещё ни разу не открывался/не сохранялся.
+    private string? _currentProjectPath;
 private ComboBox _doorToolCombo = null!;
     // Ключ — подпись пункта в списке, значение — инструмент (как _utilToolMap)
     private readonly Dictionary<string, ToolManager.Tool> _doorToolMap = new()
@@ -324,6 +328,14 @@ private ComboBox _doorToolCombo = null!;
         if (keyData == Keys.Escape && _editingDecalArea != null)
         {
             EndEditDecalArea();
+            return true;
+        }
+
+        // Ctrl+S — быстрое сохранение в текущий файл (открытый или последний
+        // сохранённый в этом сеансе) либо в диалог «Сохранить как» для нового проекта
+        if (keyData == (Keys.Control | Keys.S))
+        {
+            QuickSaveProject();
             return true;
         }
 

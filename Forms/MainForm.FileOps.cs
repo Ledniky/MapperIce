@@ -114,144 +114,187 @@ public partial class MainForm
         {
             Filter = "Project files (*.ice)|*.ice",
             DefaultExt = "ice",
-            FileName = "project.ice"
+            FileName = _currentProjectPath != null ? Path.GetFileName(_currentProjectPath) : "project.ice"
         };
 
         if (dialog.ShowDialog() != DialogResult.OK) return;
 
         try
         {
-            var data = new ProjectData
-            {
-                LastSaved = DateTime.Now,
-                ActiveGridName = _map.ActiveGrid?.Name
-            };
+            WriteProjectToFile(dialog.FileName);
 
-            foreach (var grid in _map.Grids)
-            {
-                var gridData = new GridData
-                {
-                    Uid = grid.Uid,
-                    Name = grid.Name,
-                    PositionX = grid.Position.X,
-                    PositionY = grid.Position.Y,
-                    IsVisible = grid.IsVisible,
-                    Color = $"{grid.Color.A},{grid.Color.R},{grid.Color.G},{grid.Color.B}",
-                    IsStaticGrid = grid.IsStaticGrid
-                };
-
-                // Комнаты и двери
-                foreach (var room in grid.Rooms)
-                {
-                    var roomData = new RoomGridData
-                    {
-                        X = room.X,
-                        Y = room.Y,
-                        Width = room.Width,
-                        Height = room.Height,
-                        RoomType = room.RoomType,
-                        WallProto = room.WallProto,
-                        FloorProto = room.FloorProto,
-                        DoorProto = room.DoorProto,
-                        GlassDoorProto = room.GlassDoorProto,
-                        AirAlarmProto = room.AirAlarmProto,
-                        FireAlarmProto = room.FireAlarmProto,
-                        FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
-                        LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
-                        DecalMode = room.DecalMode,
-                        HasCustomDecalRule = room.HasCustomDecalRule,
-                        Priority = room.Priority,
-                    };
-
-                    // RemovedCells как список строк "x,y"
-                    foreach (var cell in room.RemovedCells)
-                    {
-                        roomData.RemovedCells.Add($"{cell.X},{cell.Y}");
-                    }
-
-                    foreach (var door in room.Doors)
-                    {
-                        roomData.Doors.Add(new DoorData
-                        {
-                            X = door.X,
-                            Y = door.Y,
-                            Proto = door.Proto
-                        });
-                    }
-
-                    // AutoDecalRule (DecalRuleSet → DecalRuleData)
-                    if (room.AutoDecalRule != null && room.AutoDecalRule.Layers.Count > 0)
-                    {
-                        roomData.AutoDecalRule = new DecalRuleData
-                        {
-                            Layers = room.AutoDecalRule.Layers.Select(l => new DecalLayerData
-                            {
-                                Name = l.Name,
-                                SourcePackId = l.SourcePackId,
-                                Enabled = l.Enabled,
-                                Color = l.Color,
-                                Mode = l.Mode,
-                                ManualAreas = l.ManualAreas.Select(a => new ManualDecalAreaData
-                                {
-                                    X = a.X, Y = a.Y, Width = a.Width, Height = a.Height
-                                }).ToList()
-                            }).ToList()
-                        };
-                    }
-
-                    // ManualDecalAreas
-                    foreach (var area in room.ManualDecalAreas)
-                    {
-                        roomData.ManualDecalAreas.Add(new ManualDecalAreaData
-                        {
-                            X = area.X, Y = area.Y, Width = area.Width, Height = area.Height
-                        });
-                    }
-
-                    gridData.Rooms.Add(roomData);
-                }
-
-                // Сущности (исключая Firelock)
-                foreach (var entity in grid.Entities.Where(e => e is not FirelockEntity))
-                {
-                    gridData.Entities.Add(new GenericEntityData
-                    {
-                        Type = entity.GetType().Name,
-                        Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
-                    });
-                }
-
-                gridData.Tiles = grid.Tiles
-                    .Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto })
-                    .ToList();
-
-                gridData.Decals = grid.Decals
-                    .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable })
-                    .ToList();
-
-                gridData.LooseDoors = grid.LooseDoors
-                    .Select(d => new DoorData { X = d.X, Y = d.Y, Proto = d.Proto })
-                    .ToList();
-
-                data.Grids.Add(gridData);
-            }
-
-            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-            File.WriteAllText(dialog.FileName, json);
-
-            int totalRooms = data.Grids.Sum(g => g.Rooms.Count);
-            int totalDoors = data.Grids.Sum(g => g.Rooms.Sum(r => r.Doors.Count));
-            int totalEntities = data.Grids.Sum(g => g.Entities.Count);
-            int totalDecals = data.Grids.Sum(g => g.Decals.Count);
-            MessageBox.Show($"Проект сохранён!\nСлоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
+            int totalRooms = _map.Grids.Sum(g => g.Rooms.Count);
+            int totalDoors = _map.Grids.Sum(g => g.Rooms.Sum(r => r.Doors.Count));
+            int totalEntities = _map.Grids.Sum(g => g.Entities.Count);
+            int totalDecals = _map.Grids.Sum(g => g.Decals.Count);
+            MessageBox.Show($"Проект сохранён!\nСлоёв: {_map.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Ошибка сохранения: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Быстрое сохранение по Ctrl+S: пишет в файл, с которым уже работаем
+    /// (открытый или последний сохранённый в этом сеансе). Если файла ещё нет —
+    /// открывает диалог «Сохранить как».
+    /// </summary>
+    private void QuickSaveProject()
+    {
+        if (_map.Grids.Count == 0)
+        {
+            MessageBox.Show("Нет слоёв для сохранения");
+            return;
+        }
+
+        if (_currentProjectPath == null)
+        {
+            SaveProject();
+            return;
+        }
+
+        try
+        {
+            WriteProjectToFile(_currentProjectPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка сохранения: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Сериализует проект и записывает его в указанный путь. Отдельно от UI-части
+    /// (диалоги/сообщения), чтобы и «Сохранить как», и Ctrl+S переиспользовали одну
+    /// и ту же логику. Обновляет _currentProjectPath.
+    /// </summary>
+    private void WriteProjectToFile(string filePath)
+    {
+        var grid = _map.ActiveGrid;
+
+        var data = new ProjectData
+        {
+            LastSaved = DateTime.Now,
+            ActiveGridName = grid?.Name
+        };
+
+        foreach (var g in _map.Grids)
+        {
+            var gridData = new GridData
+            {
+                Uid = g.Uid,
+                Name = g.Name,
+                PositionX = g.Position.X,
+                PositionY = g.Position.Y,
+                IsVisible = g.IsVisible,
+                Color = $"{g.Color.A},{g.Color.R},{g.Color.G},{g.Color.B}",
+                IsStaticGrid = g.IsStaticGrid
+            };
+
+            // Комнаты и двери
+            foreach (var room in g.Rooms)
+            {
+                var roomData = new RoomGridData
+                {
+                    X = room.X,
+                    Y = room.Y,
+                    Width = room.Width,
+                    Height = room.Height,
+                    RoomType = room.RoomType,
+                    WallProto = room.WallProto,
+                    FloorProto = room.FloorProto,
+                    DoorProto = room.DoorProto,
+                    GlassDoorProto = room.GlassDoorProto,
+                    AirAlarmProto = room.AirAlarmProto,
+                    FireAlarmProto = room.FireAlarmProto,
+                    FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
+                    LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
+                    DecalMode = room.DecalMode,
+                    HasCustomDecalRule = room.HasCustomDecalRule,
+                    Priority = room.Priority,
+                };
+
+                // RemovedCells как список строк "x,y"
+                foreach (var cell in room.RemovedCells)
+                {
+                    roomData.RemovedCells.Add($"{cell.X},{cell.Y}");
+                }
+
+                foreach (var door in room.Doors)
+                {
+                    roomData.Doors.Add(new DoorData
+                    {
+                        X = door.X,
+                        Y = door.Y,
+                        Proto = door.Proto
+                    });
+                }
+
+                // AutoDecalRule (DecalRuleSet → DecalRuleData)
+                if (room.AutoDecalRule != null && room.AutoDecalRule.Layers.Count > 0)
+                {
+                    roomData.AutoDecalRule = new DecalRuleData
+                    {
+                        Layers = room.AutoDecalRule.Layers.Select(l => new DecalLayerData
+                        {
+                            Name = l.Name,
+                            SourcePackId = l.SourcePackId,
+                            Enabled = l.Enabled,
+                            Color = l.Color,
+                            Mode = l.Mode,
+                            ManualAreas = l.ManualAreas.Select(a => new ManualDecalAreaData
+                            {
+                                X = a.X, Y = a.Y, Width = a.Width, Height = a.Height
+                            }).ToList()
+                        }).ToList()
+                    };
+                }
+
+                // ManualDecalAreas
+                foreach (var area in room.ManualDecalAreas)
+                {
+                    roomData.ManualDecalAreas.Add(new ManualDecalAreaData
+                    {
+                        X = area.X, Y = area.Y, Width = area.Width, Height = area.Height
+                    });
+                }
+
+                gridData.Rooms.Add(roomData);
+            }
+
+            // Сущности (исключая Firelock)
+            foreach (var entity in g.Entities.Where(e => e is not FirelockEntity))
+            {
+                gridData.Entities.Add(new GenericEntityData
+                {
+                    Type = entity.GetType().Name,
+                    Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
+                });
+            }
+
+            gridData.Tiles = g.Tiles
+                .Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto })
+                .ToList();
+
+            gridData.Decals = g.Decals
+                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable })
+                .ToList();
+
+            gridData.LooseDoors = g.LooseDoors
+                .Select(d => new DoorData { X = d.X, Y = d.Y, Proto = d.Proto })
+                .ToList();
+
+            data.Grids.Add(gridData);
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        File.WriteAllText(filePath, json);
+
+        _currentProjectPath = filePath;
     }
 
 
@@ -274,6 +317,9 @@ public partial class MainForm
                 MessageBox.Show("Ошибка чтения файла");
                 return;
             }
+
+            // Запоминаем путь открытого файла — Ctrl+S будет сохранять в него же
+            _currentProjectPath = dialog.FileName;
 
             // Очищаем все текущие данные
             _map.Grids.Clear();
