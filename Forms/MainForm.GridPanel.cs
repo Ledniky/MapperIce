@@ -104,10 +104,14 @@ public partial class MainForm
         int yPos = 8;
 
         // 🗺️ Room overlay
-        if (_uiToggleSettings.RoomOverlayOn.HasValue) _hideRoomOverlay = _uiToggleSettings.RoomOverlayOn.Value;
+        // ВНИМАНИЕ: флаг хранится в _hideRoomOverlay (инвертирован — true = скрыт).
+        // Кнопка же работает как "показан": зелёная (вкл) = оверлей виден, серая = скрыт.
+        // Поэтому значение инвертируем и при загрузке, и при клике, а в настройки
+        // сохраняем именно "показан" (как у остальных кнопок).
+        if (_uiToggleSettings.RoomOverlayOn.HasValue) _hideRoomOverlay = !_uiToggleSettings.RoomOverlayOn.Value;
         var btnRoom = CreateToggleBtn("🗺️", "❌", "Оверлей комнат", xPos, yPos, _uiToggleSettings.RoomOverlayOn ?? true, v =>
         {
-            _hideRoomOverlay = v;
+            _hideRoomOverlay = !v;
             SaveUiToggleSettings(s => s.RoomOverlayOn = v);
             Render();
         });

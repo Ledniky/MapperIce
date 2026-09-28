@@ -548,6 +548,21 @@ public partial class DecalPackDialog : Form
         };
         pickerForm.Controls.Add(swatchPanel);
 
+        // Кнопка "Отмена" — чтобы модальное окно можно было всегда закрыть
+        // (и по Escape), не выбирая свотч. Иначе при любой ошибке в момент
+        // выбора цвета окно оставалось бы открытым модальным и блокировало
+        // родительское окно "Паки декалей", которое тогда нельзя было закрыть.
+        var btnCancelPicker = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(10, 352),
+            Size = new Size(90, 28),
+            DialogResult = DialogResult.Cancel
+        };
+        btnCancelPicker.Click += (s, e) => pickerForm.Close();
+        pickerForm.CancelButton = btnCancelPicker;
+        pickerForm.Controls.Add(btnCancelPicker);
+
         void RebuildSwatches()
         {
             swatchPanel.Controls.Clear();
@@ -572,11 +587,20 @@ public partial class DecalPackDialog : Form
 
                 swatch.Click += (s, e) =>
                 {
-                    // Палитра хранит "#RRGGBB" (без альфы) — декали ожидают "#RRGGBBAA"
-                    string paletteHex = (string)swatch.Tag;
-                    string decalHex = ToDecalColorFormat(paletteHex);
-                    onColorPicked(ParseHexColor(decalHex));
-                    pickerForm.Close();
+                    // Окно закрывается ВСЕГДА, даже если обработчик выбора цвета
+                    // бросит исключение — иначе модальный диалог навсегда блокирует
+                    // родителя
+                    try
+                    {
+                        // Палитра хранит "#RRGGBB" (без альфы) — декали ожидают "#RRGGBBAA"
+                        string paletteHex = (string)swatch.Tag;
+                        string decalHex = ToDecalColorFormat(paletteHex);
+                        onColorPicked(ParseHexColor(decalHex));
+                    }
+                    finally
+                    {
+                        pickerForm.Close();
+                    }
                 };
 
                 swatchPanel.Controls.Add(swatch);
