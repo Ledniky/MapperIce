@@ -1030,57 +1030,132 @@ public class Renderer
     }
     private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        var utilPipes = pipes.Where(p => p.PipeType == "Util").ToList();
-        if (utilPipes.Count == 0) return;
-
-        var utilDict = new Dictionary<(int x, int y), PipeEntity>();
-        foreach (var p in utilPipes)
-            utilDict[((int)p.X, (int)p.Y)] = p;
+        if (pipes.Count == 0) return;
 
         float markerSize = tileSize / 3f;
+        var dirs = new (int dx, int dy)[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
 
-        foreach (var pipe in utilPipes)
+        // Группируем трубы по слою: конец определяется по соседям того же слоя
+        foreach (var group in pipes.GroupBy(p => p.PipeType))
         {
-            int neighbors = 0;
-            var pipeX = (int)pipe.X;
-            var pipeY = (int)pipe.Y;
-            foreach (var (dx, dy) in new[] { (0, -1), (0, 1), (-1, 0), (1, 0) })
+            var groupPipes = group.ToList();
+            var posSet = new HashSet<(int x, int y)>();
+            foreach (var p in groupPipes)
+                posSet.Add(((int)p.X, (int)p.Y));
+
+            foreach (var pipe in groupPipes)
             {
-                if (utilDict.ContainsKey((pipeX + dx, pipeY + dy)))
-                    neighbors++;
-            }
+                int neighbors = 0;
+                var px = (int)pipe.X;
+                var py = (int)pipe.Y;
+                foreach (var (dx, dy) in dirs)
+                {
+                    if (posSet.Contains((px + dx, py + dy)))
+                        neighbors++;
+                }
 
-            if (neighbors != 1) continue;
+                // Не конец трубы — пропускаем
+                if (neighbors != 1) continue;
 
-            var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
+                var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
 
-            Color markerColor;
-            if (pipe.EndpointType == EndpointType.MailingUnit)
-            {
-                markerColor = Color.FromArgb(255, 200, 200, 100); // охровый/жёлтый
-            }
-            else
-            {
-                markerColor = Color.FromArgb(255, 100, 200, 100); // зелёный
-            }
+                if (pipe.PipeType == "Util")
+                {
+                    // Утилизация сохраняет прежнюю логику: маркер по EndpointType
+                    Color markerColor = pipe.EndpointType == EndpointType.MailingUnit
+                        ? Color.FromArgb(255, 200, 200, 100) // охровый/жёлтый
+                        : Color.FromArgb(255, 100, 200, 100); // зелёный
 
-            using var brush = new SolidBrush(markerColor);
-            g.FillEllipse(brush, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
-            using var pen = new Pen(Color.FromArgb(255, 255, 255, 255), 1);
-            g.DrawEllipse(pen, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
+                    using var brush = new SolidBrush(markerColor);
+                    g.FillEllipse(brush, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
+                    using var pen = new Pen(Color.FromArgb(255, 255, 255, 255), 1);
+                    g.DrawEllipse(pen, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
 
-            // Рисуем тег на MailingUnit
-            if (pipe.EndpointType == EndpointType.MailingUnit && !string.IsNullOrEmpty(pipe.FilterLabel))
-            {
-                var tag = pipe.FilterLabel.TrimEnd(',');
-                using var textBrush = new SolidBrush(Color.White);
-                var font = new Font("Arial", Math.Max(7f, markerSize / 3f));
-                var textSize = g.MeasureString(tag, font);
-                g.DrawString(tag, font, textBrush,
-                    cx - textSize.Width / 2,
-                    cy - textSize.Height / 2);
+                    // Тег на MailingUnit
+                    if (pipe.EndpointType == EndpointType.MailingUnit && !string.IsNullOrEmpty(pipe.FilterLabel))
+                    {
+                        var tag = pipe.FilterLabel.TrimEnd(',');
+                        using var font = new Font("Arial", Math.Max(7f, markerSize / 3f));
+                        DrawCenteredText(g, tag, font, Color.White, cx, cy);
+                    }
+                }
+                else
+                {
+                    // Обычные слои (Distra/Waste/Normal): рисуем на конце трубы
+                    // спрайт вентиляции, указанный в настройках (VentProto из
+                    // настроек слоя/узла). Для "None" прототипа нет — спрайт не
+                    // загрузится, и покажется просто конец трубы.
+                    string ventProto = !string.IsNullOrEmpty(pipe.VentProto)
+                        ? pipe.VentProto!
+                        : DefaultVentProtoForLayer(pipe.PipeType);
+
+                    int cellX = (int)Math.Round((pipe.X + gridOffset.X) * tileSize - viewOffset.X);
+                    int cellY = (int)Math.Round((pipe.Y + gridOffset.Y) * tileSize - viewOffset.Y);
+                    var cellRect = new Rectangle(cellX, cellY, tileSize, tileSize);
+                    // Рисуем только последний слой (state) вентиляции
+                    DrawLastLayerOnly(g, ventProto, cellRect);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Рисует спрайт прототипа, используя ТОЛЬКО последний видимый слой (state)
+    /// из его Sprite.layers, а не всю композицию слоёв друг поверх друга. Нужно
+    /// для концов труб, где вентиляция должна отображаться одним финальным слоем.
+    /// Если слоёв нет — рисуем обычным путём (DrawTexturedRect).
+    /// </summary>
+    private void DrawLastLayerOnly(Graphics g, string protoId, Rectangle rect)
+    {
+        var proto = _indexer?.FindPrototype(protoId);
+        if (proto == null || proto.Layers.Count == 0)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null, 0f);
+            return;
+        }
+
+        // Ищем последний ВИДИМЫЙ слой (обычно он же — верхний в Z-порядке)
+        for (int i = proto.Layers.Count - 1; i >= 0; i--)
+        {
+            var layer = proto.Layers[i];
+            if (!layer.Visible) continue;
+
+            string cacheKey = $"{protoId}__layer{i}";
+            var tex = GetOrLoadLayerTexture(cacheKey, protoId, layer);
+            if (tex == null) continue;
+
+            var src = GetSourceRect(cacheKey, tex, 0f);
+            if (src.Width > 0 && src.Height > 0)
+                DrawPreservingAspect(g, tex, rect, src);
+            return;
+        }
+
+        DrawTexturedRect(g, protoId, rect, null, null, 0f);
+    }
+
+    /// <summary>
+    /// Дефолтный тип вентиляции для конца трубы слоя, если у конкретного узла
+    /// не запечён свой VentProto (старые карты). Совпадает с экспортной логикой
+    /// YAMLGenerator.
+    /// </summary>
+    private static string DefaultVentProtoForLayer(string pipeType)
+    {
+        return pipeType switch
+        {
+            "Distra" => "GasVentPump",
+            "Normal" => "None",
+            _ => "GasVentScrubber"
+        };
+    }
+
+    /// <summary>
+    /// Рисует текст по центру точки (cx, cy).
+    /// </summary>
+    private static void DrawCenteredText(Graphics g, string text, Font font, Color color, float cx, float cy)
+    {
+        using var brush = new SolidBrush(color);
+        var size = g.MeasureString(text, font);
+        g.DrawString(text, font, brush, cx - size.Width / 2, cy - size.Height / 2);
     }
 
     private void DrawFilterMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
