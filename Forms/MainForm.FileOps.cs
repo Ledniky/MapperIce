@@ -122,12 +122,6 @@ public partial class MainForm
         try
         {
             WriteProjectToFile(dialog.FileName);
-
-            int totalRooms = _map.Grids.Sum(g => g.Rooms.Count);
-            int totalDoors = _map.Grids.Sum(g => g.Rooms.Sum(r => r.Doors.Count));
-            int totalEntities = _map.Grids.Sum(g => g.Entities.Count);
-            int totalDecals = _map.Grids.Sum(g => g.Decals.Count);
-            MessageBox.Show($"Проект сохранён!\nСлоёв: {_map.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
         }
         catch (Exception ex)
         {
@@ -295,6 +289,9 @@ public partial class MainForm
         File.WriteAllText(filePath, json);
 
         _currentProjectPath = filePath;
+
+        // Ненавязчивое уведомление об успешном сохранении
+        ToastNotification.Show(this, $"Проект сохранён: {Path.GetFileName(filePath)}", "MapperIce", 2500);
     }
 
 

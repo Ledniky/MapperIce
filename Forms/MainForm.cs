@@ -295,6 +295,13 @@ private ComboBox _doorToolCombo = null!;
         SyncRoomTypeComboSelection();
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Приветственное уведомление при запуске — плавно появляется и исчезает
+        ToastNotification.Show(this, "Добро пожаловать в MapperIce!", "MapperIce", 4000);
+    }
+
 
     // === UNDO/REDO ===
     private void SaveState()
