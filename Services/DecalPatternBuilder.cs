@@ -267,6 +267,9 @@ var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
 
 if (!layer.TreatDoorAsWall)
 {
+    // Декаль двери ставится на КЛЕТКУ-РАМКУ рядом с дверью (клетка самой двери
+    // выше пропускается через continue), поэтому узор по бокам двери сохраняется,
+    // а на самой двери декали нет.
     if (IsDoorAnywhereInGrid(grid, x, y - 1))
         AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
     if (IsDoorAnywhereInGrid(grid, x, y + 1))
@@ -334,6 +337,7 @@ var mask = GetNeighborMaskForArea(grid, room, area, x, y, layer.TreatDoorAsWall)
 
 if (!layer.TreatDoorAsWall)
 {
+    // Рамки рядом с дверью получают свою декаль; на самой двери (пропущена выше) — нет.
     if (IsDoorAnywhereInGrid(grid, x, y - 1))
         AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
     if (IsDoorAnywhereInGrid(grid, x, y + 1))

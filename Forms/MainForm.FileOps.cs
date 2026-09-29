@@ -272,7 +272,7 @@ public partial class MainForm
                 .ToList();
 
             gridData.Decals = g.Decals
-                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable })
+                .Select(d => new PlacedDecal { X = d.X, Y = d.Y, Proto = d.Proto, Color = d.Color, Rotation = d.Rotation, Cleanable = d.Cleanable, PatternOwnerId = d.PatternOwnerId, PatternLayerIndex = d.PatternLayerIndex })
                 .ToList();
 
             gridData.LooseDoors = g.LooseDoors
@@ -448,7 +448,9 @@ public partial class MainForm
                     {
                         X = decalData.X, Y = decalData.Y, Proto = decalData.Proto,
                         Color = decalData.Color, Rotation = decalData.Rotation,
-                        Cleanable = decalData.Cleanable
+                        Cleanable = decalData.Cleanable,
+                        PatternOwnerId = decalData.PatternOwnerId,
+                        PatternLayerIndex = decalData.PatternLayerIndex
                     });
                 }
 

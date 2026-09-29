@@ -389,7 +389,7 @@ public partial class MainForm
 
                 var chkDoorAsWall = new CheckBox
                 {
-                    Text = "Дверь как стена",
+                    Text = "Отдельные для дверей",
                     Location = new Point(340, 33),
                     Width = 140,
                     Checked = layer.TreatDoorAsWall
@@ -444,8 +444,19 @@ public partial class MainForm
                 return;
             }
 
+            // Заменяем текущий набор слоёв унаследованным (а не добавляем поверх)
+            room.AutoDecalRule.Layers.Clear();
             foreach (var layer in inheritedRule.Layers)
                 room.AutoDecalRule.Layers.Add(layer.Clone());
+
+            // Сносим ВСЕ декали, попадающие в реальные клетки комнаты (не только
+            // помеченные владельцем узора), — так не остаётся старых декалей от
+            // прежнего набора слоёв, конфликтующих с новым узором (в т.ч. legacy
+            // с PatternOwnerId == null из старых сохранённых проектов).
+            var grid = _map.ActiveGrid;
+            if (grid != null)
+                grid.Decals.RemoveAll(d =>
+                    room.Contains((int)Math.Floor(d.X), (int)Math.Floor(d.Y)));
 
             RebuildList();
             ApplyLiveChanges();

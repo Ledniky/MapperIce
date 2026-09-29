@@ -34,6 +34,7 @@ public static class RoomSubtractor
                 room.RemovedCells.Add((x, y));
 
         ShrinkBounds(room);
+        RemoveThinWallSlivers(room);
         return true;
     }
 
@@ -323,6 +324,43 @@ public static class RoomSubtractor
 
         room.RemovedCells = removed;
         return true;
+    }
+
+    /// <summary>
+    /// Убирает "ленточные" остатки толщиной в 1 клетку, которые может оставить
+    /// вырезание (по сути простая стена между ничем): клетка комнаты, у которой
+    /// по обе стороны хотя бы по одной оси уже НЕТ комнаты — с одной стороны пусто,
+    /// с другой тоже пусто (вырез/внешняя граница). Такая клетка не может быть
+    /// частью никакого внутреннего пространства — это чисто стена, и она не нужна.
+    /// Помечает такие клетки как вырезанные (RemovedCells) и поджимает границы.
+    /// Повторяется, пока есть с чем работать: удаление клеток может "оголить"
+    /// соседей, превратив их в такие же одноклеточные полоски.
+    /// </summary>
+    private static void RemoveThinWallSlivers(Room room)
+    {
+        bool changed;
+        do
+        {
+            changed = false;
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                for (int y = room.Y; y < room.Y + room.Height; y++)
+                {
+                    if (!room.Contains(x, y)) continue;
+
+                    bool horizontalSandwich = !room.Contains(x - 1, y) && !room.Contains(x + 1, y);
+                    bool verticalSandwich = !room.Contains(x, y - 1) && !room.Contains(x, y + 1);
+
+                    if (horizontalSandwich || verticalSandwich)
+                    {
+                        room.RemovedCells.Add((x, y));
+                        changed = true;
+                    }
+                }
+            }
+        } while (changed);
+
+        ShrinkBounds(room);
     }
 
     private static void ShrinkBounds(Room room)

@@ -17,3 +17,18 @@ D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.genruntimeconfig.ca
 D:\My programs\MapperIce\obj\Debug\net10.0-windows\ref\MapperIce.dll
 D:\My programs\MapperIce\bin\Debug\net10.0-windows\Newtonsoft.Json.dll
 D:\My programs\MapperIce\obj\Debug\net10.0-windows\MapperIce.sourcelink.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck2\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck2\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck2\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck2\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck2\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck3\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck3\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck3\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck3\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck3\MapperIce.pdb

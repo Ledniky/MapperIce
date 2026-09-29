@@ -34,11 +34,12 @@ public partial class MainForm
         var tile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (tile != null && IsObjectIncludedForMove(tile)) return tile;
 
-        // 4. Комната
+        // 4. Комната. Используем room.Contains, а НЕ ограничивающий прямоугольник —
+        // иначе клик по вырезанной области (RemovedCells) всё равно выделял бы комнату,
+        // хотя этот кусок комнате уже не принадлежит.
         var room = grid.Rooms.FirstOrDefault(r =>
-            tileX >= r.X && tileX < r.X + r.Width &&
-            tileY >= r.Y && tileY < r.Y + r.Height);
-        if (room != null && IsObjectIncludedForMove(room)) return room;
+            r.Contains(tileX, tileY) && IsObjectIncludedForMove(r));
+        if (room != null) return room;
 
         return null;
     }
@@ -74,13 +75,36 @@ public partial class MainForm
         foreach (var room in grid.Rooms)
         {
             if (!IsObjectIncludedForMove(room)) continue;
-            bool overlaps = !(room.X + room.Width <= minX || room.X > maxX ||
-                               room.Y + room.Height <= minY || room.Y > maxY);
-            if (overlaps)
-                result.Add(room);
+            // По реальным клеткам комнаты (room.Contains), а не по ограничивающему
+            // прямоугольнику: если рамка захватывает только вырезанные клетки
+            // (RemovedCells), комната не выделяется.
+            if (!RoomAreaOverlapsBox(room, minX, minY, maxX, maxY))
+                continue;
+            result.Add(room);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// true, если прямоугольник [minX..maxX]×[minY..maxY] пересекает хотя бы одну
+    /// РЕАЛЬНУЮ клетку комнаты (ту, что возвращает room.Contains). Вырезанные
+    /// клетки (RemovedCells) не считаются — рамка поверх выреза комнату не ловит.
+    /// </summary>
+    private static bool RoomAreaOverlapsBox(Room room, int minX, int minY, int maxX, int maxY)
+    {
+        int x0 = Math.Max(minX, room.X);
+        int x1 = Math.Min(maxX, room.X + room.Width - 1);
+        int y0 = Math.Max(minY, room.Y);
+        int y1 = Math.Min(maxY, room.Y + room.Height - 1);
+
+        if (x0 > x1 || y0 > y1) return false;
+
+        for (int x = x0; x <= x1; x++)
+            for (int y = y0; y <= y1; y++)
+                if (room.Contains(x, y)) return true;
+
+        return false;
     }
 
 

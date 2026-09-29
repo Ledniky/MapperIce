@@ -309,10 +309,15 @@ public partial class MainForm
 
                 if (room != null)
                 {
-                    bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
-                                    tileY == room.Y || tileY == room.Y + room.Height - 1;
+                    // Клетка — настоящая стена комнаты: принадлежит комнате и у неё есть
+                    // сосед вне комнаты (внешний периметр ИЛИ внутренняя стена, возникшая
+                    // после вырезания). Старая проверка "на краю прямоугольника комнаты"
+                    // не срабатывала для внутренних стен, образованных RoomSubtractor'ом.
+                    var dirs = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+                    bool isWallCell = _tileGrid.IsWall(tileX, tileY) &&
+                                      dirs.Any(d => room.HasWallOnSide(tileX, tileY, d.Item1, d.Item2));
 
-                    if (isOnEdge && _tileGrid.IsWall(tileX, tileY))
+                    if (isWallCell)
                     {
                         // Удаляем тайл стены
                         _tileGrid.SetTile(tileX, tileY, TileContent.Empty, null, null, 0);
@@ -1239,7 +1244,7 @@ public partial class MainForm
                     for (int y = minY; y <= maxY; y++)
                         _doorUpdater.TryRemoveDoor(grid, x, y);
 
-                var rooms = grid.Rooms.Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY)).ToList();
+                var rooms = grid.Rooms.Where(r => RoomAreaOverlapsBox(r, minX, minY, maxX, maxY)).ToList();
                 foreach (var room in rooms)
                 {
                     // Удаляем декали, сгенерированные Decal Rule для этой комнаты
@@ -1266,7 +1271,7 @@ public partial class MainForm
                 if (_deleteSettings.DeleteRooms)
                 {
                     var roomsToRemove = grid.Rooms
-                        .Where(r => !(r.X + r.Width <= minX || r.X > maxX || r.Y + r.Height <= minY || r.Y > maxY))
+                        .Where(r => RoomAreaOverlapsBox(r, minX, minY, maxX, maxY))
                         .ToList();
                     foreach (var room in roomsToRemove)
                     {
