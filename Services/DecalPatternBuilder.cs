@@ -260,10 +260,11 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
             {
                 if (room.RemovedCells.Contains((x, y))) continue;
 
-                bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
-                if (IsWallCell(room, x, y) && !(!layer.TreatDoorAsWall && isDoorHere)) continue;
+bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
+                if (isDoorHere) continue;
+                if (IsWallCell(room, x, y)) continue;
 
-var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
+                var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
 
 if (!layer.TreatDoorAsWall)
 {
@@ -328,7 +329,8 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
                 if (!room.Contains(x, y)) continue;
 
                 bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
-                if (IsWallCell(room, x, y) && !(!layer.TreatDoorAsWall && isDoorHere)) continue;
+                if (isDoorHere) continue;
+                if (IsWallCell(room, x, y)) continue;
 
                 // Ключевое отличие от авто-режима по периметру комнаты: тут границей
                 // "стен" для тайлрула служит сам прямоугольник area, а не реальные
