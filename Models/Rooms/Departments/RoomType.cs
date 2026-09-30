@@ -135,13 +135,12 @@ public class Nukeop : AntagRoomType
 public class CustomRoomType : RoomType
 {
     public CustomRoomTypeData Data { get; }
-    public int Priority { get; }
-
     public CustomRoomType(CustomRoomTypeData data)
     {
         Data = data;
-        Priority = data.Priority;
     }
+
+    public override int Priority => Data.Priority;
 
     public override string Name => Data.Name;
     public override string DisplayName => string.IsNullOrEmpty(Data.DisplayName) ? Data.Name : Data.DisplayName;

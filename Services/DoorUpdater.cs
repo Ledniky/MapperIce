@@ -36,10 +36,13 @@ public class DoorUpdater
         {
             if (targetRoom == null) return false;
 
-            bool isOnEdge = x == targetRoom.X || x == targetRoom.X + targetRoom.Width - 1 ||
-                           y == targetRoom.Y || y == targetRoom.Y + targetRoom.Height - 1;
+            // Клетка годится, если у ЛЮБОЙ содержащей её комнаты здесь реально стена
+            // (граница прямоугольника или край выреза) — а не только у приоритетной
+            bool isOnBoundary = grid.Rooms.Any(r =>
+                r.HasWallOnSide(x, y, 0, -1) || r.HasWallOnSide(x, y, 0, 1) ||
+                r.HasWallOnSide(x, y, -1, 0) || r.HasWallOnSide(x, y, 1, 0));
 
-            if (!isOnEdge) return false;
+            if (!isOnBoundary) return false;
         }
 
         // Прототип берём из настроек приоритетной комнаты, а не жёстко заданный извне —
