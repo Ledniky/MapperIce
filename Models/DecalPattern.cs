@@ -88,16 +88,28 @@ public class DecalRuleSet
 
 public enum DecalPatternMode { Auto, Manual }
 
+/// <summary>Как рисуется ручная область слоя.</summary>
+public enum ManualAreaMode
+{
+    /// <summary>Вся область считается сплошной стеной — обрамление рисуется по форме
+    /// прямоугольника (как по сплошной стене), внутри выделенной области.</summary>
+    WallRegion,
+    /// <summary>Рисуется обычный узор вдоль настоящих стен комнаты, но выводятся только
+    /// декали, попадающие внутрь области (без виртуальной стены по границе области).</summary>
+    WallsOnly
+}
+
 public class ManualDecalArea
 {
     public int X { get; set; }
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+    public ManualAreaMode Mode { get; set; } = ManualAreaMode.WallRegion;
 
     public ManualDecalArea Clone()
     {
-        return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height };
+        return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height, Mode = Mode };
     }
 }
 

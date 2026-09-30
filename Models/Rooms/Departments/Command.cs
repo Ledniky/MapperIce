@@ -10,6 +10,7 @@ public abstract class CommandRoomType : RoomType
 {
     public override string Category => "Command";
     public override string FloorProto => "FloorSteel";
+    public override string WallProto => "WallReinforced";
     
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 51, 77, 109);
@@ -44,7 +45,6 @@ public class Vault : CommandRoomType
     public override string Name => "Vault";
     public override string DisplayName => "Хранилище";
     public override string Description => "Хранилище. Укреплённое помещение с высокосекьюрными дверями для хранения ценных ресурсов.";
-    public override string WallProto => "WallReinforced";
     public override string DoorProto => "HighSecCommandLocked";
     public override string GlassDoorProto => "HighSecCommandLocked";
     public override int Priority => 150;
@@ -55,7 +55,6 @@ public class Captain : CommandRoomType
     public override string Name => "Captain";
     public override string DisplayName => "Капитан";
     public override string Description => "Капитанская каюта. Личные покои капитана станции с максимальной защитой.";
-    public override string WallProto => "WallReinforced";
     public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
     public override int Priority => 300;

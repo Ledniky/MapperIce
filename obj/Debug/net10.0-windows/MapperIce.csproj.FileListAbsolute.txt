@@ -37,3 +37,10 @@ C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck4\Mapp
 C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck4\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck4\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\gigatool\buildcheck4\MapperIce.pdb
+D:\My programs\MapperIce\bin\checkbuild\MapperIce.exe
+D:\My programs\MapperIce\bin\checkbuild\MapperIce.deps.json
+D:\My programs\MapperIce\bin\checkbuild\MapperIce.runtimeconfig.json
+D:\My programs\MapperIce\bin\checkbuild\MapperIce.dll
+D:\My programs\MapperIce\bin\checkbuild\MapperIce.pdb
+D:\My programs\MapperIce\bin\checkbuild\Newtonsoft.Json.dll
+D:\My programs\MapperIce\bin\checkbuild\YamlDotNet.dll

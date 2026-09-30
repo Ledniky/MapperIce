@@ -96,16 +96,7 @@ private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
     return false;
 }
 
-// НОВОЕ: препятствие для классификации формы (Side/Corner/DeadEnd) должно
-// учитывать только настоящие стены — дверь на этой стороне не должна
-// "склеивать" направление двери в общий контур стены, иначе для двери
-// с соседней стеной вместо двух отдельных декалей получится один угол
-private static bool IsWallObstacleSide(Grid grid, Room room, int x, int y)
-{
-    return IsObstacleSide(grid, room, x, y) && !IsDoorAnywhereInGrid(grid, x, y);
-}
-
-    private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
+private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
     {
         foreach (var r in grid.Rooms)
         {
@@ -114,58 +105,6 @@ private static bool IsWallObstacleSide(Grid grid, Room room, int x, int y)
         }
         return grid.LooseDoors.Any(d => d.X == x && d.Y == y);
     }
-
-    // Для РУЧНОЙ области прямоугольник — это ГРАНИЦА тайлрула (виртуальная стена),
-    // а не просто список клеток, которые нужно залить декалью. Сосед считается
-    // "препятствием", если он вышел за пределы прямоугольника области — так вдоль
-    // краёв прямоугольника получается кайма (Side/Corner/DeadEnd), в точности как
-    // по периметру настоящей комнаты, а не одна и та же декаль на всех клетках подряд.
-    // Настоящие стены комнаты и двери остаются препятствиями всегда, даже если
-    // формально ещё внутри прямоугольника.
-    private static bool IsObstacleForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
-    {
-        bool insideRect = x >= area.X && x < area.X + area.Width &&
-                           y >= area.Y && y < area.Y + area.Height;
-        if (!insideRect) return true;
-        if (!room.Contains(x, y)) return true;
-        if (IsWallCell(room, x, y)) return true;
-        if (IsDoorAnywhereInGrid(grid, x, y)) return true;
-        return false;
-    }
-
-    // НОВОЕ, рядом с IsObstacleForArea
-private static bool IsWallObstacleForArea(Grid grid, Room room, ManualDecalArea area, int x, int y)
-{
-    return IsObstacleForArea(grid, room, area, x, y) && !IsDoorAnywhereInGrid(grid, x, y);
-}
-
-
-private static NeighborMask GetNeighborMaskForArea(Grid grid, Room room, ManualDecalArea area, int x, int y, bool treatDoorAsWall)
-{
-    bool currentIsDoor = IsDoorAnywhereInGrid(grid, x, y);
-
-    bool Obstacle(int nx, int ny)
-    {
-        if (currentIsDoor && !room.Contains(nx, ny))
-            return !IsFloorOfAnyRoom(grid, nx, ny);
-
-        return treatDoorAsWall
-            ? IsObstacleForArea(grid, room, area, nx, ny)
-            : IsObstacleForArea(grid, room, area, nx, ny) && !IsDoorAnywhereInGrid(grid, nx, ny);
-    }
-
-    return new NeighborMask
-    {
-        N = Obstacle(x, y - 1),
-        S = Obstacle(x, y + 1),
-        E = Obstacle(x + 1, y),
-        W = Obstacle(x - 1, y),
-        NE = Obstacle(x + 1, y - 1),
-        NW = Obstacle(x - 1, y - 1),
-        SE = Obstacle(x + 1, y + 1),
-        SW = Obstacle(x - 1, y + 1),
-    };
-}
 
     private struct NeighborMask
     {
@@ -201,9 +140,10 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
     };
 }
 
-    public void RecalculateForRoom(Grid grid, Room room)
+public void RecalculateForRoom(Grid grid, Room room)
     {
         int ownerId = room.GetHashCode();
+
         grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
 
         for (int i = 0; i < room.AutoDecalRule.Layers.Count; i++)
@@ -250,7 +190,7 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
         }
     }
 
-    private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLayer layer, int layerIndex, int ownerId)
+private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLayer layer, int layerIndex, int ownerId)
     {
         var result = new List<PlacedDecal>();
 
@@ -259,59 +199,12 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
             for (int y = room.Y; y < room.Y + room.Height; y++)
             {
                 if (room.RemovedCells.Contains((x, y))) continue;
-
-bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
-                if (isDoorHere) continue;
+                if (IsDoorAnywhereInGrid(grid, x, y)) continue;
                 if (IsWallCell(room, x, y)) continue;
 
                 var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
-
-if (!layer.TreatDoorAsWall)
-{
-    // Декаль двери ставится на КЛЕТКУ-РАМКУ рядом с дверью (клетка самой двери
-    // выше пропускается через continue), поэтому узор по бокам двери сохраняется,
-    // а на самой двери декали нет.
-    if (IsDoorAnywhereInGrid(grid, x, y - 1))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x, y + 1))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x + 1, y))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x - 1, y))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
-}
-
-foreach (var (position, cornerDir) in ClassifyPositions(mask))
-                {
-                    if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
-                        or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
-                    {
-                        int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
-                        int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
-
-                        bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
-
-                        if (targetIsFloor)
-                        {
-                            AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
-                                -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
-                        }
-                        else
-                        {
-                            AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
-                        }
-                    }
-                    else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
-                        or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
-                    {
-                        AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
-                            -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
-                    }
-                    else
-                    {
-                        AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
-                    }
-                }
+                AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
+                PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
             }
         }
 
@@ -320,6 +213,15 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
 
     private List<PlacedDecal> BuildAreaPatternForLayer(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
     {
+        return area.Mode == ManualAreaMode.WallRegion
+            ? BuildWallRegionPattern(grid, room, area, layer, layerIndex, ownerId)
+            : BuildWallsOnlyPattern(grid, room, area, layer, layerIndex, ownerId);
+    }
+
+    /// <summary>Режим 1 «Область-стена»: вся область считается сплошной стеной, обрамление
+    /// рисуется по форме прямоугольника на клетках области (внутри выделенной области).</summary>
+    private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+    {
         var result = new List<PlacedDecal>();
 
         for (int x = area.X; x < area.X + area.Width; x++)
@@ -327,64 +229,124 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
             for (int y = area.Y; y < area.Y + area.Height; y++)
             {
                 if (!room.Contains(x, y)) continue;
-
-                bool isDoorHere = IsDoorAnywhereInGrid(grid, x, y);
-                if (isDoorHere) continue;
+                if (IsDoorAnywhereInGrid(grid, x, y)) continue;
                 if (IsWallCell(room, x, y)) continue;
 
-                // Ключевое отличие от авто-режима по периметру комнаты: тут границей
-                // "стен" для тайлрула служит сам прямоугольник area, а не реальные
-                // стены комнаты — поэтому GetNeighborMaskForArea, а не GetNeighborMask.
-var mask = GetNeighborMaskForArea(grid, room, area, x, y, layer.TreatDoorAsWall);
-
-if (!layer.TreatDoorAsWall)
-{
-    // Рамки рядом с дверью получают свою декаль; на самой двери (пропущена выше) — нет.
-    if (IsDoorAnywhereInGrid(grid, x, y - 1))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x, y + 1))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x + 1, y))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
-    if (IsDoorAnywhereInGrid(grid, x - 1, y))
-        AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
-}
-
-foreach (var (position, cornerDir) in ClassifyPositions(mask))
-                {
-                    if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
-                        or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
-                    {
-                        int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
-                        int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
-
-                        bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
-
-                        if (targetIsFloor)
-                        {
-                            AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
-                                -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
-                        }
-                        else
-                        {
-                            AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
-                        }
-                    }
-                    else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
-                        or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
-                    {
-                        AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
-                            -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
-                    }
-                    else
-                    {
-                        AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
-                    }
-                }
+                PlaceWallRegionDecals(layer, layerIndex, room, area, x, y, ownerId, result);
             }
         }
 
         return result;
+    }
+
+    /// <summary>Расстановка декалей для режима «Область-стена»: рисуется ТОЛЬКО периметр области.
+    /// «Открытой» считается сторона, сосед по которой выходит за пределы прямоугольника области
+    /// (настоящие стены рядом не гасят рендер — декали ставятся на тайлы у стены, но не под
+    /// саму стену). Внутренние клетки области (со всех 4 ортогональных сторон в области) не
+    /// получают декалей. Углы — OuterCorner, прямые стороны — Side в направлении открытой стороны.</summary>
+    private void PlaceWallRegionDecals(DecalLayer layer, int layerIndex, Room room, ManualDecalArea area, int x, int y, int ownerId, List<PlacedDecal> result)
+    {
+        bool InArea(int nx, int ny) =>
+            nx >= area.X && nx < area.X + area.Width &&
+            ny >= area.Y && ny < area.Y + area.Height;
+
+        bool openN = !InArea(x, y - 1);
+        bool openS = !InArea(x, y + 1);
+        bool openE = !InArea(x + 1, y);
+        bool openW = !InArea(x - 1, y);
+        int openCount = (openN ? 1 : 0) + (openS ? 1 : 0) + (openE ? 1 : 0) + (openW ? 1 : 0);
+
+        if (openCount == 0) return; // внутренняя клетка области — периметр не проходит здесь
+
+        void Place(DecalPosition pos) => AddDecalForLayerPosition(layer, layerIndex, room, x, y, pos, ownerId, result);
+
+        // Углы области: две смежные открытые стороны => внешний угол в открытую сторону.
+        if (openCount == 2 && openN && openE) { Place(DecalPosition.OuterCornerNE); return; }
+        if (openCount == 2 && openN && openW) { Place(DecalPosition.OuterCornerNW); return; }
+        if (openCount == 2 && openS && openE) { Place(DecalPosition.OuterCornerSE); return; }
+        if (openCount == 2 && openS && openW) { Place(DecalPosition.OuterCornerSW); return; }
+
+        // Прямые стороны: Side направлена в сторону открытого соседа (смотрит наружу).
+        if (openN) Place(DecalPosition.SideN);
+        if (openS) Place(DecalPosition.SideS);
+        if (openE) Place(DecalPosition.SideE);
+        if (openW) Place(DecalPosition.SideW);
+    }
+
+    /// <summary>Режим 2 «Вокруг стен»: обычный узор вдоль настоящих стен комнаты, но выводятся
+    /// только декали, попадающие внутрь области (без виртуальной стены по границе области).</summary>
+    private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+    {
+        var result = new List<PlacedDecal>();
+
+        for (int x = area.X; x < area.X + area.Width; x++)
+        {
+            for (int y = area.Y; y < area.Y + area.Height; y++)
+            {
+                if (!room.Contains(x, y)) continue;
+                if (room.RemovedCells.Contains((x, y))) continue;
+                if (IsDoorAnywhereInGrid(grid, x, y)) continue;
+                if (IsWallCell(room, x, y)) continue;
+
+                var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
+                AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
+                PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Декали двери DoorN/S/E/W ставятся на КЛЕТКУ-РАМКУ рядом с дверью (сама дверь
+    /// была пропущена через continue, поэтому на двери декали нет).</summary>
+    private void AddDoorFrameDecals(Grid grid, DecalLayer layer, int layerIndex, Room room, int x, int y, int ownerId, List<PlacedDecal> result)
+    {
+        if (layer.TreatDoorAsWall) return;
+
+        if (IsDoorAnywhereInGrid(grid, x, y - 1))
+            AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorN, ownerId, result);
+        if (IsDoorAnywhereInGrid(grid, x, y + 1))
+            AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorS, ownerId, result);
+        if (IsDoorAnywhereInGrid(grid, x + 1, y))
+            AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorE, ownerId, result);
+        if (IsDoorAnywhereInGrid(grid, x - 1, y))
+            AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.DoorW, ownerId, result);
+    }
+
+    /// <summary>Расстановка декалей по классификации маски соседей (Side/Corner/DeadEnd/Inner).</summary>
+    private void PlacePatternDecals(DecalLayer layer, int layerIndex, Room room, int x, int y, NeighborMask mask, int ownerId, List<PlacedDecal> result)
+    {
+        foreach (var (position, cornerDir) in ClassifyPositions(mask))
+        {
+            if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
+                or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
+            {
+                int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
+                int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
+
+                bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
+
+                if (targetIsFloor)
+                {
+                    AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
+                        -cornerDir.dx * InnerCornerOffset, -cornerDir.dy * InnerCornerOffset);
+                }
+                else
+                {
+                    AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
+                }
+            }
+            else if (position is DecalPosition.OuterCornerNE or DecalPosition.OuterCornerNW
+                or DecalPosition.OuterCornerSE or DecalPosition.OuterCornerSW)
+            {
+                AddDecalForLayerPositionOffset(layer, layerIndex, room, x, y, position, ownerId, result,
+                    -cornerDir.dx * OuterCornerOffset, -cornerDir.dy * OuterCornerOffset);
+            }
+            else
+            {
+                AddDecalForLayerPosition(layer, layerIndex, room, x, y, position, ownerId, result);
+            }
+        }
     }
 
 
@@ -398,50 +360,47 @@ foreach (var (position, cornerDir) in ClassifyPositions(mask))
         var result = new List<(DecalPosition, (int dx, int dy))>();
         int ortho = m.OrthoCount;
 
-        if (ortho == 3)
-        {
-            if (!m.N) result.Add((DecalPosition.DeadEndS, (0, 0)));
-            else if (!m.S) result.Add((DecalPosition.DeadEndN, (0, 0)));
-            else if (!m.E) result.Add((DecalPosition.DeadEndW, (0, 0)));
-            else result.Add((DecalPosition.DeadEndE, (0, 0)));
-            return result;
-        }
-
-        if (ortho == 2)
-        {
-            if (m.N && m.E) { result.Add((DecalPosition.OuterCornerNE, (1, -1))); return result; }
-            if (m.N && m.W) { result.Add((DecalPosition.OuterCornerNW, (-1, -1))); return result; }
-            if (m.S && m.E) { result.Add((DecalPosition.OuterCornerSE, (1, 1))); return result; }
-            if (m.S && m.W) { result.Add((DecalPosition.OuterCornerSW, (-1, 1))); return result; }
-
-            if (m.N && m.S)
-            {
-                result.Add((DecalPosition.SideN, (0, 0)));
-                result.Add((DecalPosition.SideS, (0, 0)));
-                return result;
-            }
-            if (m.E && m.W)
-            {
-                result.Add((DecalPosition.SideE, (0, 0)));
-                result.Add((DecalPosition.SideW, (0, 0)));
-                return result;
-            }
-            return result;
-        }
-
-        if (ortho == 1)
-        {
-            if (m.N) result.Add((DecalPosition.SideN, (0, 0)));
-            else if (m.S) result.Add((DecalPosition.SideS, (0, 0)));
-            else if (m.E) result.Add((DecalPosition.SideE, (0, 0)));
-            else result.Add((DecalPosition.SideW, (0, 0)));
-            return result;
-        }
-
+        // Внутренние углы — независимый источник декалей: они выставляются по диагональным
+        // соседям (NE/NW/SE/SW) НЕЗАВИСИМО от числа ортогональных стен. Раньше их проверяли
+        // только в ветке «без ортогональных стен» (ortho==0), а при ortho 1/2 ранний return
+        // обрывал выполнение — и внутренний угол рядом с прямой стороной или внешним углом
+        // не ставился (ставился только когда диагоналей было две+). Собираем диагонали
+        // всегда и добавляем к результату поверх классификации по ортогоналям.
         if (m.NE) result.Add((DecalPosition.InnerCornerNE, (1, -1)));
         if (m.NW) result.Add((DecalPosition.InnerCornerNW, (-1, -1)));
         if (m.SE) result.Add((DecalPosition.InnerCornerSE, (1, 1)));
         if (m.SW) result.Add((DecalPosition.InnerCornerSW, (-1, 1)));
+
+        switch (ortho)
+        {
+            case 3:
+                if (!m.N) result.Add((DecalPosition.DeadEndS, (0, 0)));
+                else if (!m.S) result.Add((DecalPosition.DeadEndN, (0, 0)));
+                else if (!m.E) result.Add((DecalPosition.DeadEndW, (0, 0)));
+                else result.Add((DecalPosition.DeadEndE, (0, 0)));
+                break;
+
+            case 2:
+                if (m.N && m.E) { result.Add((DecalPosition.OuterCornerNE, (1, -1))); break; }
+                if (m.N && m.W) { result.Add((DecalPosition.OuterCornerNW, (-1, -1))); break; }
+                if (m.S && m.E) { result.Add((DecalPosition.OuterCornerSE, (1, 1))); break; }
+                if (m.S && m.W) { result.Add((DecalPosition.OuterCornerSW, (-1, 1))); break; }
+
+                if (m.N && m.S) { result.Add((DecalPosition.SideN, (0, 0))); result.Add((DecalPosition.SideS, (0, 0))); break; }
+                if (m.E && m.W) { result.Add((DecalPosition.SideE, (0, 0))); result.Add((DecalPosition.SideW, (0, 0))); break; }
+                break;
+
+            case 1:
+                if (m.N) result.Add((DecalPosition.SideN, (0, 0)));
+                else if (m.S) result.Add((DecalPosition.SideS, (0, 0)));
+                else if (m.E) result.Add((DecalPosition.SideE, (0, 0)));
+                else result.Add((DecalPosition.SideW, (0, 0)));
+                break;
+
+            default:
+                // ortho == 0 — только внутренние углы (уже собраны выше)
+                break;
+        }
 
         return result;
     }

@@ -73,6 +73,7 @@ public class ManualDecalAreaData
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+    public ManualAreaMode Mode { get; set; } = ManualAreaMode.WallRegion;
 }
 
 public class RoomData

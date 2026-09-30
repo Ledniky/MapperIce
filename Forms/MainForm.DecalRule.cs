@@ -94,7 +94,7 @@ public partial class MainForm
                     var area = layer.ManualAreas[i];
                     int idx = i;
 
-                    var row = new Panel { Location = new Point(5, rowY), Size = new Size(330, 30) };
+                    var row = new Panel { Location = new Point(5, rowY), Size = new Size(330, 60) };
 
                     var lblInfo = new Label
                     {
@@ -104,6 +104,36 @@ public partial class MainForm
                         Font = new Font("Segoe UI", 8)
                     };
                     row.Controls.Add(lblInfo);
+
+                    // Режим рисовки выбранной области
+                    var lblMode = new Label
+                    {
+                        Text = "Режим:",
+                        Location = new Point(0, 35),
+                        Width = 46,
+                        Font = new Font("Segoe UI", 8)
+                    };
+                    row.Controls.Add(lblMode);
+
+                    var cmbMode = new ComboBox
+                    {
+                        Location = new Point(46, 31),
+                        Width = 200,
+                        DropDownStyle = ComboBoxStyle.DropDownList,
+                        Font = new Font("Segoe UI", 8)
+                    };
+                    cmbMode.Items.AddRange(new object[] { "Область-стена", "Вокруг стен" });
+                    cmbMode.SelectedIndex = area.Mode == ManualAreaMode.WallsOnly ? 1 : 0;
+                    cmbMode.SelectedIndexChanged += (s, e) =>
+                    {
+                        area.Mode = cmbMode.SelectedIndex == 1 ? ManualAreaMode.WallsOnly : ManualAreaMode.WallRegion;
+                        ApplyLiveChanges();
+                    };
+                    var modeTip = new ToolTip();
+                    modeTip.SetToolTip(cmbMode,
+                        "Область-стена — вся область считается сплошной стеной, обрамление рисуется по форме прямоугольника.\n" +
+                        "Вокруг стен — обычный узор вдоль настоящих стен комнаты, но только внутри области.");
+                    row.Controls.Add(cmbMode);
 
                     var btnEditOnMap = new Button
                     {
@@ -134,7 +164,7 @@ public partial class MainForm
                     row.Controls.Add(btnDelArea);
 
                     areaListPanel.Controls.Add(row);
-                    rowY += 34;
+                    rowY += 64;
                 }
             }
 
@@ -635,7 +665,7 @@ public partial class MainForm
         {
             _isDraggingDecalWholeArea = true;
             _draggingDecalCornerIndex = -1;
-            _decalAreaDragSnapshot = new ManualDecalArea { X = area.X, Y = area.Y, Width = area.Width, Height = area.Height };
+            _decalAreaDragSnapshot = new ManualDecalArea { X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, Mode = area.Mode };
             _decalAreaDragStartMouseTile = GetTileCornerPosition(e.Location);
         }
     }

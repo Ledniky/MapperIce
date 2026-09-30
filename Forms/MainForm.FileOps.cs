@@ -239,7 +239,7 @@ public partial class MainForm
                             Mode = l.Mode,
                             ManualAreas = l.ManualAreas.Select(a => new ManualDecalAreaData
                             {
-                                X = a.X, Y = a.Y, Width = a.Width, Height = a.Height
+                                X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode
                             }).ToList()
                         }).ToList()
                     };
@@ -250,7 +250,7 @@ public partial class MainForm
                 {
                     roomData.ManualDecalAreas.Add(new ManualDecalAreaData
                     {
-                        X = area.X, Y = area.Y, Width = area.Width, Height = area.Height
+                        X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, Mode = area.Mode
                     });
                 }
 
@@ -397,7 +397,7 @@ public partial class MainForm
                                 Mode = l.Mode,
                                 ManualAreas = l.ManualAreas.Select(a => new ManualDecalArea
                                 {
-                                    X = a.X, Y = a.Y, Width = a.Width, Height = a.Height
+                                    X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode
                                 }).ToList()
                             }).ToList()
                         };
@@ -408,7 +408,7 @@ public partial class MainForm
                     {
                         room.ManualDecalAreas.Add(new ManualDecalArea
                         {
-                            X = areaData.X, Y = areaData.Y, Width = areaData.Width, Height = areaData.Height
+                            X = areaData.X, Y = areaData.Y, Width = areaData.Width, Height = areaData.Height, Mode = areaData.Mode
                         });
                     }
 

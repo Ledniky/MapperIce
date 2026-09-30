@@ -1475,6 +1475,11 @@ public class Renderer
         }
 
         // Декали
+        // Декали — это украшения пола/стен: они должны РИСОВАТЬСЯ ПОВЕРХ ТОЛЬКО ТАЙЛОВ
+        // и всегда ПОД предметами/сущностями (Objects и выше). Если прото или слой декали
+        // резолвится в глубину на уровне "Objects" или выше, принудительно опускаем её
+        // на слой под объектами — иначе декаль рисуется поверх сущностей (мебель, мобы).
+        int decalMaxDepth = _drawDepthManager.GetOffset("Objects") - 1;
         foreach (var decal in grid.Decals)
         {
             if (!IsPointVisible(decal.X, decal.Y, visibleRect)) continue;
@@ -1484,6 +1489,7 @@ public class Renderer
                 var ddName = _indexer.GetDrawDepth(decal.Proto);
                 if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
             }
+            if (dd > decalMaxDepth) dd = decalMaxDepth;
             var d = decal;
             int layerOrder = d.PatternLayerIndex;
             renderQueue.Add((d.Y, dd, layerOrder, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
