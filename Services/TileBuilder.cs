@@ -246,50 +246,90 @@ foreach (var room in allRooms)
         {
             foreach (var door in room.Doors)
             {
-                var existingTile = tileGrid.GetTile(door.X, door.Y);
-                bool hasFloor = existingTile != null && existingTile.Content == TileContent.Floor;
-                
-                tileGrid.SetTile(door.X, door.Y, TileContent.Door, door.Proto, room.RoomType, -1);
-                
-                var doorTile = tileGrid.GetTile(door.X, door.Y);
-                if (doorTile != null)
-                {
-                    doorTile.HasFloorUnder = hasFloor;
-                    if (hasFloor && existingTile != null)
-                    {
-                        doorTile.FloorProtoUnder = existingTile.ProtoId;
-                    }
-                }
+                ApplyDoorTile(tileGrid, allRooms, door, room.RoomType);
             }
         }
+
+
 
         // 3б. "СВОБОДНЫЕ" ДВЕРИ (поставлены вне комнат, при снятом магните)
         foreach (var looseDoor in grid.LooseDoors)
         {
-            var existingTile = tileGrid.GetTile(looseDoor.X, looseDoor.Y);
-            bool hasFloor = existingTile != null && existingTile.Content == TileContent.Floor;
-
-            tileGrid.SetTile(looseDoor.X, looseDoor.Y, TileContent.Door, looseDoor.Proto, null, -1);
-
-            var doorTile = tileGrid.GetTile(looseDoor.X, looseDoor.Y);
-            if (doorTile != null)
-            {
-                doorTile.HasFloorUnder = hasFloor;
-                if (hasFloor && existingTile != null)
-                {
-                    doorTile.FloorProtoUnder = existingTile.ProtoId;
-                }
-            }
+            ApplyDoorTile(tileGrid, allRooms, looseDoor, null);
         }
 
         // 4. РУЧНЫЕ ТАЙЛЫ (переопределение пола в конкретных клетках, вставленные через PlacePrototype)
         foreach (var manualTile in grid.Tiles)
         {
+            // Дверь не затираем: ручной тайл становится полом ПОД ней
+            var tileUnder = tileGrid.GetTile(manualTile.X, manualTile.Y);
+            if (tileUnder != null && tileUnder.Content == TileContent.Door)
+            {
+                tileUnder.HasFloorUnder = true;
+                tileUnder.FloorProtoUnder = manualTile.Proto;
+                continue;
+            }
+
             tileGrid.SetTile(manualTile.X, manualTile.Y, TileContent.Floor, manualTile.Proto, null, -1);
         }
 
         return tileGrid;
     }
+
+
+
+private string? FindFloorProtoForDoor(List<Room> allRooms, int x, int y)
+{
+    // Сначала комната, в чей прямоугольник попадает клетка (включая вырезанные клетки)
+    var own = allRooms.LastOrDefault(r =>
+        x >= r.X && x < r.X + r.Width &&
+        y >= r.Y && y < r.Y + r.Height);
+    if (own != null) return own.FloorProto;
+
+    // Иначе — пол любой соседней (по 4 сторонам) комнаты
+    foreach (var (dx, dy) in new[] { (0, -1), (0, 1), (-1, 0), (1, 0) })
+    {
+        var neighbor = GetRoomAt(allRooms, x + dx, y + dy);
+        if (neighbor != null) return neighbor.FloorProto;
+    }
+
+    return null;
+}
+
+private void ApplyDoorTile(TileGrid tileGrid, List<Room> allRooms, Door door, string? roomType)
+{
+    var existing = tileGrid.GetTile(door.X, door.Y);
+    bool hasFloor;
+    string? floorProto;
+
+    if (existing != null && existing.Content == TileContent.Door)
+    {
+        // Дубликат двери в той же клетке — пол уже определён первой обработкой
+        hasFloor = existing.HasFloorUnder;
+        floorProto = existing.FloorProtoUnder;
+    }
+    else if (existing != null && existing.Content == TileContent.Floor)
+    {
+        hasFloor = true;
+        floorProto = existing.ProtoId;
+    }
+    else
+    {
+        floorProto = FindFloorProtoForDoor(allRooms, door.X, door.Y);
+        hasFloor = floorProto != null;
+    }
+
+    tileGrid.SetTile(door.X, door.Y, TileContent.Door, door.Proto, roomType, -1);
+
+    var doorTile = tileGrid.GetTile(door.X, door.Y);
+    if (doorTile != null)
+    {
+        doorTile.HasFloorUnder = hasFloor;
+        doorTile.FloorProtoUnder = hasFloor ? floorProto : null;
+    }
+}
+
+
 
     // Этот метод больше не используется, но оставляем для совместимости
     private string GetBestWallForExistingTile(TileGrid tileGrid, int x, int y)

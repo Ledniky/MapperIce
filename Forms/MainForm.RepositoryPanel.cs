@@ -456,10 +456,12 @@ listContainer.Controls.Add(_protoList);
                         break;
                     case "тайл":
                     case "tiles":
+                        // Тайлы ищем по реальному Type из YAML (type: tile), а не по подстроке
+                        // в id — имена настоящих тайлов (FloorSteel, Plating, FloorCarpet и т.п.)
+                        // лишь отчасти содержат "tile"/"floor"/"plating", и часть тайлов из-за
+                        // этого терялась из фильтра
                         filteredIds = allIds.Where(id =>
-                            id.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
-                            id.Contains("floor", StringComparison.OrdinalIgnoreCase) ||
-                            id.Contains("plating", StringComparison.OrdinalIgnoreCase)
+                            _indexer.FindPrototype(id)?.Type == "tile"
                         ).ToList();
                         break;
                     case "структура":

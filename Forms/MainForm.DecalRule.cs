@@ -419,7 +419,7 @@ public partial class MainForm
 
                 var chkDoorAsWall = new CheckBox
                 {
-                    Text = "Отдельные для дверей",
+                    Text = "заходить под дверь",
                     Location = new Point(340, 33),
                     Width = 140,
                     Checked = layer.TreatDoorAsWall
