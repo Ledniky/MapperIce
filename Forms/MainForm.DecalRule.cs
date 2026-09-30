@@ -419,18 +419,18 @@ public partial class MainForm
 
                 var chkDoorAsWall = new CheckBox
                 {
-                    Text = "заходить под дверь",
+                    Text = "декаль на дверь",
                     Location = new Point(340, 33),
                     Width = 140,
-                    Checked = layer.TreatDoorAsWall
+                    Checked = !layer.TreatDoorAsWall
                 };
                 var doorAsWallTip = new ToolTip();
                 doorAsWallTip.SetToolTip(chkDoorAsWall,
-                    "Включено — дверь считается обычной стеной, узор идёт по контуру без разрыва (без отдельной декали двери).\n" +
-                    "Выключено — дверь получает свою декаль по стороне (DoorN/S/E/W), а стена строится в обход неё.");
+                    "Включено — дверь получает свою декаль по стороне (DoorN/S/E/W), а стена строится в обход неё.\n" +
+                    "Выключено — дверь считается обычной стеной, узор идёт по контуру без разрыва (без отдельной декали двери).");
                 chkDoorAsWall.CheckedChanged += (s, e) =>
                 {
-                    layer.TreatDoorAsWall = chkDoorAsWall.Checked;
+                    layer.TreatDoorAsWall = !chkDoorAsWall.Checked;
                     ApplyLiveChanges();
                 };
                 row.Controls.Add(chkDoorAsWall);

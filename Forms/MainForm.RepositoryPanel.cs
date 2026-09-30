@@ -448,13 +448,14 @@ listContainer.Controls.Add(_protoList);
                 switch (_currentFilter)
                 {
                     case "all":
+                    case "все":
                         // Декали по умолчанию скрыты из общего списка — слишком много "мусора"
                         // (сотни BrickTile*, RoadLine* и т.п.), видны только через отдельный фильтр
                         filteredIds = allIds.Where(id =>
                             _indexer.FindPrototype(id)?.Type != "decal"
                         ).ToList();
                         break;
-                    case "тайл":
+                    case "тайлы":
                     case "tiles":
                         // Тайлы ищем по реальному Type из YAML (type: tile), а не по подстроке
                         // в id — имена настоящих тайлов (FloorSteel, Plating, FloorCarpet и т.п.)
