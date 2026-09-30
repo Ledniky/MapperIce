@@ -42,6 +42,14 @@ public class Prototype
     public string? LocalizedName { get; set; }
 
     /// <summary>
+    /// Ключ локализации из поля "name:" в YAML (например "tiles-steel-floor" у тайлов).
+    /// Сущности обычно не имеют такого поля и локализуются через "ent-{Id}" — тогда
+    /// LocalizationKey == null. Используется ApplyLocalizedNames для простановки
+    /// LocalizedName из .ftl по этому ключу (префикс "tiles-*" у тайлов).
+    /// </summary>
+    public string? LocalizationKey { get; set; }
+
+    /// <summary>
 
     /// <summary>
     /// Слои компонента Sprite (YAML "layers:"). Пустой список — прототип без

@@ -123,11 +123,12 @@ public class PrototypeIndexer
 
     /// <summary>
     /// Сканирует Resources/Locale/ru-RU репозитория (*.ftl, рекурсивно) и проставляет
-    /// Prototype.LocalizedName для каждой сущности, у которой в локализации есть
-    /// запись "ent-{Id} = ...". Значения могут ссылаться друг на друга через Fluent-
-    /// синтаксис "{ ent-ДругойId }" (см. пример BarricadeBlock -> Barricade -> BaseBarricade
-    /// в barricades.ftl) — такие ссылки резолвятся рекурсивно, аналогично тому, как
-    /// FindPathRecursive идёт по цепочке parent:.
+    /// Prototype.LocalizedName. Для сущностей ищет запись "ent-{Id} = ..." (маппится по
+    /// прототипному Id), для тайлов — запись "tiles-* = ..." (маппится по прототипному
+    /// LocalizationKey = полю "name:" в YAML). Значения могут ссылаться друг на друга
+    /// через Fluent-синтаксис "{ ent-ДругойId }" (см. пример BarricadeBlock -> Barricade
+    /// -> BaseBarricade в barricades.ftl) — такие ссылки резолвятся рекурсивно, аналогично
+    /// тому, как FindPathRecursive идёт по цепочке parent:.
     /// </summary>
     private void ApplyLocalizedNames(string repoPath)
     {
@@ -158,15 +159,29 @@ public class PrototypeIndexer
 
         foreach (var proto in _prototypes.Values)
         {
-            if (resolved.TryGetValue(proto.Id, out var localized) && !string.IsNullOrWhiteSpace(localized))
-                proto.LocalizedName = localized;
+            if (proto.Type == "tile" && proto.LocalizationKey != null)
+            {
+                // Тайлы: ключ локализации — это их поле "name:" (например "tiles-steel-floor")
+                if (resolved.TryGetValue(proto.LocalizationKey, out var localized) &&
+                    !string.IsNullOrWhiteSpace(localized))
+                    proto.LocalizedName = localized;
+            }
+            else
+            {
+                // Сущности: ключ — "ent-{Id}", маппится по Id прототипа
+                if (resolved.TryGetValue(proto.Id, out var localized) &&
+                    !string.IsNullOrWhiteSpace(localized))
+                    proto.LocalizedName = localized;
+            }
         }
     }
 
     /// <summary>
-    /// Парсит один .ftl-файл и достаёт только "имя" сущности — верхнеуровневую
-    /// строку "ent-{Id} = значение". Строки с отступом (например ".desc = ...")
-    /// пропускаются: они относятся не к имени, а к атрибутам той же записи.
+    /// Парсит один .ftl-файл и достаёт только "имя" сущности/тайла — верхнеуровневую
+    /// строку вида "ent-{Id} = значение" или "tiles-* = значение". Строки с отступом
+    /// (например ".desc = ...") пропускаются: они относятся не к имени, а к атрибутам
+    /// той же записи. Ключ сохраняется целиком, чтобы ApplyLocalizedNames мог различить
+    /// сущность (по Id) и тайл (по LocalizationKey).
     /// </summary>
     private Dictionary<string, string> ParseFtlEntityNames(string content)
     {
@@ -177,13 +192,18 @@ public class PrototypeIndexer
         {
             if (line.Length == 0 || char.IsWhiteSpace(line[0])) continue; // атрибут/продолжение — не имя
 
-            var m = Regex.Match(line, @"^ent-(\S+)\s*=\s*(.*)$");
+            var m = Regex.Match(line, @"^(ent-|tiles-)(\S+)\s*=\s*(.*)$");
             if (!m.Success) continue;
 
-            string id = m.Groups[1].Value;
-            string value = m.Groups[2].Value.TrimEnd('\r');
-            if (!result.ContainsKey(id))
-                result[id] = value;
+            string prefix = m.Groups[1].Value;
+            string name = m.Groups[2].Value;
+            // Сущности: ключ — голый Id (в Fluent-ссылках "{ ent-ДругойId }" тоже голый Id),
+            // маппится на proto.Id. Тайлы: ключ — полный "tiles-*", маппится на
+            // proto.LocalizationKey (поле "name:" в YAML).
+            string key = prefix == "tiles-" ? prefix + name : name;
+            string value = m.Groups[3].Value.TrimEnd('\r');
+            if (!result.ContainsKey(key))
+                result[key] = value;
         }
 
         return result;
@@ -227,7 +247,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 20;
+    private const int CacheFormatVersion = 21;
 
     private class CacheEnvelope
     {
@@ -403,6 +423,13 @@ public class PrototypeIndexer
         // Убрано условие !char.IsUpper(id[0]) - теперь принимаем любые id
 
         var proto = new Prototype { Id = id, FilePath = filePath, Type = type };
+
+        // Ищем ключ локализации (name:) — у тайлов это "tiles-*", ключ перевода в .ftl.
+        var locKeyMatch = Regex.Match(block, @"(?m)^\s*name:\s*(\S+)\s*$");
+        if (locKeyMatch.Success)
+        {
+            proto.LocalizationKey = locKeyMatch.Groups[1].Value.Trim('"');
+        }
 
         // Ищем parent — поддерживаем:
         // 1. Однострочный: "parent: X"

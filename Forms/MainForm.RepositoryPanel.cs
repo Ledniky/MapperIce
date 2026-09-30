@@ -496,6 +496,7 @@ listContainer.Controls.Add(_protoList);
                 filteredIds = filteredIds
                     .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
                     .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
+                    .Where(id => !id.Contains("Base"))          // исключаем содержащие "Base"
                     .ToList();
 
                 var result = filteredIds.Take(100000).ToList();

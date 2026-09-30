@@ -118,7 +118,7 @@ public partial class MainForm
                     var cmbMode = new ComboBox
                     {
                         Location = new Point(46, 31),
-                        Width = 200,
+                        Width = 100,
                         DropDownStyle = ComboBoxStyle.DropDownList,
                         Font = new Font("Segoe UI", 8)
                     };
@@ -147,7 +147,10 @@ public partial class MainForm
                     {
                         BeginEditDecalArea(room, area, () =>
                         {
-                            ApplyLiveChanges();
+                            // Живой пересчёт декалей по мере перетаскивания — без SaveState
+                            // на каждом кадре (иначе undo засоряется и рендер тормозит).
+                            RecalculateDecalPatterns();
+                            Render();
                             lblInfo.Text = $"X:{area.X} Y:{area.Y} Ш:{area.Width} В:{area.Height}";
                         });
                     };
@@ -169,19 +172,42 @@ public partial class MainForm
             }
 
             var btnAddArea = new Button { Text = "➕ Добавить область", Location = new Point(5, 335), Width = 160, Height = 26, FlatStyle = FlatStyle.Flat };
+            var addAreaTip = new ToolTip();
+            addAreaTip.SetToolTip(btnAddArea, "Включить режим — затем растяните область мышью на карте, как рамку выделения.");
+
+            // Меняет подпись кнопки в зависимости от активного режима рисования области
+            void SetDecalAddButtonActive(bool active)
+            {
+                btnAddArea.Text = active ? "выделите область…" : "➕ Добавить область";
+                btnAddArea.BackColor = active ? Color.FromArgb(200, 235, 255) : Color.Empty;
+            }
+
             btnAddArea.Click += (s, e) =>
             {
-                // Стартовый прямоугольник — размером с комнату; сразу можно уточнить
-                // границы, перетаскивая углы кнопкой "✏ На карте"
-                layer.ManualAreas.Add(new ManualDecalArea
+                // Включаем режим: подпись кнопки меняется на "выделите область", сама
+                // область рисуется вручную протяжкой мыши. Данные кладём в _decalAreaPending.
+                SetDecalAddButtonActive(true);
+                _editingDecalAreaCommitAction = () =>
                 {
-                    X = room.X,
-                    Y = room.Y,
-                    Width = Math.Max(1, room.Width),
-                    Height = Math.Max(1, room.Height)
-                });
-                RebuildAreas();
-                ApplyLiveChanges();
+                    var pending = _decalAreaPending;
+                    if (pending == null) return;
+                    // Ручные области рисуются только в режиме Manual — включаем его,
+                    // иначе RecalculateAll пойдёт по ветке Auto и области не дадут декалей.
+                    layer.Mode = DecalPatternMode.Manual;
+                    layer.ManualAreas.Add(pending);
+                    RebuildAreas();
+                    ApplyLiveChanges();
+                    SetDecalAddButtonActive(false);
+                    // Сразу переходим в режим редактирования новой области, чтобы её
+                    // можно было двигать/тянуть углы с живым обновлением декалей.
+                    BeginEditDecalArea(room, pending, () =>
+                    {
+                        RecalculateDecalPatterns();
+                        Render();
+                    });
+                };
+                _editingDecalAreaCancelAction = () => SetDecalAddButtonActive(false);
+                BeginDrawDecalArea();
             };
             areasForm.Controls.Add(btnAddArea);
 
@@ -500,7 +526,7 @@ public partial class MainForm
         btnPanel.Controls.Add(btnClose);
         _decalRuleForm.Controls.Add(btnPanel);
 
-        _decalRuleForm.FormClosed += (s, e) => { _decalRuleForm = null; EndEditDecalArea(); };
+        _decalRuleForm.FormClosed += (s, e) => { _decalRuleForm = null; EndEditDecalArea(); CancelDrawDecalArea(); };
         _decalRuleForm.Show(this);
     }
 
@@ -632,6 +658,95 @@ public partial class MainForm
         Render();
     }
 
+    // ===== Растягивание НОВОЙ ручной области мышью (как рамка выделения) =====
+    private void BeginDrawDecalArea()
+    {
+        _isDrawingDecalArea = true;
+        _decalAreaDrawMouseDown = false;
+        _decalAreaPending = null;
+        _toolManager.ResetTool();
+        _editingDecalArea = null;
+        _editingDecalAreaRoom = null;
+        _editingDecalAreaApplyCallback = null;
+        _renderer.ClearDecalAreaEditRect();
+        Render();
+    }
+
+    private void CancelDrawDecalArea()
+    {
+        _isDrawingDecalArea = false;
+        _decalAreaDrawMouseDown = false;
+        _decalAreaPending = null;
+        _editingDecalAreaCommitAction = null;
+        _editingDecalAreaCancelAction?.Invoke();
+        _editingDecalAreaCancelAction = null;
+        _renderer.ClearDecalAreaEditRect();
+        _renderer.ClearDecalAreaDrawRect();
+        UpdateTypeLabel();
+        Render();
+    }
+
+    private void HandleDecalAreaDrawMouseDown(MouseEventArgs e)
+    {
+        if (_map.ActiveGrid == null) return;
+        if (e.Button != MouseButtons.Left) return;
+
+        var (cx, cy) = GetTileCornerPosition(e.Location);
+        _decalAreaDrawMouseDown = true;
+        _decalAreaDrawStart = (cx, cy);
+        _decalAreaPending = new ManualDecalArea
+        {
+            X = cx,
+            Y = cy,
+            Width = 1,
+            Height = 1,
+            Mode = ManualAreaMode.WallRegion
+        };
+        _renderer.SetDecalAreaDrawRect(cx, cy, 1, 1);
+        Render();
+    }
+
+    private void HandleDecalAreaDrawMouseMove(MouseEventArgs e)
+    {
+        if (_decalAreaPending == null) return;
+        var (nx, ny) = GetTileCornerPosition(e.Location);
+
+        int sx = _decalAreaDrawStart.x;
+        int sy = _decalAreaDrawStart.y;
+        var area = _decalAreaPending;
+
+        area.X = Math.Min(nx, sx);
+        area.Y = Math.Min(ny, sy);
+        area.Width = Math.Max(1, Math.Abs(nx - sx));
+        area.Height = Math.Max(1, Math.Abs(ny - sy));
+
+        _renderer.SetDecalAreaDrawRect(area.X, area.Y, area.Width, area.Height);
+        Render();
+    }
+
+    private void HandleDecalAreaDrawMouseUp(MouseEventArgs e)
+    {
+        // Коммит-колбэк добавления читает _decalAreaPending, поэтому сбрасываем
+        // его ПОСЛЕ вызова.
+        _isDrawingDecalArea = false;
+        _decalAreaDrawMouseDown = false;
+
+        if (_decalAreaPending == null)
+        {
+            CancelDrawDecalArea();
+            return;
+        }
+
+        _renderer.ClearDecalAreaDrawRect();
+
+        _editingDecalAreaCommitAction?.Invoke();
+        _editingDecalAreaCancelAction?.Invoke();
+        _editingDecalAreaCancelAction = null;
+        _editingDecalAreaCommitAction = null;
+        _decalAreaPending = null;
+        Render();
+    }
+
     private void HandleDecalAreaEditMouseDown(MouseEventArgs e)
     {
         if (_editingDecalArea == null || _map.ActiveGrid == null) return;
@@ -716,5 +831,8 @@ public partial class MainForm
         _draggingDecalCornerIndex = -1;
         _isDraggingDecalWholeArea = false;
         _decalAreaDragSnapshot = null;
+
+        // Завершение перетаскивания — фиксируем одно состояние в undo/redo
+        SaveState();
     }
 }

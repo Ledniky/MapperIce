@@ -212,6 +212,19 @@ private ComboBox _doorToolCombo = null!;
     private bool _isDraggingDecalWholeArea = false;
     private ManualDecalArea? _decalAreaDragSnapshot = null;
     private (int x, int y) _decalAreaDragStartMouseTile;
+    // Новую ручную область растягиваем мышью (как рамку выделения), а не кладём
+    // сразу на всю комнату. _isDrawingDecalArea — активен режим растягивания,
+    // _decalAreaDrawStart — угол, от которого тянем.
+    private bool _isDrawingDecalArea = false;
+    private (int x, int y) _decalAreaDrawStart;
+    private bool _decalAreaDrawMouseDown = false;
+    // Вызывается при завершении растягивания НОВОЙ области — добавляет её в слой
+    // и перерисовывает список (кроме отображения в канвасе).
+    private Action? _editingDecalAreaCommitAction = null;
+    // Восстановление UI при отмене (Esc) режима растягивания — напр. вернуть подпись кнопки
+    private Action? _editingDecalAreaCancelAction = null;
+    // Область, которую сейчас растягиваем (ещё не добавлена в слой).
+    private ManualDecalArea? _decalAreaPending = null;
 
 
     private class MoveSnapshotItem
@@ -342,6 +355,12 @@ private ComboBox _doorToolCombo = null!;
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (keyData == Keys.Escape && _isDrawingDecalArea)
+        {
+            CancelDrawDecalArea();
+            return true;
+        }
+
         if (keyData == Keys.Escape && _editingDecalArea != null)
         {
             EndEditDecalArea();

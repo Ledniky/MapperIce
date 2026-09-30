@@ -10,6 +10,13 @@ public partial class MainForm
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
+        // Растягивание НОВОЙ ручной области мышью (режим «Добавить область» в Decal Rule)
+        if (_isDrawingDecalArea && e.Button == MouseButtons.Left)
+        {
+            HandleDecalAreaDrawMouseDown(e);
+            return;
+        }
+
         // Перехватываем только ЛКМ (перетаскивание углов/области). ПКМ (панорамирование)
         // и СКМ должны обрабатываться обычной логикой ниже даже в режиме редактирования области.
         if (_editingDecalArea != null && e.Button == MouseButtons.Left)
@@ -921,6 +928,13 @@ public partial class MainForm
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
+        // Растягивание новой ручной области — живое обновление рамки и декалей
+        if (_isDrawingDecalArea && _decalAreaDrawMouseDown)
+        {
+            HandleDecalAreaDrawMouseMove(e);
+            return;
+        }
+
         // Перехватываем только когда реально идёт перетаскивание угла/области (ЛКМ зажата).
         // Если сейчас панорамирование (_isPanning от ПКМ), пропускаем в обычную логику ниже.
         if (_editingDecalArea != null && (_draggingDecalCornerIndex >= 0 || _isDraggingDecalWholeArea))
@@ -1130,6 +1144,13 @@ public partial class MainForm
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
     {
+        // Завершение растягивания новой ручной области
+        if (_isDrawingDecalArea && _decalAreaDrawMouseDown && e.Button == MouseButtons.Left)
+        {
+            HandleDecalAreaDrawMouseUp(e);
+            return;
+        }
+
         // Аналогично MouseMove — перехватываем отпускание только если реально
         // тащили угол/область; иначе (например, отпускание ПКМ после панорамирования)
         // отдаём обработку обычной логике ниже.

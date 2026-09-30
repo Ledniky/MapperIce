@@ -84,6 +84,19 @@ public class Renderer
     {
         _decalAreaEditRect = null;
     }
+
+    // Растягиваемая МЫШЬЮ новая ручная область декалей (ещё не добавлена в слой)
+    private (int x, int y, int w, int h)? _decalAreaDrawRect = null;
+
+    public void SetDecalAreaDrawRect(int x, int y, int w, int h)
+    {
+        _decalAreaDrawRect = (x, y, w, h);
+    }
+
+    public void ClearDecalAreaDrawRect()
+    {
+        _decalAreaDrawRect = null;
+    }
     public void SetSelectionBox(Point start, Point end)
     {
         _selectionBoxStart = start;
@@ -306,6 +319,7 @@ public class Renderer
             DrawExpandRoomPreview(g, scale, viewOffset);
             DrawSelectionHighlight(g, scale, viewOffset);
             DrawSelectionBox(g);
+            DrawDecalAreaDrawOverlay(g, scale, viewOffset);
             DrawDecalAreaEditOverlay(g, scale, viewOffset);
 
             return _buffer;
@@ -2758,6 +2772,33 @@ public class Renderer
         g.DrawRectangle(pen, rect);
     }
 
+
+    private void DrawDecalAreaDrawOverlay(Graphics g, float scale, PointF viewOffset)
+    {
+        if (_decalAreaDrawRect == null) return;
+        if (_currentMap?.ActiveGrid == null) return;
+
+        var (ax, ay, aw, ah) = _decalAreaDrawRect.Value;
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
+        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
+
+        float left = ax * tileSize + gridOffsetX - viewOffset.X;
+        float top = ay * tileSize + gridOffsetY - viewOffset.Y;
+        float width = aw * tileSize;
+        float height = ah * tileSize;
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(60, 120, 200, 255));
+        g.FillRectangle(fillBrush, left, top, width, height);
+
+        using var pen = new Pen(Color.FromArgb(255, 80, 160, 255), 2)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        g.DrawRectangle(pen, left, top, width, height);
+    }
 
     private void DrawDecalAreaEditOverlay(Graphics g, float scale, PointF viewOffset)
     {

@@ -44,3 +44,8 @@ D:\My programs\MapperIce\bin\checkbuild\MapperIce.dll
 D:\My programs\MapperIce\bin\checkbuild\MapperIce.pdb
 D:\My programs\MapperIce\bin\checkbuild\Newtonsoft.Json.dll
 D:\My programs\MapperIce\bin\checkbuild\YamlDotNet.dll
+C:\Users\Администратор\AppData\Local\Temp\mapperice-build-check\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\mapperice-build-check\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice-build-check\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice-build-check\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\mapperice-build-check\MapperIce.pdb
