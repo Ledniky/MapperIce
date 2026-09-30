@@ -360,16 +360,17 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
         var result = new List<(DecalPosition, (int dx, int dy))>();
         int ortho = m.OrthoCount;
 
-        // Внутренние углы — независимый источник декалей: они выставляются по диагональным
-        // соседям (NE/NW/SE/SW) НЕЗАВИСИМО от числа ортогональных стен. Раньше их проверяли
-        // только в ветке «без ортогональных стен» (ortho==0), а при ortho 1/2 ранний return
-        // обрывал выполнение — и внутренний угол рядом с прямой стороной или внешним углом
-        // не ставился (ставился только когда диагоналей было две+). Собираем диагонали
-        // всегда и добавляем к результату поверх классификации по ортогоналям.
-        if (m.NE) result.Add((DecalPosition.InnerCornerNE, (1, -1)));
-        if (m.NW) result.Add((DecalPosition.InnerCornerNW, (-1, -1)));
-        if (m.SE) result.Add((DecalPosition.InnerCornerSE, (1, 1)));
-        if (m.SW) result.Add((DecalPosition.InnerCornerSW, (-1, 1)));
+        // Внутренние углы — ставим по каждой диагонали независимо от ортогональной
+        // классификации, НО только когда обе ортогональные стороны, прилегающие к этой
+        // диагонали, открыты (пол, не стена). Условие и есть "нет стены в 4 соседях
+        // вокруг этого угла": если рядом с диагональю есть ортогональная стена, то это
+        // уже внешний угол/тупик/прямая сторона, а не внутренний угол посреди пола.
+        // Пример: стена только слева (W) — внутренние углы ставятся на диагоналях SE и NE
+        // (прилегающие S/E и N/E открыты), а на SW/NW — нет (прилегает стена W).
+        if (m.NE && !m.N && !m.E) result.Add((DecalPosition.InnerCornerNE, (1, -1)));
+        if (m.NW && !m.N && !m.W) result.Add((DecalPosition.InnerCornerNW, (-1, -1)));
+        if (m.SE && !m.S && !m.E) result.Add((DecalPosition.InnerCornerSE, (1, 1)));
+        if (m.SW && !m.S && !m.W) result.Add((DecalPosition.InnerCornerSW, (-1, 1)));
 
         switch (ortho)
         {
@@ -398,7 +399,8 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
                 break;
 
             default:
-                // ortho == 0 — только внутренние углы (уже собраны выше)
+                // ortho == 0 — клетка с ПУСТЫМИ ортогональными соседями: тут не добавляется
+                // никакой ортогональной позиции, только внутренние углы (они уже собраны выше).
                 break;
         }
 

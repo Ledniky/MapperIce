@@ -1475,24 +1475,39 @@ public class Renderer
         }
 
         // Декали
-        // Декали — это украшения пола/стен: они должны РИСОВАТЬСЯ ПОВЕРХ ТОЛЬКО ТАЙЛОВ
-        // и всегда ПОД предметами/сущностями (Objects и выше). Если прото или слой декали
-        // резолвится в глубину на уровне "Objects" или выше, принудительно опускаем её
-        // на слой под объектами — иначе декаль рисуется поверх сущностей (мебель, мобы).
-        int decalMaxDepth = _drawDepthManager.GetOffset("Objects") - 1;
+        // Декали — украшения пола/стен: они рисуются ПОВЕРХ только тайлов (пола/стен), но
+        // ВСЕГДА ПОД любыми сущностями (мебель, ковры, мобы). Ковры и прочий floor-декор —
+        // это сущности на уровне "FloorObjects" и выше, поэтому полку декалей фиксируем на
+        // один слой НИЖЕ самой нижней сущности (FloorObjects - 1). Это ставит декали сразу
+        // над тайлами пола и под ЖЕ любым объектом, независимо от глубины прототипа декали
+        // (раньше декаль резолвилась до своего drawdepth — WallTops/Walls — и вылезала
+        // поверх ковров; а потолок Objects-1 её от этого не спасал).
+        // Единая полка также означает, что среди декалей наслоение целиком решает
+        // LayerOrder (порядок слоёв из «Наследования декалей»), а не глубина прототипа.
+        int decalShelfDepth = _drawDepthManager.GetOffset("FloorObjects") - 1;
+        // Ковры (сущности с id "Carpet*") — отдельная полка ровно НА ОДИН слой выше
+        // декалей (FloorObjects вместо FloorObjects-1). В игре ковры рисуются на
+        // drawdepth "FloorObjects" — поверх пола и декалей, но под мебелью/мобами,
+        // поэтому и в редакторе они должны быть над декалями, а не под ними.
+        int carpetShelfDepth = decalShelfDepth + 1;
         foreach (var decal in grid.Decals)
         {
             if (!IsPointVisible(decal.X, decal.Y, visibleRect)) continue;
-            int dd = decal.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(decal.Proto);
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            if (dd > decalMaxDepth) dd = decalMaxDepth;
             var d = decal;
             int layerOrder = d.PatternLayerIndex;
-            renderQueue.Add((d.Y, dd, layerOrder, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
+            renderQueue.Add((d.Y, decalShelfDepth, layerOrder, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
+        }
+
+        // Ковры (сущности с id "Carpet*") — рисуем на отдельной полке поверх декалей,
+        // принудительно игнорируя drawdepth прототипа (иначе ковёр с drawdepth ниже
+        // FloorObjects провалился бы под декали). Внутри себя ковры сортируем по Y.
+        foreach (var entity in grid.Entities)
+        {
+            if (entity.Proto == null ||
+                !entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            var c = entity;
+            renderQueue.Add((c.Y, carpetShelfDepth, 0, _insertCounter++, () => DrawSingleEntity(g, c.Proto, c.X, c.Y, c.Rotation, tileSize, viewOffset, gridOffset)));
         }
 
         // Огнешлюзы
@@ -1543,7 +1558,9 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue; if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue;
+            if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
             if (dd == 0 && _indexer != null)
             {
