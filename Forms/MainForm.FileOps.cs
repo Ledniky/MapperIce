@@ -239,7 +239,11 @@ public partial class MainForm
                             Mode = l.Mode,
                             ManualAreas = l.ManualAreas.Select(a => new ManualDecalAreaData
                             {
-                                X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode
+                                X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode,
+                                Subtractions = a.Subtractions.Select(s => new DecalAreaRectData
+                                {
+                                    X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
+                                }).ToList()
                             }).ToList()
                         }).ToList()
                     };
@@ -250,7 +254,11 @@ public partial class MainForm
                 {
                     roomData.ManualDecalAreas.Add(new ManualDecalAreaData
                     {
-                        X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, Mode = area.Mode
+                        X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, Mode = area.Mode,
+                        Subtractions = area.Subtractions.Select(s => new DecalAreaRectData
+                        {
+                            X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
+                        }).ToList()
                     });
                 }
 
@@ -397,7 +405,11 @@ public partial class MainForm
                                 Mode = l.Mode,
                                 ManualAreas = l.ManualAreas.Select(a => new ManualDecalArea
                                 {
-                                    X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode
+                                    X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Mode = a.Mode,
+                                    Subtractions = a.Subtractions.Select(s => new DecalAreaRect
+                                    {
+                                        X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
+                                    }).ToList()
                                 }).ToList()
                             }).ToList()
                         };
@@ -408,7 +420,11 @@ public partial class MainForm
                     {
                         room.ManualDecalAreas.Add(new ManualDecalArea
                         {
-                            X = areaData.X, Y = areaData.Y, Width = areaData.Width, Height = areaData.Height, Mode = areaData.Mode
+                            X = areaData.X, Y = areaData.Y, Width = areaData.Width, Height = areaData.Height, Mode = areaData.Mode,
+                            Subtractions = areaData.Subtractions.Select(s => new DecalAreaRect
+                            {
+                                X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
+                            }).ToList()
                         });
                     }
 

@@ -341,6 +341,14 @@ private ComboBox _doorToolCombo = null!;
     private void RestoreState(GridSnapshot snapshot)
     {
         if (_map.ActiveGrid == null) return;
+
+        // Режим редактирования/рисования области и окна Decal Rule держат ссылки на
+        // старые экземпляры Room/ManualDecalArea, которые сейчас будут пересозданы.
+        if (_editingDecalArea != null) EndEditDecalArea();
+        CancelDrawDecalArea();
+        if (_decalRuleForm != null && !_decalRuleForm.IsDisposed)
+            _decalRuleForm.Close(); // «Ручные области» — дочернее окно, закроется вместе с ним
+
         snapshot.RestoreTo(_map.ActiveGrid);
 
         // Объекты, выделенные инструментом "Перемещение", ссылаются на старые экземпляры,
@@ -371,6 +379,14 @@ private ComboBox _doorToolCombo = null!;
         _renderer.ClearDecalAreaEditRect();
         _renderer.ClearDecalAreaDrawRect();
 
+        // Откат заново создал комнаты и их облаcти (room.Clone() в GridSnapshot).
+        // Пересчитываем декали из свежих объектов, чтобы узор сново привязался
+        // к областям и не "отсоединялся" после Ctrl+Z.
+        _renderer.SetSelection(_selectedObjects);
+
+        // Декали узора строим заново из откатанных областей, а не берём из снимка:
+        // так они физически не могут разойтись с областью.
+        RecalculateDecalPatterns();
         UpdateTileGrid();
         Render();
     }
@@ -441,34 +457,38 @@ private ComboBox _doorToolCombo = null!;
     private void RecalculateDecalPatterns()
     {
         if (_map.ActiveGrid == null) return;
-        _decalPatternBuilder.RecalculateAll(_map.ActiveGrid);
+        var grid = _map.ActiveGrid;
 
-        // Если растягивается НОВАЯ ручная область, она ещё не в списке слоя.
-        // Временно вставляем её в слой и пересчитываем заново, чтобы узор
-        // обновлялся живьём по мере изменения рамки; после коммита область
-        // штатно попадёт в список, и здесь ничего добавлять не придётся.
-        if (_decalAreaPendingLayer != null)
+        // Если растягивается НОВАЯ ручная область — пересчитываем ТОЛЬКО комнату-владельца
+        // слоя, временно вставляя pending-область в слой. Это заметно дешевле полного
+        // RecalculateAll и потому не тормозит каждое движение мыши (инпут-лаг).
+        if (_decalAreaPendingLayer != null && _decalAreaPending != null)
         {
+            var room = grid.Rooms.FirstOrDefault(r => r.AutoDecalRule.Layers.Contains(_decalAreaPendingLayer));
             var pending = _decalAreaPending;
-            if (pending == null)
-            {
-                _decalAreaPendingLayer = null;
-                return;
-            }
-            bool inserted = false;
             var areas = _decalAreaPendingLayer.ManualAreas;
-            if (_decalAreaPendingLayer.Mode == DecalPatternMode.Manual && _decalAreaPendingLayer.Enabled
-                && !areas.Contains(pending))
+            if (room != null && _decalAreaPendingLayer.Mode == DecalPatternMode.Manual && _decalAreaPendingLayer.Enabled)
             {
-                areas.Add(pending);
-                inserted = true;
+                bool inserted = !areas.Contains(pending);
+                if (inserted) areas.Add(pending);
+                _decalPatternBuilder.RecalculateForRoom(grid, room);
+                if (inserted) areas.Remove(pending);
             }
-            if (inserted)
+            else if (room != null)
             {
-                _decalPatternBuilder.RecalculateAll(_map.ActiveGrid);
-                areas.Remove(pending);
+                _decalPatternBuilder.RecalculateForRoom(grid, room);
             }
+            return;
         }
+
+        // Если редактируется существующая область — тоже пересчитываем только её комнату.
+        if (_editingDecalAreaRoom != null)
+        {
+            _decalPatternBuilder.RecalculateForRoom(grid, _editingDecalAreaRoom);
+            return;
+        }
+
+        _decalPatternBuilder.RecalculateAll(grid);
     }
 
     // === ХОЛСТ ===

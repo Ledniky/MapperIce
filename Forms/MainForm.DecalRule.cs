@@ -784,10 +784,22 @@ public partial class MainForm
         int sy = _decalAreaDrawStart.y;
         var area = _decalAreaPending;
 
-        area.X = Math.Min(nx, sx);
-        area.Y = Math.Min(ny, sy);
-        area.Width = Math.Max(1, Math.Abs(nx - sx));
-        area.Height = Math.Max(1, Math.Abs(ny - sy));
+        int newX = Math.Min(nx, sx);
+        int newY = Math.Min(ny, sy);
+        int newW = Math.Max(1, Math.Abs(nx - sx));
+        int newH = Math.Max(1, Math.Abs(ny - sy));
+
+        // Рамка привязана к углам тайла: между пересечениями границ тайла значения не
+        // меняются. Пропускаем пересчёт декалей и рендер в этих "пустых" пикселях —
+        // иначе каждый пиксель движения вызывает полное перестроение узора и картинка
+        // тормозит (слайдшоу). Пересоздаём декали только когда прямоугольник реально сменился.
+        if (newX == area.X && newY == area.Y && newW == area.Width && newH == area.Height)
+            return;
+
+        area.X = newX;
+        area.Y = newY;
+        area.Width = newW;
+        area.Height = newH;
 
         _renderer.SetDecalAreaDrawRect(area.X, area.Y, area.Width, area.Height);
         // Живой пересчёт декалей по мере растягивания рамки, чтобы узор
@@ -873,10 +885,20 @@ public partial class MainForm
             int fixedX = _draggingDecalCornerIndex == 1 || _draggingDecalCornerIndex == 3 ? area.X : area.X + area.Width;
             int fixedY = _draggingDecalCornerIndex == 2 || _draggingDecalCornerIndex == 3 ? area.Y : area.Y + area.Height;
 
-            area.X = Math.Min(nx, fixedX);
-            area.Y = Math.Min(ny, fixedY);
-            area.Width = Math.Max(1, Math.Abs(nx - fixedX));
-            area.Height = Math.Max(1, Math.Abs(ny - fixedY));
+            int newX = Math.Min(nx, fixedX);
+            int newY = Math.Min(ny, fixedY);
+            int newW = Math.Max(1, Math.Abs(nx - fixedX));
+            int newH = Math.Max(1, Math.Abs(ny - fixedY));
+
+            // Тот же гейт, что в растягивании: между пересечениями границ тайла
+            // прямоугольник не меняется — не пересчитываем декали на каждый пиксель.
+            if (newX == area.X && newY == area.Y && newW == area.Width && newH == area.Height)
+                return;
+
+            area.X = newX;
+            area.Y = newY;
+            area.Width = newW;
+            area.Height = newH;
 
             _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
             _editingDecalAreaApplyCallback?.Invoke();
@@ -890,8 +912,15 @@ public partial class MainForm
             int dx = curX - _decalAreaDragStartMouseTile.x;
             int dy = curY - _decalAreaDragStartMouseTile.y;
 
-            area.X = _decalAreaDragSnapshot.X + dx;
-            area.Y = _decalAreaDragSnapshot.Y + dy;
+            int newX = _decalAreaDragSnapshot.X + dx;
+            int newY = _decalAreaDragSnapshot.Y + dy;
+
+            // При переносе всей области также пропускаем кадры, где сдвиг не поменялся.
+            if (newX == area.X && newY == area.Y)
+                return;
+
+            area.X = newX;
+            area.Y = newY;
             for (int i = 0; i < area.Subtractions.Count && i < _decalAreaDragSnapshot.Subtractions.Count; i++)
             {
                 area.Subtractions[i].X = _decalAreaDragSnapshot.Subtractions[i].X + dx;

@@ -2878,8 +2878,25 @@ public class Renderer
         float width = aw * tileSize;
         float height = ah * tileSize;
 
+        // Вся область заливается жёлтым, но вычитаемые зоны "вырезаются" из неё как
+        // настоящие отверстия: там прозрачно, и сквозь них видно карту. Сами вычеты
+        // помечаются только тонкой пунктирной рамкой (в отличие от прежней красной
+        // заливки — теперь вырез выглядит как вычтенное место, а не как отдельная зона).
         using var fillBrush = new SolidBrush(Color.FromArgb(50, 255, 200, 0));
-        g.FillRectangle(fillBrush, left, top, width, height);
+
+        using (var region = new Region(new RectangleF(left, top, width, height)))
+        {
+            if (_decalAreaEditSubtractions != null)
+            {
+                foreach (var sub in _decalAreaEditSubtractions)
+                {
+                    float sl = sub.X * tileSize + gridOffsetX - viewOffset.X;
+                    float st = sub.Y * tileSize + gridOffsetY - viewOffset.Y;
+                    region.Exclude(new RectangleF(sl, st, sub.Width * tileSize, sub.Height * tileSize));
+                }
+            }
+            g.FillRegion(fillBrush, region);
+        }
 
         using var pen = new Pen(Color.FromArgb(255, 255, 160, 0), 2)
         {
@@ -2887,18 +2904,17 @@ public class Renderer
         };
         g.DrawRectangle(pen, left, top, width, height);
 
-
-
-        // Вычитаемые зоны — красная штриховка поверх жёлтой области
+        // Тонкая рамка вокруг вычитаемых зон — чтобы было видно, откуда что вычтено
         if (_decalAreaEditSubtractions != null)
         {
-            using var subBrush = new SolidBrush(Color.FromArgb(110, 230, 60, 60));
-            using var subPen = new Pen(Color.FromArgb(255, 200, 30, 30), 2f);
+            using var subPen = new Pen(Color.FromArgb(200, 120, 120, 120), 1)
+            {
+                DashStyle = System.Drawing.Drawing2D.DashStyle.Dot
+            };
             foreach (var sub in _decalAreaEditSubtractions)
             {
                 float sl = sub.X * tileSize + gridOffsetX - viewOffset.X;
                 float st = sub.Y * tileSize + gridOffsetY - viewOffset.Y;
-                g.FillRectangle(subBrush, sl, st, sub.Width * tileSize, sub.Height * tileSize);
                 g.DrawRectangle(subPen, sl, st, sub.Width * tileSize, sub.Height * tileSize);
             }
         }

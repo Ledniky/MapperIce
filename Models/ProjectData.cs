@@ -74,6 +74,15 @@ public class ManualDecalAreaData
     public int Width { get; set; }
     public int Height { get; set; }
     public ManualAreaMode Mode { get; set; } = ManualAreaMode.WallRegion;
+    public List<DecalAreaRectData> Subtractions { get; set; } = new();
+}
+
+public class DecalAreaRectData
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
 }
 
 public class RoomData

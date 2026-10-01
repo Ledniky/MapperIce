@@ -1,6 +1,7 @@
 using System.Drawing;
 
 namespace MapperIce.Models;
+
 public class Room
 {
     public int X { get; set; }
@@ -23,7 +24,7 @@ public class Room
     // "Заменить на окно") — BuildFromRooms пропускает их так же, как Passages,
     // иначе стена восстанавливается заново при следующей пересборке TileGrid
     public List<(int X, int Y)> Windows { get; set; } = new();
-    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto; 
+    public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;
     public DecalRuleSet AutoDecalRule { get; set; } = new();
     public List<ManualDecalArea> ManualDecalAreas { get; set; } = new();
 
@@ -36,8 +37,17 @@ public class Room
     // и живёт своей собственной, независимой копией правила.
     public bool HasCustomDecalRule { get; set; } = false;
     public int Priority { get; set; } = 0;
-    
-public Room Clone()
+
+
+    // Стабильный идентификатор комнаты: сохраняется в Clone(), в отличие от
+    // GetHashCode(), который у каждого клона новый. По нему декали узора
+    // привязаны к комнате (PlacedDecal.PatternOwnerId).
+    private static int _nextId = 0;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int Id { get; set; } = Interlocked.Increment(ref _nextId);
+
+    public Room Clone()
     {
         var clone = new Room
         {
@@ -54,13 +64,15 @@ public Room Clone()
             FireAlarmProto = FireAlarmProto,
             FillColor = FillColor,
             LineColor = LineColor,
+            Id = Id,
             Priority = Priority,
+            HasCustomDecalRule = HasCustomDecalRule,
             RemovedCells = new HashSet<(int X, int Y)>(RemovedCells),
             DecalMode = DecalMode,
             AutoDecalRule = AutoDecalRule.Clone(),
             ManualDecalAreas = ManualDecalAreas.Select(a => a.Clone()).ToList()
         };
-        
+
         foreach (var door in Doors)
         {
             clone.Doors.Add(new Door
@@ -76,9 +88,9 @@ public Room Clone()
 
         return clone;
     }
-    
-    
-    
+
+
+
     public bool Contains(int x, int y)
     {
         return x >= X && x < X + Width &&
@@ -86,7 +98,7 @@ public Room Clone()
                !RemovedCells.Contains((x, y));
     }
 
-        /// <summary>
+    /// <summary>
     /// true, если клетка (x,y) принадлежит комнате и при этом её сосед в
     /// направлении (dx,dy) комнате НЕ принадлежит — то есть на этой стороне
     /// клетки физически стена. Учитывает RemovedCells через Contains, поэтому

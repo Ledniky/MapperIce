@@ -142,7 +142,7 @@ private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, 
 
 public void RecalculateForRoom(Grid grid, Room room)
     {
-        int ownerId = room.GetHashCode();
+        int ownerId = room.Id;
 
         grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
 
@@ -170,7 +170,7 @@ public void RecalculateForRoom(Grid grid, Room room)
 
         foreach (var room in grid.Rooms)
         {
-            int ownerId = room.GetHashCode();
+            int ownerId = room.Id;
 
             for (int i = 0; i < room.AutoDecalRule.Layers.Count; i++)
             {
