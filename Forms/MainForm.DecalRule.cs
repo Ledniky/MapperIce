@@ -156,6 +156,72 @@ public partial class MainForm
                     };
                     row.Controls.Add(btnEditOnMap);
 
+
+
+                    var btnSubtract = new Button
+                    {
+                        Text = "➖ Вычесть",
+                        Location = new Point(175, 30),
+                        Width = 90,
+                        Height = 24,
+                        FlatStyle = FlatStyle.Flat
+                    };
+                    btnSubtract.Click += (s, e) =>
+                    {
+                        btnSubtract.Text = "выделите…";
+                        // Переиспользуем протяжку рамки от "Добавить область":
+                        // результат падает в _decalAreaPending, дальше кладём его в вычеты.
+                        _editingDecalAreaCommitAction = () =>
+                        {
+                            var pending = _decalAreaPending;
+                            if (pending == null) return;
+                            area.Subtractions.Add(new DecalAreaRect
+                            {
+                                X = pending.X,
+                                Y = pending.Y,
+                                Width = pending.Width,
+                                Height = pending.Height
+                            });
+                            RebuildAreas();
+                            ApplyLiveChanges();
+                            // Возвращаемся в режим редактирования этой области,
+                            // чтобы вырезы были видны на карте
+                            BeginEditDecalArea(room, area, () =>
+                            {
+                                RecalculateDecalPatterns();
+                                Render();
+                            });
+                        };
+                        _editingDecalAreaCancelAction = () => btnSubtract.Text = "➖ Вычесть";
+                        BeginDrawDecalArea();
+                        // BeginDrawDecalArea гасит рамку области — возвращаем её, чтобы
+                        // было видно, откуда вычитаем (только отрисовка, режим редактирования не включается)
+                        _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
+                        _renderer.SetDecalAreaEditSubtractions(area.Subtractions);
+                        Render();
+                    };
+                    row.Controls.Add(btnSubtract);
+
+                    var btnUndoSubtract = new Button
+                    {
+                        Text = "↶",
+                        Location = new Point(270, 30),
+                        Width = 26,
+                        Height = 24,
+                        FlatStyle = FlatStyle.Flat,
+                        Enabled = area.Subtractions.Count > 0
+                    };
+                    new ToolTip().SetToolTip(btnUndoSubtract, "Убрать последний вычет");
+                    btnUndoSubtract.Click += (s, e) =>
+                    {
+                        if (area.Subtractions.Count == 0) return;
+                        area.Subtractions.RemoveAt(area.Subtractions.Count - 1);
+                        RebuildAreas();
+                        ApplyLiveChanges();
+                    };
+                    row.Controls.Add(btnUndoSubtract);
+
+                    
                     var btnDelArea = new Button { Text = "🗑", Location = new Point(270, 2), Width = 26, Height = 24, FlatStyle = FlatStyle.Flat };
                     btnDelArea.Click += (s, e) =>
                     {
@@ -207,6 +273,7 @@ public partial class MainForm
                     });
                 };
                 _editingDecalAreaCancelAction = () => SetDecalAddButtonActive(false);
+                _decalAreaPendingLayer = layer;
                 BeginDrawDecalArea();
             };
             areasForm.Controls.Add(btnAddArea);
@@ -640,6 +707,7 @@ public partial class MainForm
         _editingDecalAreaApplyCallback = onChanged;
         _toolManager.ResetTool();
         _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
+        _renderer.SetDecalAreaEditSubtractions(area.Subtractions);
         // Статус удалён — тип комнаты теперь в ComboBox
         Render();
     }
@@ -677,6 +745,7 @@ public partial class MainForm
         _isDrawingDecalArea = false;
         _decalAreaDrawMouseDown = false;
         _decalAreaPending = null;
+        _decalAreaPendingLayer = null;
         _editingDecalAreaCommitAction = null;
         _editingDecalAreaCancelAction?.Invoke();
         _editingDecalAreaCancelAction = null;
@@ -721,6 +790,9 @@ public partial class MainForm
         area.Height = Math.Max(1, Math.Abs(ny - sy));
 
         _renderer.SetDecalAreaDrawRect(area.X, area.Y, area.Width, area.Height);
+        // Живой пересчёт декалей по мере растягивания рамки, чтобы узор
+        // обновлялся при ЛЮБОМ изменении области (а не только после отпускания).
+        RecalculateDecalPatterns();
         Render();
     }
 
@@ -744,6 +816,7 @@ public partial class MainForm
         _editingDecalAreaCancelAction = null;
         _editingDecalAreaCommitAction = null;
         _decalAreaPending = null;
+        _decalAreaPendingLayer = null;
         Render();
     }
 
@@ -780,7 +853,7 @@ public partial class MainForm
         {
             _isDraggingDecalWholeArea = true;
             _draggingDecalCornerIndex = -1;
-            _decalAreaDragSnapshot = new ManualDecalArea { X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, Mode = area.Mode };
+            _decalAreaDragSnapshot = area.Clone();
             _decalAreaDragStartMouseTile = GetTileCornerPosition(e.Location);
         }
     }
@@ -819,6 +892,11 @@ public partial class MainForm
 
             area.X = _decalAreaDragSnapshot.X + dx;
             area.Y = _decalAreaDragSnapshot.Y + dy;
+            for (int i = 0; i < area.Subtractions.Count && i < _decalAreaDragSnapshot.Subtractions.Count; i++)
+            {
+                area.Subtractions[i].X = _decalAreaDragSnapshot.Subtractions[i].X + dx;
+                area.Subtractions[i].Y = _decalAreaDragSnapshot.Subtractions[i].Y + dy;
+            }
 
             _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
             _editingDecalAreaApplyCallback?.Invoke();

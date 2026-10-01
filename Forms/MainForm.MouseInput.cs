@@ -113,18 +113,23 @@ public partial class MainForm
                 // Те же флаги _deleteSettings, что и в DeleteArea: при DeleteAll фильтр
                 // не мешает, иначе конкретный чекбокс должен быть включён
                 bool canDeletePipes = _deleteSettings.DeleteAll || _deleteSettings.DeletePipes;
+                bool canDeleteWires = _deleteSettings.DeleteAll || _deleteSettings.DeleteWires;
                 bool canDeleteAlarms = _deleteSettings.DeleteAll || _deleteSettings.DeleteAlarms;
                 bool canDeleteRooms = _deleteSettings.DeleteAll || _deleteSettings.DeleteRooms;
-                bool canDeleteEntities = _deleteSettings.DeleteAll || _deleteSettings.DeleteEntities;
+                bool canDeleteDoors = _deleteSettings.DeleteAll || _deleteSettings.DeleteDoors;
+                bool canDeletePrototypes = _deleteSettings.DeleteAll || _deleteSettings.DeletePrototypes;
                 bool canDeleteOther = _deleteSettings.DeleteAll || _deleteSettings.DeleteOther;
                 bool canDeleteDecals = _deleteSettings.DeleteAll || _deleteSettings.DeleteDecals;
+                bool canDeleteTiles = _deleteSettings.DeleteAll || _deleteSettings.DeleteTiles;
 
+                // Сигнализации
                 var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
                 if (alarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
                 if (fireAlarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
+                // Трубы (газовые и утилизационные)
                 var pipesHere = grid.Entities.OfType<PipeEntity>()
                     .Where(p => (int)p.X == tileX && (int)p.Y == tileY)
                     .ToList();
@@ -158,24 +163,79 @@ public partial class MainForm
                     if (canDeletePipes) { grid.Entities.Remove(pipe); SaveState(); UpdateTileGrid(); Render(); }
                     return;
                 }
-                // Двери и вручную поставленные тайлы всегда удаляемы точечно — как и в области,
-                // для них нет отдельных чекбоксов в DeleteSettings
-                if (_doorUpdater.TryRemoveDoor(grid, tileX, tileY)) { RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); return; }
-                var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
-                if (anyEntity != null)
+
+                // Электропроводка
+                var wire = grid.Entities.OfType<WireEntity>().FirstOrDefault(w => (int)w.X == tileX && (int)w.Y == tileY);
+                if (wire != null) { if (canDeleteWires) { grid.Entities.Remove(wire); SaveState(); UpdateTileGrid(); Render(); } return; }
+
+                // Двери, проёмы и окна
+                var anyRoom = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
+                if (anyRoom != null)
                 {
-                    bool isGenericEntity = anyEntity.GetType() == typeof(MapEntity);
-                    bool allowed = isGenericEntity ? canDeleteEntities : canDeleteOther;
-                    if (allowed) { grid.Entities.Remove(anyEntity); SaveState(); UpdateTileGrid(); Render(); }
+                    bool foundDoorFeature = false;
+                    if (anyRoom.Passages.Contains((tileX, tileY)))
+                    {
+                        if (canDeleteDoors) { anyRoom.Passages.Remove((tileX, tileY)); RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
+                        foundDoorFeature = true;
+                    }
+                    else if (anyRoom.Windows.Contains((tileX, tileY)))
+                    {
+                        if (canDeleteDoors)
+                        {
+                            // Удаляем окно: возвращаем стену на это место
+                            anyRoom.Windows.Remove((tileX, tileY));
+                            _tileGrid.SetTile(tileX, tileY, TileContent.Wall, anyRoom.WallProto, anyRoom.RoomType, anyRoom.GetHashCode());
+                            // Сносим связанные сущности окна и решётки (generic MapEntity на этой клетке)
+                            var winEntities = grid.Entities
+                                .Where(e => e.GetType() == typeof(MapEntity) &&
+                                            (int)e.X == tileX && (int)e.Y == tileY)
+                                .ToList();
+                            foreach (var we in winEntities)
+                                grid.Entities.Remove(we);
+                            RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render();
+                        }
+                        foundDoorFeature = true;
+                    }
+                    if (foundDoorFeature) return;
+                }
+                if (canDeleteDoors && _doorUpdater.TryRemoveDoor(grid, tileX, tileY))
+                {
+                    RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render();
                     return;
                 }
 
+                // Прототипы из репозитория (точный тип MapEntity) и прочее
+                var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
+                if (anyEntity != null)
+                {
+                    bool allowed;
+                    if (anyEntity is PipeEntity || anyEntity is WireEntity ||
+                        anyEntity is AirAlarmEntity || anyEntity is FireAlarmEntity)
+                    {
+                        allowed = false; // обработаны выше
+                    }
+                    else if (anyEntity.GetType() == typeof(MapEntity))
+                    {
+                        allowed = canDeletePrototypes;
+                    }
+                    else
+                    {
+                        allowed = canDeleteOther; // FirelockEntity и прочие подтипы
+                    }
+                    if (allowed) { grid.Entities.Remove(anyEntity); UpdateTileGrid(); Render(); }
+                    SaveState();
+                    return;
+                }
+
+                // Декали из репозитория
                 var decal = grid.Decals.FirstOrDefault(d => FloorToInt(d.X) == tileX && FloorToInt(d.Y) == tileY);
                 if (decal != null) { if (canDeleteDecals) { grid.Decals.Remove(decal); SaveState(); UpdateTileGrid(); Render(); } return; }
 
+                // Тайлы из репозитория
                 var placedTile = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
-                if (placedTile != null) { grid.Tiles.Remove(placedTile); SaveState(); UpdateTileGrid(); Render(); return; }
+                if (placedTile != null) { if (canDeleteTiles) { grid.Tiles.Remove(placedTile); SaveState(); UpdateTileGrid(); Render(); } return; }
 
+                // Комнаты
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
                 if (room != null && canDeleteRooms)
                 {
@@ -191,9 +251,6 @@ public partial class MainForm
                     _doorUpdater.RecalculateAllDoors(grid);
                     SaveState(); UpdateTileGrid(); Render(); return;
                 }
-
-
-
             }
 
 
@@ -203,6 +260,7 @@ public partial class MainForm
                 _isDeletingArea = true;
                 _deleteStartPoint = new Point(tileX, tileY);
                 _deleteEndPoint = new Point(tileX, tileY);
+                UpdateDeleteAreaPreview();
                 Render();
                 return;
             }
@@ -1095,6 +1153,7 @@ public partial class MainForm
         {
             var tilePos = GetTilePosition(e.Location);
             _deleteEndPoint = new Point(tilePos.x, tilePos.y);
+            UpdateDeleteAreaPreview();
             Render();
             return;
         }
@@ -1255,9 +1314,11 @@ public partial class MainForm
             var grid = _map.ActiveGrid;
             var toRemove = new List<MapEntity>();
             var decalsToRemove = new List<PlacedDecal>();
+            bool hasRoomsInArea = grid.Rooms.Any(r => RoomAreaOverlapsBox(r, minX, minY, maxX, maxY));
 
             if (_deleteSettings.DeleteAll)
             {
+                // При DeleteAll удаляем всё, что попало в область
                 toRemove.AddRange(grid.Entities.Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY));
                 decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
 
@@ -1279,16 +1340,98 @@ public partial class MainForm
 
                 if (rooms.Count > 0)
                     _doorUpdater.RecalculateAllDoors(grid);
-
-
-
-
             }
             else
             {
+                // --- Трубы ---
                 if (_deleteSettings.DeletePipes)
                     toRemove.AddRange(grid.Entities.OfType<PipeEntity>().Where(p => p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY));
 
+                // --- Провода ---
+                if (_deleteSettings.DeleteWires)
+                    toRemove.AddRange(grid.Entities.OfType<WireEntity>().Where(w => w.X >= minX && w.X <= maxX && w.Y >= minY && w.Y <= maxY));
+
+                // --- Сигнализации ---
+                if (_deleteSettings.DeleteAlarms)
+                {
+                    toRemove.AddRange(grid.Entities.OfType<AirAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
+                    toRemove.AddRange(grid.Entities.OfType<FireAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
+                }
+
+                // --- Прототипы (сущности из репозитория, точный тип MapEntity) ---
+                if (_deleteSettings.DeletePrototypes)
+                {
+                    var repoEntities = grid.Entities
+                        .Where(e => e.GetType() == typeof(MapEntity))
+                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
+                        .ToList();
+                    toRemove.AddRange(repoEntities);
+                }
+
+                // --- Другое (FirelockEntity и любые прочие типы, у которых нет своей категории) ---
+                if (_deleteSettings.DeleteOther)
+                {
+                    var knownTypes = new HashSet<Type>
+                    {
+                        typeof(PipeEntity), typeof(WireEntity),
+                        typeof(AirAlarmEntity), typeof(FireAlarmEntity),
+                        typeof(MapEntity)
+                    };
+                    var otherEntities = grid.Entities
+                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
+                        .Where(e => !knownTypes.Contains(e.GetType()))
+                        .ToList();
+                    toRemove.AddRange(otherEntities);
+                }
+
+                // --- Декали из репозитория ---
+                if (_deleteSettings.DeleteDecals)
+                {
+                    decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
+                }
+
+                // --- Тайлы из репозитория ---
+                if (_deleteSettings.DeleteTiles)
+                {
+                    var tilesToRemove = grid.Tiles
+                        .Where(t => t.X >= minX && t.X <= maxX && t.Y >= minY && t.Y <= maxY)
+                        .ToList();
+                    foreach (var t in tilesToRemove)
+                        grid.Tiles.Remove(t);
+                }
+
+                // --- Двери, проёмы и окна ---
+                if (_deleteSettings.DeleteDoors)
+                {
+                    for (int x = minX; x <= maxX; x++)
+                        for (int y = minY; y <= maxY; y++)
+                        {
+                            _doorUpdater.TryRemoveDoor(grid, x, y);
+                            foreach (var rr in grid.Rooms)
+                            {
+                                if (rr.Contains(x, y))
+                                {
+                                    rr.Passages.Remove((x, y));
+                                    if (rr.Windows.Remove((x, y)))
+                                    {
+                                        _tileGrid.SetTile(x, y, TileContent.Wall, rr.WallProto, rr.RoomType, rr.GetHashCode());
+                                        // Удаляем сущности окна и решётки на этой клетке
+                                        var winEntities = grid.Entities
+                                            .Where(e => e.GetType() == typeof(MapEntity) &&
+                                                        (int)e.X == x && (int)e.Y == y)
+                                            .ToList();
+                                        foreach (var we in winEntities)
+                                            grid.Entities.Remove(we);
+                                    }
+                                }
+                            }
+                        }
+
+                    if (hasRoomsInArea)
+                        _doorUpdater.RecalculateAllDoors(grid);
+                }
+
+                // --- Комнаты ---
                 if (_deleteSettings.DeleteRooms)
                 {
                     var roomsToRemove = grid.Rooms
@@ -1296,15 +1439,9 @@ public partial class MainForm
                         .ToList();
                     foreach (var room in roomsToRemove)
                     {
-                        // Удаляем декали, сгенерированные Decal Rule для этой комнаты
-                        // (PatternOwnerId = room.GetHashCode()). Их положение может
-                        // выходить за прямоугольную рамку, поэтому нужен выборочный
-                        // фильтр по владельцу, а не только по координатам.
                         int ownerId = room.GetHashCode();
                         grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
 
-                        // Плюс удаляем все декали внутри прямоугольника комнаты
-                        // (ручные декали с левой панели)
                         var roomDecals = grid.Decals
                             .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
                                         d.Y >= room.Y && d.Y < room.Y + room.Height)
@@ -1318,46 +1455,13 @@ public partial class MainForm
                     if (roomsToRemove.Count > 0)
                         _doorUpdater.RecalculateAllDoors(grid);
                 }
-
-                if (_deleteSettings.DeleteAlarms)
-                {
-                    toRemove.AddRange(grid.Entities.OfType<AirAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
-                    toRemove.AddRange(grid.Entities.OfType<FireAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
-                }
-
-                if (_deleteSettings.DeleteEntities)
-                {
-                    var repoEntities = grid.Entities
-                        .Where(e => e.GetType() == typeof(MapEntity))
-                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
-                        .ToList();
-                    toRemove.AddRange(repoEntities);
-                }
-
-                if (_deleteSettings.DeleteOther)
-                {
-                    var knownTypes = new HashSet<Type>
-                    {
-                        typeof(PipeEntity), typeof(AirAlarmEntity), typeof(FireAlarmEntity),
-                        typeof(FirelockEntity), typeof(MapEntity)
-                    };
-                    var otherEntities = grid.Entities
-                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
-                        .Where(e => !knownTypes.Contains(e.GetType()))
-                        .ToList();
-                    toRemove.AddRange(otherEntities);
-                }
-
-                if (_deleteSettings.DeleteDecals)
-                {
-                    decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
-                }
             }
 
             foreach (var entity in toRemove) grid.Entities.Remove(entity);
             foreach (var decal in decalsToRemove) grid.Decals.Remove(decal);
             SaveState();
             UpdateTileGrid();
+            _renderer.ClearDeleteAreaRect();
             Render();
             _isDeletingArea = false;
             _deleteEndPoint = null;
@@ -1472,6 +1576,23 @@ public partial class MainForm
 
 
         /// <summary>
+    /// Обновляет рамку визуализации инструмента "Удалить область": пересчитывает
+    /// прямоугольник (в тайловых координатах, инклюзивно по обоим углам) между
+    /// начальной и текущей конечной клеткой и передаёт его рендереру.
+    /// </summary>
+    private void UpdateDeleteAreaPreview()
+    {
+        var start = _deleteStartPoint;
+        var end = _deleteEndPoint ?? start;
+        int minX = Math.Min(start.X, end.X);
+        int maxX = Math.Max(start.X, end.X);
+        int minY = Math.Min(start.Y, end.Y);
+        int maxY = Math.Max(start.Y, end.Y);
+        _renderer.SetDeleteAreaRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+
+    /// <summary>
     /// Определяет, какую комнату и в какую сторону (dx, dy) можно расширить от
     /// точки под курсором — используется и для подсветки при наведении
     /// (OnMouseMove), и для самого клика (OnMouseDown), чтобы поведение

@@ -225,6 +225,9 @@ private ComboBox _doorToolCombo = null!;
     private Action? _editingDecalAreaCancelAction = null;
     // Область, которую сейчас растягиваем (ещё не добавлена в слой).
     private ManualDecalArea? _decalAreaPending = null;
+    // Слой, в который добавится растягиваемая область — нужен для живого
+    // предпросмотра декалей пока область ещё не закоммичена.
+    private DecalLayer? _decalAreaPendingLayer = null;
 
 
     private class MoveSnapshotItem
@@ -243,15 +246,16 @@ private ComboBox _doorToolCombo = null!;
         return obj switch
         {
             Room => _moveSettings.IncludeRooms,
-            PlacedTile => _moveSettings.IncludeTiles,
-            PlacedDecal => _moveSettings.IncludeDecals,
-            PipeEntity => _moveSettings.IncludePipes,
+            PlacedTile => _moveSettings.IncludeTiles,        // тайлы из репозитория
+            PlacedDecal => _moveSettings.IncludeDecals,      // декали из репозитория
+            PipeEntity => _moveSettings.IncludePipes,        // трубы (газовые и утилизационные)
+            WireEntity => _moveSettings.IncludeWires,        // электропроводка
             AirAlarmEntity => _moveSettings.IncludeAlarms,
             FireAlarmEntity => _moveSettings.IncludeAlarms,
-            FirelockEntity => _moveSettings.IncludeFirelocks,
-            MapEntity e when e.GetType() == typeof(MapEntity) => _moveSettings.IncludeEntities,
-            MapEntity => _moveSettings.IncludeOther,
-            _ => true
+            FirelockEntity => _moveSettings.IncludeOther,    // пожарные шлюзы — "другое"
+            MapEntity e when e.GetType() == typeof(MapEntity) => _moveSettings.IncludePrototypes, // прототипы из репозитория
+            MapEntity => _moveSettings.IncludeOther,         // прочие подтипы MapEntity — "другое"
+            _ => _moveSettings.IncludeOther
         };
     }
 
@@ -348,6 +352,25 @@ private ComboBox _doorToolCombo = null!;
         _moveSnapshot.Clear();
         _renderer.SetSelection(_selectedObjects);
 
+        // Undo/redo пересоздаёт комнаты (room.Clone() глубоко копирует AutoDecalRule
+        // и ManualAreas), поэтому любые текущие ссылки на редактируемую/растягиваемую
+        // ручную область указывают на осиротевшие объекты, не входящие в живой грид.
+        // Сбрасываем это состояние, иначе выделение "ломается" и декали не строятся.
+        _isDrawingDecalArea = false;
+        _decalAreaDrawMouseDown = false;
+        _decalAreaPending = null;
+        _decalAreaPendingLayer = null;
+        _editingDecalAreaCommitAction = null;
+        _editingDecalAreaCancelAction = null;
+        _editingDecalArea = null;
+        _editingDecalAreaRoom = null;
+        _editingDecalAreaApplyCallback = null;
+        _draggingDecalCornerIndex = -1;
+        _isDraggingDecalWholeArea = false;
+        _decalAreaDragSnapshot = null;
+        _renderer.ClearDecalAreaEditRect();
+        _renderer.ClearDecalAreaDrawRect();
+
         UpdateTileGrid();
         Render();
     }
@@ -419,6 +442,33 @@ private ComboBox _doorToolCombo = null!;
     {
         if (_map.ActiveGrid == null) return;
         _decalPatternBuilder.RecalculateAll(_map.ActiveGrid);
+
+        // Если растягивается НОВАЯ ручная область, она ещё не в списке слоя.
+        // Временно вставляем её в слой и пересчитываем заново, чтобы узор
+        // обновлялся живьём по мере изменения рамки; после коммита область
+        // штатно попадёт в список, и здесь ничего добавлять не придётся.
+        if (_decalAreaPendingLayer != null)
+        {
+            var pending = _decalAreaPending;
+            if (pending == null)
+            {
+                _decalAreaPendingLayer = null;
+                return;
+            }
+            bool inserted = false;
+            var areas = _decalAreaPendingLayer.ManualAreas;
+            if (_decalAreaPendingLayer.Mode == DecalPatternMode.Manual && _decalAreaPendingLayer.Enabled
+                && !areas.Contains(pending))
+            {
+                areas.Add(pending);
+                inserted = true;
+            }
+            if (inserted)
+            {
+                _decalPatternBuilder.RecalculateAll(_map.ActiveGrid);
+                areas.Remove(pending);
+            }
+        }
     }
 
     // === ХОЛСТ ===
@@ -533,6 +583,11 @@ private ComboBox _doorToolCombo = null!;
             _renderer.SetSelection(_selectedObjects);
             _renderer.ClearSelectionBox();
         }
+
+        // Сброс активной рамки удаления области при смене инструмента
+        _isDeletingArea = false;
+        _deleteEndPoint = null;
+        _renderer.ClearDeleteAreaRect();
 
         switch (tool)
         {

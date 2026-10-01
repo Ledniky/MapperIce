@@ -107,11 +107,44 @@ public class ManualDecalArea
     public int Height { get; set; }
     public ManualAreaMode Mode { get; set; } = ManualAreaMode.WallRegion;
 
+    // Вычитаемые прямоугольники (абсолютные координаты клеток). В старых
+    // сохранениях поля нет — десериализуется как пустой список.
+    public List<DecalAreaRect> Subtractions { get; set; } = new();
+
+    /// <summary>Клетка входит в область: внутри основного прямоугольника и вне всех вычетов.</summary>
+    public bool Contains(int x, int y)
+    {
+        if (x < X || x >= X + Width || y < Y || y >= Y + Height) return false;
+        foreach (var s in Subtractions)
+            if (s.Contains(x, y)) return false;
+        return true;
+    }
+
     public ManualDecalArea Clone()
     {
-        return new ManualDecalArea { X = X, Y = Y, Width = Width, Height = Height, Mode = Mode };
+        return new ManualDecalArea
+        {
+            X = X, Y = Y, Width = Width, Height = Height, Mode = Mode,
+            Subtractions = Subtractions
+                .Select(s => new DecalAreaRect { X = s.X, Y = s.Y, Width = s.Width, Height = s.Height })
+                .ToList()
+        };
     }
 }
+
+
+/// <summary>Прямоугольник, вычитаемый из ручной области (для непрямоугольных форм).</summary>
+public class DecalAreaRect
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+
+    public bool Contains(int x, int y) =>
+        x >= X && x < X + Width && y >= Y && y < Y + Height;
+}
+
 
 /// <summary>Формат для экспорта/импорта одного пака в JSON-файл (по образцу ExportData у RoomType).</summary>
 public class DecalPackExportData

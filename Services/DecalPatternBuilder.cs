@@ -220,24 +220,25 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
 
     /// <summary>Режим 1 «Область-стена»: вся область считается сплошной стеной, обрамление
     /// рисуется по форме прямоугольника на клетках области (внутри выделенной области).</summary>
-    private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+{
+    var result = new List<PlacedDecal>();
+
+    for (int x = area.X; x < area.X + area.Width; x++)
     {
-        var result = new List<PlacedDecal>();
-
-        for (int x = area.X; x < area.X + area.Width; x++)
+        for (int y = area.Y; y < area.Y + area.Height; y++)
         {
-            for (int y = area.Y; y < area.Y + area.Height; y++)
-            {
-                if (!room.Contains(x, y)) continue;
-                if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-                if (IsWallCell(room, x, y)) continue;
+            if (!area.Contains(x, y)) continue;
+            if (!room.Contains(x, y)) continue;
+            if (IsDoorAnywhereInGrid(grid, x, y)) continue;
+            if (IsWallCell(room, x, y)) continue;
 
-                PlaceWallRegionDecals(layer, layerIndex, room, area, x, y, ownerId, result);
-            }
+            PlaceWallRegionDecals(layer, layerIndex, room, area, x, y, ownerId, result);
         }
-
-        return result;
     }
+
+    return result;
+}
 
     /// <summary>Расстановка декалей для режима «Область-стена»: рисуется ТОЛЬКО периметр области.
     /// «Открытой» считается сторона, сосед по которой выходит за пределы прямоугольника области
@@ -246,9 +247,7 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
     /// получают декалей. Углы — OuterCorner, прямые стороны — Side в направлении открытой стороны.</summary>
     private void PlaceWallRegionDecals(DecalLayer layer, int layerIndex, Room room, ManualDecalArea area, int x, int y, int ownerId, List<PlacedDecal> result)
     {
-        bool InArea(int nx, int ny) =>
-            nx >= area.X && nx < area.X + area.Width &&
-            ny >= area.Y && ny < area.Y + area.Height;
+        bool InArea(int nx, int ny) => area.Contains(nx, ny);
 
         bool openN = !InArea(x, y - 1);
         bool openS = !InArea(x, y + 1);
@@ -256,7 +255,18 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
         bool openW = !InArea(x - 1, y);
         int openCount = (openN ? 1 : 0) + (openS ? 1 : 0) + (openE ? 1 : 0) + (openW ? 1 : 0);
 
-        if (openCount == 0) return; // внутренняя клетка области — периметр не проходит здесь
+
+        if (openCount == 0)
+        {
+            // Внутренняя клетка. Если выпадает диагональный сосед (вогнутый угол
+            // после вычитания) — ставим внутренний угол в эту сторону.
+            if (!InArea(x + 1, y - 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerNE, ownerId, result);
+            if (!InArea(x - 1, y - 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerNW, ownerId, result);
+            if (!InArea(x + 1, y + 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerSE, ownerId, result);
+            if (!InArea(x - 1, y + 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerSW, ownerId, result);
+            return;
+        }
+
 
         void Place(DecalPosition pos) => AddDecalForLayerPosition(layer, layerIndex, room, x, y, pos, ownerId, result);
 
@@ -275,27 +285,28 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
 
     /// <summary>Режим 2 «Вокруг стен»: обычный узор вдоль настоящих стен комнаты, но выводятся
     /// только декали, попадающие внутрь области (без виртуальной стены по границе области).</summary>
-    private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
+{
+    var result = new List<PlacedDecal>();
+
+    for (int x = area.X; x < area.X + area.Width; x++)
     {
-        var result = new List<PlacedDecal>();
-
-        for (int x = area.X; x < area.X + area.Width; x++)
+        for (int y = area.Y; y < area.Y + area.Height; y++)
         {
-            for (int y = area.Y; y < area.Y + area.Height; y++)
-            {
-                if (!room.Contains(x, y)) continue;
-                if (room.RemovedCells.Contains((x, y))) continue;
-                if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-                if (IsWallCell(room, x, y)) continue;
+            if (!area.Contains(x, y)) continue;
+            if (!room.Contains(x, y)) continue;
+            if (room.RemovedCells.Contains((x, y))) continue;
+            if (IsDoorAnywhereInGrid(grid, x, y)) continue;
+            if (IsWallCell(room, x, y)) continue;
 
-                var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
-                AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
-                PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
-            }
+            var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
+            AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
+            PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
         }
-
-        return result;
     }
+
+    return result;
+}
 
     /// <summary>Декали двери DoorN/S/E/W ставятся на КЛЕТКУ-РАМКУ рядом с дверью (сама дверь
     /// была пропущена через continue, поэтому на двери декали нет).</summary>

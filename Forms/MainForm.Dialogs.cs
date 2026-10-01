@@ -731,7 +731,7 @@ public partial class MainForm
         _deleteSettingsForm = new Form
         {
             Text = "Настройки удаления",
-            Size = new Size(350, 300),
+            Size = new Size(380, 460),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -784,96 +784,41 @@ public partial class MainForm
         panel.SetColumnSpan(chkAll, 2);
         row++;
 
-        var chkRooms = new CheckBox
+        CheckBox AddCheck(string text, string tag, bool checkedVal, Action<bool> apply)
         {
-            Text = "Комнаты",
-            Checked = _deleteSettings.DeleteRooms,
-            AutoSize = true,
-            Tag = "rooms",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkRooms.CheckedChanged += (s, e) => { _deleteSettings.DeleteRooms = chkRooms.Checked; };
-        panel.Controls.Add(chkRooms, 0, row);
-        panel.SetColumnSpan(chkRooms, 2);
-        row++;
+            var chk = new CheckBox
+            {
+                Text = text,
+                Checked = checkedVal,
+                AutoSize = true,
+                Tag = tag,
+                Enabled = !_deleteSettings.DeleteAll
+            };
+            chk.CheckedChanged += (s, e) => apply(chk.Checked);
+            panel.Controls.Add(chk, 0, row);
+            panel.SetColumnSpan(chk, 2);
+            row++;
+            return chk;
+        }
 
-        var chkPipes = new CheckBox
-        {
-            Text = "Газовые трубы",
-            Checked = _deleteSettings.DeletePipes,
-            AutoSize = true,
-            Tag = "pipes",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkPipes.CheckedChanged += (s, e) => { _deleteSettings.DeletePipes = chkPipes.Checked; };
-        panel.Controls.Add(chkPipes, 0, row);
-        panel.SetColumnSpan(chkPipes, 2);
-        row++;
-
-        var chkAlarms = new CheckBox
-        {
-            Text = "Сигнализации (AirAlarm, FireAlarm)",
-            Checked = _deleteSettings.DeleteAlarms,
-            AutoSize = true,
-            Tag = "alarms",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkAlarms.CheckedChanged += (s, e) => { _deleteSettings.DeleteAlarms = chkAlarms.Checked; };
-        panel.Controls.Add(chkAlarms, 0, row);
-        panel.SetColumnSpan(chkAlarms, 2);
-        row++;
-
-        var chkWires = new CheckBox
-        {
-            Text = "Провода (скоро)",
-            Checked = _deleteSettings.DeleteWires,
-            AutoSize = true,
-            Tag = "wires",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkWires.CheckedChanged += (s, e) => { _deleteSettings.DeleteWires = chkWires.Checked; };
-        panel.Controls.Add(chkWires, 0, row);
-        panel.SetColumnSpan(chkWires, 2);
-        row++;
-
-        var chkEntities = new CheckBox
-        {
-            Text = "Прототипы",
-            Checked = _deleteSettings.DeleteEntities,
-            AutoSize = true,
-            Tag = "entities",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkEntities.CheckedChanged += (s, e) => { _deleteSettings.DeleteEntities = chkEntities.Checked; };
-        panel.Controls.Add(chkEntities, 0, row);
-        panel.SetColumnSpan(chkEntities, 2);
-        row++;
-
-        var chkOther = new CheckBox
-        {
-            Text = "Другое",
-            Checked = _deleteSettings.DeleteOther,
-            AutoSize = true,
-            Tag = "other",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkOther.CheckedChanged += (s, e) => { _deleteSettings.DeleteOther = chkOther.Checked; };
-        panel.Controls.Add(chkOther, 0, row);
-        panel.SetColumnSpan(chkOther, 2);
-        row++;
-
-        var chkDecals = new CheckBox
-        {
-            Text = "Декали",
-            Checked = _deleteSettings.DeleteDecals,
-            AutoSize = true,
-            Tag = "decals",
-            Enabled = !_deleteSettings.DeleteAll
-        };
-        chkDecals.CheckedChanged += (s, e) => { _deleteSettings.DeleteDecals = chkDecals.Checked; };
-        panel.Controls.Add(chkDecals, 0, row);
-        panel.SetColumnSpan(chkDecals, 2);
-        row++;
+        AddCheck("Комнаты", "rooms", _deleteSettings.DeleteRooms,
+            v => _deleteSettings.DeleteRooms = v);
+        AddCheck("Двери, проёмы и окна", "doors", _deleteSettings.DeleteDoors,
+            v => _deleteSettings.DeleteDoors = v);
+        AddCheck("Трубы (газовые и утилизационные)", "pipes", _deleteSettings.DeletePipes,
+            v => _deleteSettings.DeletePipes = v);
+        AddCheck("Электропроводка", "wires", _deleteSettings.DeleteWires,
+            v => _deleteSettings.DeleteWires = v);
+        AddCheck("Сигнализации", "alarms", _deleteSettings.DeleteAlarms,
+            v => _deleteSettings.DeleteAlarms = v);
+        AddCheck("Прототипы (сущности репозитория)", "prototypes", _deleteSettings.DeletePrototypes,
+            v => _deleteSettings.DeletePrototypes = v);
+        AddCheck("Декали (из репозитория)", "decals", _deleteSettings.DeleteDecals,
+            v => _deleteSettings.DeleteDecals = v);
+        AddCheck("Тайлы (из репозитория)", "tiles", _deleteSettings.DeleteTiles,
+            v => _deleteSettings.DeleteTiles = v);
+        AddCheck("Другое", "other", _deleteSettings.DeleteOther,
+            v => _deleteSettings.DeleteOther = v);
 
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
 
@@ -1287,7 +1232,7 @@ public partial class MainForm
         _moveSettingsForm = new Form
         {
             Text = "Настройки перемещения",
-            Size = new Size(360, 400),
+            Size = new Size(400, 480),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             ShowInTaskbar = false,
@@ -1300,7 +1245,7 @@ public partial class MainForm
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(15),
-            RowCount = 10,
+            RowCount = 12,
             ColumnCount = 2,
             AutoSize = true
         };
@@ -1329,53 +1274,25 @@ public partial class MainForm
         panel.SetColumnSpan(panel.Controls[panel.Controls.Count - 1], 2);
         row++;
 
-        var chkRooms = new CheckBox { Text = "Комнаты", Checked = _moveSettings.IncludeRooms, AutoSize = true };
-        chkRooms.CheckedChanged += (s, e) => _moveSettings.IncludeRooms = chkRooms.Checked;
-        panel.Controls.Add(chkRooms, 0, row);
-        panel.SetColumnSpan(chkRooms, 2);
-        row++;
+        CheckBox AddCheck(string text, bool checkedVal, Action<bool> apply)
+        {
+            var chk = new CheckBox { Text = text, Checked = checkedVal, AutoSize = true };
+            chk.CheckedChanged += (s, e) => apply(chk.Checked);
+            panel.Controls.Add(chk, 0, row);
+            panel.SetColumnSpan(chk, 2);
+            row++;
+            return chk;
+        }
 
-        var chkTiles = new CheckBox { Text = "Отдельные тайлы", Checked = _moveSettings.IncludeTiles, AutoSize = true };
-        chkTiles.CheckedChanged += (s, e) => _moveSettings.IncludeTiles = chkTiles.Checked;
-        panel.Controls.Add(chkTiles, 0, row);
-        panel.SetColumnSpan(chkTiles, 2);
-        row++;
-
-        var chkPipes = new CheckBox { Text = "Трубы", Checked = _moveSettings.IncludePipes, AutoSize = true };
-        chkPipes.CheckedChanged += (s, e) => _moveSettings.IncludePipes = chkPipes.Checked;
-        panel.Controls.Add(chkPipes, 0, row);
-        panel.SetColumnSpan(chkPipes, 2);
-        row++;
-
-        var chkAlarms = new CheckBox { Text = "Сигнализации", Checked = _moveSettings.IncludeAlarms, AutoSize = true };
-        chkAlarms.CheckedChanged += (s, e) => _moveSettings.IncludeAlarms = chkAlarms.Checked;
-        panel.Controls.Add(chkAlarms, 0, row);
-        panel.SetColumnSpan(chkAlarms, 2);
-        row++;
-
-        var chkFirelocks = new CheckBox { Text = "Пожарные шлюзы", Checked = _moveSettings.IncludeFirelocks, AutoSize = true };
-        chkFirelocks.CheckedChanged += (s, e) => _moveSettings.IncludeFirelocks = chkFirelocks.Checked;
-        panel.Controls.Add(chkFirelocks, 0, row);
-        panel.SetColumnSpan(chkFirelocks, 2);
-        row++;
-
-        var chkEntities = new CheckBox { Text = "Сущности", Checked = _moveSettings.IncludeEntities, AutoSize = true };
-        chkEntities.CheckedChanged += (s, e) => _moveSettings.IncludeEntities = chkEntities.Checked;
-        panel.Controls.Add(chkEntities, 0, row);
-        panel.SetColumnSpan(chkEntities, 2);
-        row++;
-
-        var chkOther = new CheckBox { Text = "Другое", Checked = _moveSettings.IncludeOther, AutoSize = true };
-        chkOther.CheckedChanged += (s, e) => _moveSettings.IncludeOther = chkOther.Checked;
-        panel.Controls.Add(chkOther, 0, row);
-        panel.SetColumnSpan(chkOther, 2);
-        row++;
-
-        var chkDecals = new CheckBox { Text = "Декали", Checked = _moveSettings.IncludeDecals, AutoSize = true };
-        chkDecals.CheckedChanged += (s, e) => _moveSettings.IncludeDecals = chkDecals.Checked;
-        panel.Controls.Add(chkDecals, 0, row);
-        panel.SetColumnSpan(chkDecals, 2);
-        row++;
+        AddCheck("Комнаты", _moveSettings.IncludeRooms, v => _moveSettings.IncludeRooms = v);
+        AddCheck("Двери, проёмы и окна", _moveSettings.IncludeDoors, v => _moveSettings.IncludeDoors = v);
+        AddCheck("Трубы (газовые и утилизационные)", _moveSettings.IncludePipes, v => _moveSettings.IncludePipes = v);
+        AddCheck("Электропроводка", _moveSettings.IncludeWires, v => _moveSettings.IncludeWires = v);
+        AddCheck("Сигнализации", _moveSettings.IncludeAlarms, v => _moveSettings.IncludeAlarms = v);
+        AddCheck("Прототипы (сущности репозитория)", _moveSettings.IncludePrototypes, v => _moveSettings.IncludePrototypes = v);
+        AddCheck("Декали (из репозитория)", _moveSettings.IncludeDecals, v => _moveSettings.IncludeDecals = v);
+        AddCheck("Тайлы (из репозитория)", _moveSettings.IncludeTiles, v => _moveSettings.IncludeTiles = v);
+        AddCheck("Другое", _moveSettings.IncludeOther, v => _moveSettings.IncludeOther = v);
 
         var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
         var btnOk = new Button

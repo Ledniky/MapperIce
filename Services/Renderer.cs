@@ -73,6 +73,19 @@ public class Renderer
     private Point _selectionBoxStart;
     private Point _selectionBoxEnd;
 
+    // Растягиваемая рамка инструмента "Удалить область" (в тайловых координатах, инклюзивно)
+    private (int x, int y, int w, int h)? _deleteAreaRect = null;
+
+    public void SetDeleteAreaRect(int x, int y, int w, int h)
+    {
+        _deleteAreaRect = (x, y, w, h);
+    }
+
+    public void ClearDeleteAreaRect()
+    {
+        _deleteAreaRect = null;
+    }
+
     private (int x, int y, int w, int h)? _decalAreaEditRect = null;
 
     public void SetDecalAreaEditRect(int x, int y, int w, int h)
@@ -83,7 +96,18 @@ public class Renderer
     public void ClearDecalAreaEditRect()
     {
         _decalAreaEditRect = null;
+        _decalAreaEditSubtractions = null;
     }
+
+
+
+    private List<DecalAreaRect>? _decalAreaEditSubtractions = null;
+
+    public void SetDecalAreaEditSubtractions(List<DecalAreaRect>? subtractions)
+    {
+        _decalAreaEditSubtractions = subtractions;
+    }
+
 
     // Растягиваемая МЫШЬЮ новая ручная область декалей (ещё не добавлена в слой)
     private (int x, int y, int w, int h)? _decalAreaDrawRect = null;
@@ -165,24 +189,30 @@ public class Renderer
 
             var visibleGrids = map.Grids.Where(g => g.IsVisible).ToList();
 
-            // Индекс активного слоя для скрытия слоёв выше него
+            // Индекс активного слоя для скрытия слоёв выше него (по позиции в ПОЛНОМ
+            // списке слоёв — см. сноску ниже про GetLayerOffsetY).
             int activeGridIndex = -1;
             if (map.ActiveGrid != null)
             {
-                activeGridIndex = visibleGrids.FindIndex(g => g.Uid == map.ActiveGrid.Uid);
+                activeGridIndex = map.Grids.FindIndex(g => g.Uid == map.ActiveGrid.Uid);
             }
 
             foreach (var grid in visibleGrids)
             {
                 // Скрываем слои, идущие выше активного
-                int gridIndex = visibleGrids.IndexOf(grid);
+                int gridIndex = map.Grids.IndexOf(grid);
                 if (gridIndex > activeGridIndex)
                     continue;
 
                 bool isActive = map.ActiveGrid != null && map.ActiveGrid.Uid == grid.Uid;
                 float opacity = isActive ? 1.0f : 0.3f;
 
-                // Смещение грида: Position + автоматическое смещение слоя по Y
+                // Смещение грида: Position + автоматическое смещение слоя по Y.
+                // ВАЖНО: индекс берётся по ПОЛНОМУ списку слоёв (_map.Grids), а не по
+                // списку видимых — иначе скрытие одного слоя (IsVisible=false) сдвинуло бы
+                // Y-смещение всех следующих слоёв, и клетки рисовались бы с другим смещением,
+                // чем их показывают мышь и рамка выделения (GetTilePosition/TileToScreen
+                // используют _map.Grids.IndexOf).
                 float layerOffsetY = Grid.GetLayerOffsetY(gridIndex);
                 var gridOffset = new PointF(grid.Position.X, grid.Position.Y + layerOffsetY);
 
@@ -319,6 +349,7 @@ public class Renderer
             DrawExpandRoomPreview(g, scale, viewOffset);
             DrawSelectionHighlight(g, scale, viewOffset);
             DrawSelectionBox(g);
+            DrawDeleteAreaOverlay(g, scale, viewOffset);
             DrawDecalAreaDrawOverlay(g, scale, viewOffset);
             DrawDecalAreaEditOverlay(g, scale, viewOffset);
 
@@ -2772,6 +2803,36 @@ public class Renderer
         g.DrawRectangle(pen, rect);
     }
 
+    // Визуализация растягиваемой области инструмента "Удалить область" (DeleteArea).
+    // Рамка задаётся в тайловых координатах текущего грида инклюзивно (начальная и
+    // конечная клетки внутри области), поэтому к размеру добавляется 1 тайл.
+    private void DrawDeleteAreaOverlay(Graphics g, float scale, PointF viewOffset)
+    {
+        if (_deleteAreaRect == null) return;
+        if (_currentMap?.ActiveGrid == null) return;
+
+        var (ax, ay, aw, ah) = _deleteAreaRect.Value;
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
+        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
+
+        float left = ax * tileSize + gridOffsetX - viewOffset.X;
+        float top = ay * tileSize + gridOffsetY - viewOffset.Y;
+        float width = aw * tileSize;
+        float height = ah * tileSize;
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(50, 230, 70, 70));
+        g.FillRectangle(fillBrush, left, top, width, height);
+
+        using var pen = new Pen(Color.FromArgb(255, 230, 60, 60), 2f)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+        };
+        g.DrawRectangle(pen, left, top, width, height);
+    }
+
 
     private void DrawDecalAreaDrawOverlay(Graphics g, float scale, PointF viewOffset)
     {
@@ -2826,6 +2887,24 @@ public class Renderer
         };
         g.DrawRectangle(pen, left, top, width, height);
 
+
+
+        // Вычитаемые зоны — красная штриховка поверх жёлтой области
+        if (_decalAreaEditSubtractions != null)
+        {
+            using var subBrush = new SolidBrush(Color.FromArgb(110, 230, 60, 60));
+            using var subPen = new Pen(Color.FromArgb(255, 200, 30, 30), 2f);
+            foreach (var sub in _decalAreaEditSubtractions)
+            {
+                float sl = sub.X * tileSize + gridOffsetX - viewOffset.X;
+                float st = sub.Y * tileSize + gridOffsetY - viewOffset.Y;
+                g.FillRectangle(subBrush, sl, st, sub.Width * tileSize, sub.Height * tileSize);
+                g.DrawRectangle(subPen, sl, st, sub.Width * tileSize, sub.Height * tileSize);
+            }
+        }
+
+
+        
         // Угловые "ручки" для перетаскивания — фиксированный размер в пикселях экрана,
         // не зависящий от масштаба, чтобы хват оставался удобным при любом зуме
         float handleSize = 10f;
