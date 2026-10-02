@@ -207,12 +207,23 @@ public partial class MainForm
                     DecalMode = room.DecalMode,
                     HasCustomDecalRule = room.HasCustomDecalRule,
                     Priority = room.Priority,
+                    Id = room.Id,
                 };
 
                 // RemovedCells как список строк "x,y"
                 foreach (var cell in room.RemovedCells)
                 {
                     roomData.RemovedCells.Add($"{cell.X},{cell.Y}");
+                }
+
+                // Проходы (Passages) и окна (Windows) как список строк "x,y"
+                foreach (var p in room.Passages)
+                {
+                    roomData.Passages.Add($"{p.X},{p.Y}");
+                }
+                foreach (var w in room.Windows)
+                {
+                    roomData.Windows.Add($"{w.X},{w.Y}");
                 }
 
                 foreach (var door in room.Doors)
@@ -371,6 +382,10 @@ public partial class MainForm
                         RemovedCells = new HashSet<(int X, int Y)>()
                     };
 
+                    // Восстанавливаем стабильный Id из проекта, чтобы декали узора
+                    // (PlacedDecal.PatternOwnerId) снова совпали по ключу с комнатой.
+                    room.RestoreId(roomData.Id);
+
                     // Восстанавливаем RemovedCells
                     foreach (var cellStr in roomData.RemovedCells)
                     {
@@ -378,6 +393,24 @@ public partial class MainForm
                         if (parts.Length == 2)
                         {
                             room.RemovedCells.Add((int.Parse(parts[0]), int.Parse(parts[1])));
+                        }
+                    }
+
+                    // Восстанавливаем проходы (Passages) и окна (Windows)
+                    foreach (var cellStr in roomData.Passages)
+                    {
+                        var parts = cellStr.Split(',');
+                        if (parts.Length == 2)
+                        {
+                            room.Passages.Add((int.Parse(parts[0]), int.Parse(parts[1])));
+                        }
+                    }
+                    foreach (var cellStr in roomData.Windows)
+                    {
+                        var parts = cellStr.Split(',');
+                        if (parts.Length == 2)
+                        {
+                            room.Windows.Add((int.Parse(parts[0]), int.Parse(parts[1])));
                         }
                     }
 

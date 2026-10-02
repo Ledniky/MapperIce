@@ -496,7 +496,7 @@ listContainer.Controls.Add(_protoList);
                 filteredIds = filteredIds
                     .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
                     .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
-                    .Where(id => !id.Contains("Base"))          // исключаем содержащие "Base"
+                    .Where(id => _indexer.FindPrototype(id)?.IsAbstract != true) // исключаем шаблоны с "abstract: true"
                     .ToList();
 
                 var result = filteredIds.Take(100000).ToList();
@@ -663,27 +663,70 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
     {
         try
         {
-            // В панели репозитория (список прототипов, комбобокс дверей, drag-иконка)
-            // многослойные прототипы (Sprite.layers) сознательно показываются ОДНИМ
-            // слоем — берём текстуру первого видимого слоя вместо композиции всех слоёв
-            // друг поверх друга (композиция используется только в Renderer при отрисовке
-            // на канвасе, см. DrawLayeredTexturedRect) — так иконка в списке остаётся
-            // простой и однозначной, без наложения экрана/клавиатуры/панели друг на друга
-            // в крошечном 32×32 превью, где это всё равно нечитаемо.
             var layers = _indexer.GetLayers(protoId);
-            string? path;
+
+            // Многослойные прототипы (Sprite.layers) показываем КОМПОЗИЦИЕЙ всех видимых
+            // слоёв друг поверх друга — так же, как они рисуются на канвасе в Renderer
+            // (см. DrawLayeredTexturedRect), чтобы превью в панели совпадало с рендером.
+            // Раньше брался только первый видимый слой, из-за чего часть во «меню спавна»
+            // выглядела иначе и «пропадали» слои/state.
             if (layers.Count > 0)
             {
-                var firstVisibleLayer = layers.FirstOrDefault(l => l.Visible);
-                path = firstVisibleLayer != null
-                    ? _indexer.GetLayerTexturePath(protoId, firstVisibleLayer.SpritePath, firstVisibleLayer.RsiPath, firstVisibleLayer.State, stateOverride)
-                    : null;
-            }
-            else
-            {
-                path = _indexer.GetFullTexturePath(protoId, stateOverride);
+                var visibleLayers = layers.Where(l => l.Visible).ToList();
+                if (visibleLayers.Count == 0) return null;
+
+                // Загружаем текстуры всех видимых слоёв (state-слои), как в рендере
+                var loadedLayers = new List<(Image Tex, Size Frame)>();
+                try
+                {
+                    foreach (var layer in visibleLayers)
+                    {
+                        var lp = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State, stateOverride);
+                        if (lp == null || !File.Exists(lp)) continue;
+                        var tex = Image.FromFile(lp);
+                        loadedLayers.Add((tex, GetRsiFrameSize(lp, tex)));
+                    }
+
+                    if (loadedLayers.Count == 0) return null;
+
+                    // Холст строится по пропорции ПЕРВОГО успешно загруженного слоя
+                    // (кадр сущности у всех слоёв почти всегда совпадает по размеру)
+                    var firstFrame = loadedLayers[0].Frame;
+                    float ratio = (float)firstFrame.Width / Math.Max(1, firstFrame.Height);
+                    int iconW, iconH;
+                    if (ratio >= 1.0f)
+                    {
+                        iconW = 32;
+                        iconH = Math.Max(1, (int)(32f / ratio));
+                    }
+                    else
+                    {
+                        iconH = 32;
+                        iconW = Math.Max(1, (int)(32f * ratio));
+                    }
+
+                    var icon = new Bitmap(iconW, iconH);
+                    using (var g = Graphics.FromImage(icon))
+                    {
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                        // Слои рисуются поверх друг друга в порядке YAML (нижний первым)
+                        foreach (var (tex, frame) in loadedLayers)
+                        {
+                            var srcRect = new Rectangle(0, 0, frame.Width, frame.Height);
+                            g.DrawImage(tex, new Rectangle(0, 0, iconW, iconH), srcRect, GraphicsUnit.Pixel);
+                        }
+                    }
+                    return icon;
+                }
+                finally
+                {
+                    foreach (var (tex, _) in loadedLayers)
+                        tex.Dispose();
+                }
             }
 
+            // Однослойный прототип
+            var path = _indexer.GetFullTexturePath(protoId, stateOverride);
             if (path != null && File.Exists(path))
             {
                 using var original = Image.FromFile(path);
@@ -720,14 +763,6 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
 
         return null;
     }
-
-    /// <summary>
-    /// Композитная иконка для многослойного прототипа: все видимые слои рисуются друг
-    /// поверх друга в 32×32 (или меньше по высоте/ширине — как и в однослойной версии,
-    /// пропорции задаёт ПЕРВЫЙ успешно загруженный слой, остальные растягиваются под тот
-    /// же холст — у слоёв одной сущности размер кадра почти всегда совпадает).
-    /// </summary>
-
 
     private void LoadDoorComboIcons()
     {

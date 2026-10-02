@@ -277,6 +277,7 @@ private ComboBox _doorToolCombo = null!;
 
         CreateRepositoryPanel();
         CreateToolPanel();
+        CreateLinkedEntitiesPanel();
         CreateGridPanel();
         CreateCanvas();
         CreateMagnifierPanel();
@@ -454,6 +455,21 @@ private ComboBox _doorToolCombo = null!;
             _cachedAlarmNetwork = networkBuilder.BuildNetwork(_map.ActiveGrid);
         }
     }
+    // КОСТЫЛЬ против «вечных» дублей декалей: после какого-либо действия часть
+    // декалей узора может остаться с PatternOwnerId комнаты, которой больше нет
+    // (или которая пересоздавалась через клон после загрузки/undo), и обычный
+    // пересчёт их не видит. Здесь за один проход убираем ВСЕ декали, у которых
+    // владелец (room.Id) сейчас не существует ни в одной комнате грида.
+    // Ничейные ручные декали (PatternOwnerId == null) не трогаем.
+    private void PurgeOrphanedDecals(Grid grid)
+    {
+        if (grid.Decals.Count == 0) return;
+        var aliveOwnerIds = new HashSet<int>(grid.Rooms.Count);
+        foreach (var room in grid.Rooms)
+            aliveOwnerIds.Add(room.Id);
+        grid.Decals.RemoveAll(d => d.PatternOwnerId.HasValue && !aliveOwnerIds.Contains(d.PatternOwnerId.Value));
+    }
+
     private void RecalculateDecalPatterns()
     {
         if (_map.ActiveGrid == null) return;

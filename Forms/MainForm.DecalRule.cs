@@ -474,6 +474,9 @@ public partial class MainForm
                 {
                     room.AutoDecalRule.Layers.RemoveAt(idx);
                     RebuildList();
+                    // КОСТЫЛЬ: слой удалён — вычищаем осиротевшие декали по всему проекту,
+                    // чтобы «старые» версии узора не оставались на экране поверх новых.
+                    if (_map.ActiveGrid != null) PurgeOrphanedDecals(_map.ActiveGrid);
                     ApplyLiveChanges();
                 };
                 row.Controls.Add(btnDel);

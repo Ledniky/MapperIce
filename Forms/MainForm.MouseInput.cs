@@ -436,6 +436,26 @@ public partial class MainForm
                         _doorUpdater.RecalculateAllDoors(grid);
                         RecalculateDecalPatterns();
                         UpdateTileGrid();
+
+                        // ВРЕМЕННАЯ ДИАГНОСТИКА — убрать после выяснения причины дублей
+                        int nullOwnerCount = grid.Decals.Count(d => d.PatternOwnerId == null);
+                        var dupRoomIds = grid.Rooms.GroupBy(r => r.Id).Where(grp => grp.Count() > 1)
+                            .Select(grp => grp.Key.ToString()).ToList();
+                        var multiOwnerCells = grid.Decals
+                            .Where(d => d.PatternOwnerId != null)
+                            .GroupBy(d => ((int)Math.Floor(d.X), (int)Math.Floor(d.Y)))
+                            .Where(grp => grp.Select(d => d.PatternOwnerId).Distinct().Count() > 1)
+                            .Select(grp => $"({grp.Key.Item1};{grp.Key.Item2}) owners=" +
+                                string.Join(",", grp.Select(d => d.PatternOwnerId).Distinct()))
+                            .ToList();
+                        MessageBox.Show(
+                            $"Декалей всего: {grid.Decals.Count}\n" +
+                            $"Без владельца (null): {nullOwnerCount}\n" +
+                            $"Id комнат, повторяющиеся: {(dupRoomIds.Count == 0 ? "нет" : string.Join(",", dupRoomIds))}\n" +
+                            $"Клеток с декалями от 2+ комнат: {multiOwnerCells.Count}\n" +
+                            string.Join("\n", multiOwnerCells.Take(8)),
+                            "Диагностика расширения");
+
                         SaveState();
                         Render();
                     }
@@ -1330,10 +1350,11 @@ public partial class MainForm
                 foreach (var room in rooms)
                 {
                     // Удаляем декали, сгенерированные Decal Rule для этой комнаты
-                    // (идентифицируются по PatternOwnerId = room.GetHashCode()). Их
-                    // координаты могут выходить за выделенную область (периметр,
-                    // смещённые offset-декали), поэтому фильтр по рамке их не ловит.
-                    int ownerId = room.GetHashCode();
+                    // (идентифицируются по PatternOwnerId = room.Id — тот же ключ, что
+                    // ставит DecalPatternBuilder при генерации). Их координаты могут
+                    // выходить за выделенную область (периметр, смещённые offset-декали),
+                    // поэтому фильтр по рамке их не ловит.
+                    int ownerId = room.Id;
                     grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
                     grid.Rooms.Remove(room);
                 }
@@ -1439,7 +1460,7 @@ public partial class MainForm
                         .ToList();
                     foreach (var room in roomsToRemove)
                     {
-                        int ownerId = room.GetHashCode();
+                        int ownerId = room.Id;
                         grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
 
                         var roomDecals = grid.Decals

@@ -45,11 +45,14 @@ public class RoomGridData
     public string LineColor { get; set; } = "255,180,180,180";
     public List<DoorData> Doors { get; set; } = new();
     public List<string> RemovedCells { get; set; } = new();
+    public List<string> Passages { get; set; } = new();
+    public List<string> Windows { get; set; } = new();
     public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;
     public DecalRuleData? AutoDecalRule { get; set; }
     public List<ManualDecalAreaData> ManualDecalAreas { get; set; } = new();
     public bool HasCustomDecalRule { get; set; } = false;
     public int Priority { get; set; } = 0;
+    public int Id { get; set; } = 0;
 }
 
 public class DecalRuleData

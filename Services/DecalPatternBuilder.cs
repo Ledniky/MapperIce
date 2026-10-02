@@ -163,9 +163,87 @@ public void RecalculateForRoom(Grid grid, Room room)
         }
     }
 
+    /// <summary>
+    /// Подчищает «тихих» сирот: декали без PatternOwnerId (null), которые на самом деле
+    /// были сгенерированы Decal Rule в старых сохранениях (до появления PatternOwnerId),
+    /// но при загрузке выглядят как ручные. Такая декаль почти всегда стоит по центру
+    /// тайла (X/Y = 0.5) и совпадает с позицией, которую слой комнаты генерирует сейчас.
+    /// Настоящие ручные декали с левой панели могут стоять в произвольной позиции
+    /// (дробные координаты, вращение) — их не трогаем.
+    /// </summary>
+    public void PurgeLegacyOrphanDecals(Grid grid)
+    {
+        if (grid.Decals.Count == 0) return;
+        if (grid.Rooms.Count == 0) return;
+
+        // Набор «легальных» позиций (X, Y), которые декальрул бы сгенерировал.
+        // Проще и надёжнее: декаль по центру тайла + её Proto присутствует хотя бы
+        // в одной активной позиции какого-нибудь включённого слоя комнаты.
+        var legalCenters = new HashSet<(int x, int y)>();
+        var legalProtos = new HashSet<string>();
+
+        foreach (var room in grid.Rooms)
+        {
+            for (int i = 0; i < room.AutoDecalRule.Layers.Count; i++)
+            {
+                var layer = room.AutoDecalRule.Layers[i];
+                if (!layer.Enabled) continue;
+
+                var pack = !string.IsNullOrEmpty(layer.SourcePackId)
+                    ? _packManager.GetById(layer.SourcePackId)
+                    : null;
+                if (pack == null) continue;
+
+                foreach (var proto in pack.Positions.Values)
+                    if (!string.IsNullOrEmpty(proto))
+                        legalProtos.Add(proto);
+
+                // Auto: декали на периметре комнаты и на клетках узора.
+                if (layer.Mode == DecalPatternMode.Auto)
+                {
+                    for (int x = room.X; x < room.X + room.Width; x++)
+                    {
+                        for (int y = room.Y; y < room.Y + room.Height; y++)
+                        {
+                            if (room.RemovedCells.Contains((x, y))) continue;
+                            if (IsDoorAnywhereInGrid(grid, x, y)) continue;
+                            if (IsWallCell(room, x, y)) continue;
+                            legalCenters.Add((x, y));
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var area in layer.ManualAreas)
+                    {
+                        for (int x = area.X; x < area.X + area.Width; x++)
+                        {
+                            for (int y = area.Y; y < area.Y + area.Height; y++)
+                            {
+                                if (area.Contains(x, y) && room.Contains(x, y))
+                                    legalCenters.Add((x, y));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (legalCenters.Count == 0 && legalProtos.Count == 0)
+            return;
+
+        grid.Decals.RemoveAll(d =>
+            d.PatternOwnerId == null &&
+            legalProtos.Contains(d.Proto) &&
+            legalCenters.Contains(((int)Math.Floor(d.X), (int)Math.Floor(d.Y))));
+    }
+
     /// <summary>Пересчёт для всех комнат грида — используется после массовых операций (delete area, undo/redo, load).</summary>
     public void RecalculateAll(Grid grid)
     {
+        // Миграция старых файлов: сначала подчищаем «тихих» сирот без владельца.
+        PurgeLegacyOrphanDecals(grid);
+
         grid.Decals.RemoveAll(d => d.PatternOwnerId != null);
 
         foreach (var room in grid.Rooms)

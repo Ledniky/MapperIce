@@ -276,103 +276,23 @@ _roomTypeCombo.DrawItem += (s, e) =>
         _toolPanel.Controls.Add(roomRow2Panel);
         y += 34 + 2;
 
-        _doorToolCombo = new ComboBox
+        // === ПРИВЯЗАННЫЕ СУЩНОСТИ ===
+        // Раньше здесь был выпадающий список дверей (_doorToolCombo). Он перенесён
+        // в отдельную панель "Привязанные сущности" (см. CreateLinkedEntitiesPanel),
+        // а на его месте теперь кнопка, открывающая эту панель.
+        _btnLinkedEntities = new Button
         {
+            Text = "Привязанные сущности",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
             Height = 40,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 34,
-            DropDownHeight = 160,
-            Font = new Font("Arial", 10)
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        foreach (var label in _doorToolMap.Keys)
-            _doorToolCombo.Items.Add(label);
-        if (_doorToolCombo.Items.Count > 0)
-            _doorToolCombo.SelectedIndex = 0;
-
-        // Рисуем реальный спрайт прототипа (если есть и уже загружен через
-        // GetCachedProtoIcon), иначе — emoji-заглушку из _doorToolIcons.Fallback.
-        // Тот же приём, что и в ProtoList_DrawItem: иконка слева, текст справа от неё.
-        _doorToolCombo.DrawItem += (s, e) =>
-        {
-            e.DrawBackground();
-            if (e.Index >= 0)
-            {
-                string label = _doorToolCombo.Items[e.Index].ToString() ?? "";
-                const int iconSize = 28;
-                const int padding = 4;
-                int iconY = e.Bounds.Top + (e.Bounds.Height - iconSize) / 2;
-                int textX = e.Bounds.Left + padding;
-
-                Image? icon = null;
-                string fallback = "";
-                if (_doorToolIcons.TryGetValue(label, out var info))
-                {
-                    fallback = info.Fallback;
-                    icon = info.ProtoId switch
-                    {
-                        "Airlock" => _doorIconAirlock,
-                        "AirlockGlass" => _doorIconAirlockGlass,
-                        _ => null
-                    };
-                }
-                else if (label.StartsWith("🪟 "))
-                {
-                    fallback = "🪟";
-                    _windowIconCache.TryGetValue(label, out icon);
-                }
-
-                if (icon != null)
-                {
-                    int drawY = e.Bounds.Top + (e.Bounds.Height - icon.Height) / 2;
-                    e.Graphics.DrawImage(icon, e.Bounds.Left + padding, drawY, icon.Width, icon.Height);
-                    textX = e.Bounds.Left + padding + iconSize + padding;
-                }
-                else if (!string.IsNullOrEmpty(fallback))
-                {
-                    TextRenderer.DrawText(e.Graphics, fallback, new Font("Segoe UI", 14),
-                        new Rectangle(e.Bounds.Left + padding, iconY, iconSize, iconSize),
-                        e.ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-                    textX = e.Bounds.Left + padding + iconSize + padding;
-                }
-
-                TextRenderer.DrawText(e.Graphics, label, _doorToolCombo.Font,
-                    new Rectangle(textX, e.Bounds.Top, e.Bounds.Width - (textX - e.Bounds.Left), e.Bounds.Height),
-                    _doorToolCombo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
-            }
-            e.DrawFocusRectangle();
-        };
-
-        _doorToolCombo.SelectedIndexChanged += (s, e) =>
-        {
-            if (_doorToolCombo.SelectedItem is string key)
-            {
-                // Проверяем, является ли пункт прототипом окна (начинается с 🪟)
-                if (key.StartsWith("🪟 "))
-                {
-                    // Берём точный ID напрямую из кэша label->id (заполняется в
-                    // UpdateWindowCombo) вместо того чтобы угадывать его обратным
-                    // Replace/EndsWith по тексту пункта — EndsWith цеплял любой ID,
-                    // заканчивающийся на то же слово (например, AirlockAssemblyMining
-                    // вместо настоящего окна "Mining")
-                    if (_windowProtoIdCache.TryGetValue(key, out var foundId))
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[WindowSelect] key='{key}' found={foundId != null} id='{foundId}'");
-                        _selectedWindowProto = foundId;
-                        _toolManager.SetTool(ToolManager.Tool.ReplaceWallWithWindow);
-                        return;
-                    }
-                }
-
-                if (_doorToolMap.TryGetValue(key, out var tool))
-                {
-                    _toolManager.SetTool(tool);
-                }
-            }
-        };
-        _toolPanel.Controls.Add(_doorToolCombo);
+        _btnLinkedEntities.Click += (s, e) => ShowLinkedEntitiesPanel();
+        _toolPanel.Controls.Add(_btnLinkedEntities);
         y += 40 + 2;
 
         // ЭЛЕКТРОСЕТЬ
@@ -1369,7 +1289,7 @@ private static float HueToRgb(float p, float q, float t)
             !i.Contains("Shutters", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Button", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("RCD", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Base", StringComparison.OrdinalIgnoreCase) &&
+            (_indexer.FindPrototype(i)?.IsAbstract != true) && // исключаем шаблоны с "abstract: true"
             (_indexer.FindPrototype(i)?.IsStructure ?? false))
             .ToList();
 

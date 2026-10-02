@@ -25,6 +25,39 @@ public partial class MainForm
             Render();
         };
 
+        // После сохранения/создания типа комнаты переприменяем его характеристики
+        // ко ВСЕМ уже размещённым на карте комнатам этого типа — чтобы обновлённые
+        // прототипы (стена/пол/дверь/стеклянная дверь), цвета и т.п. применились и к
+        // уже стоящим экземплярам, а не только к новым.
+        dialog.OnTypeSaved += (oldName, newName) =>
+        {
+            if (_map.ActiveGrid == null) return;
+            int applied = 0;
+
+            foreach (var room in _map.ActiveGrid.Rooms)
+            {
+                // Сопоставляем по старому имени (редактирование с переименованием) либо,
+                // для нового типа, по совпадающему имени. После EditCustomType тип с
+                // oldName уже удалён из менеджера, поэтому все характеристики берём из
+                // newName (он гарантированно существует).
+                bool matches = oldName.Length > 0
+                    ? room.RoomType == oldName
+                    : room.RoomType == newName;
+                if (!matches) continue;
+
+                _roomTypeManager.ApplyTypeToRoom(room, newName);
+                applied++;
+            }
+
+            if (applied == 0) return;
+
+            _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
+            UpdateTileGrid();
+            RecalculateDecalPatterns();
+            SaveState();
+            Render();
+        };
+
         dialog.FormClosed += (s, e) =>
         {
             _roomTypeForm = null;

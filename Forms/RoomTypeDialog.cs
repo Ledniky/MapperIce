@@ -45,6 +45,10 @@ public partial class RoomTypeDialog : Form
     { "Antags", Color.FromArgb(180, 20, 20) },
 };
 
+    /// <summary>Срабатывает после сохранения/создания типа. Аргументы — (старое имя, новое имя)
+    /// — позволяют вызывающему обновить уже размещённые на карте комнаты.</summary>
+    public event Action<string, string>? OnTypeSaved;
+
     public RoomTypeDialog(RoomTypeManager manager)
     {
 
@@ -467,22 +471,22 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         y += rowHeight;
 
         // Поле "Стена"
-        var txtWall = CreateTextBox(type.WallProto, leftMargin, y, labelWidth, controlWidthFull);
+        var txtWall = CreateTextBox(type.WallProto, leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblWall = CreateLabel("Стена:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Пол"
-        var txtFloor = CreateTextBox(type.FloorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var txtFloor = CreateTextBox(type.FloorProto, leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblFloor = CreateLabel("Пол:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Дверь"
-        var txtDoor = CreateTextBox(type.DoorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var txtDoor = CreateTextBox(type.DoorProto, leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblDoor = CreateLabel("Дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Стекл. дверь"
-        var txtGlassDoor = CreateTextBox(type.GlassDoorProto, leftMargin, y, labelWidth, controlWidthFull);
+        var txtGlassDoor = CreateTextBox(type.GlassDoorProto, leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
@@ -601,6 +605,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                 }
                 UpdateTreeView();
                 MessageBox.Show("Тип сохранён!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                OnTypeSaved?.Invoke(type.Name, txtName.Text);
             }
             catch (Exception ex)
             {
@@ -629,15 +634,33 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         };
     }
 
-    private TextBox CreateTextBox(string text, int x, int y, int labelWidth, int controlWidth)
+    private TextBox CreateTextBox(string text, int x, int y, int labelWidth, int controlWidth, bool allowProtoDrop = false)
     {
-        return new TextBox
+        var tb = new TextBox
         {
             Text = text,
             Location = new Point(x + labelWidth + 5, y),
             Size = new Size(controlWidth, 20),
             Font = new Font("Segoe UI", 8)
         };
+        if (allowProtoDrop)
+        {
+            // Приём drag'n'drop: перетащенный из панели репозиториев ID прототипа
+            // подставляется в поле (стена/пол/дверь/стеклянная дверь).
+            tb.AllowDrop = true;
+            tb.DragEnter += (s, e) =>
+            {
+                e.Effect = e.Data != null && e.Data.GetDataPresent(DataFormats.Text)
+                    ? DragDropEffects.Copy
+                    : DragDropEffects.None;
+            };
+            tb.DragDrop += (s, e) =>
+            {
+                if (e.Data == null || !e.Data.GetDataPresent(DataFormats.Text)) return;
+                tb.Text = (string)e.Data.GetData(DataFormats.Text)!;
+            };
+        }
+        return tb;
     }
 
     private void ShowCategoryInfo(string categoryName)
@@ -750,22 +773,22 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         y += rowHeight;
 
         // Поле "Стена"
-        var txtWall = CreateTextBox("WallSolid", leftMargin, y, labelWidth, controlWidthFull);
+        var txtWall = CreateTextBox("WallSolid", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblWall = CreateLabel("Стена:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Пол"
-        var txtFloor = CreateTextBox("Plating", leftMargin, y, labelWidth, controlWidthFull);
+        var txtFloor = CreateTextBox("Plating", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblFloor = CreateLabel("Пол:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Дверь"
-        var txtDoor = CreateTextBox("Airlock", leftMargin, y, labelWidth, controlWidthFull);
+        var txtDoor = CreateTextBox("Airlock", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblDoor = CreateLabel("Дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Поле "Стекл. дверь"
-        var txtGlassDoor = CreateTextBox("AirlockGlass", leftMargin, y, labelWidth, controlWidthFull);
+        var txtGlassDoor = CreateTextBox("AirlockGlass", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
@@ -900,6 +923,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                 }
 
                 MessageBox.Show($"Тип '{txtName.Text}' успешно создан!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                OnTypeSaved?.Invoke("", txtName.Text);
             }
             catch (Exception ex)
             {

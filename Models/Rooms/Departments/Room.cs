@@ -47,6 +47,22 @@ public class Room
     [System.Text.Json.Serialization.JsonIgnore]
     public int Id { get; set; } = Interlocked.Increment(ref _nextId);
 
+    /// <summary>
+    /// Восстановить стабильный Id из файла проекта (см. RoomGridData.Id). Гарантирует,
+    /// что после загрузки комната и её декали (PlacedDecal.PatternOwnerId) снова сходятся
+    /// по одному ключу. Игнорирует невалидные/дублирующиеся значения: комнате оставляется
+    /// авто-инкремент, а декали пересоберутся RecalculateAll.
+    /// </summary>
+    public void RestoreId(int id)
+    {
+        if (id > 0)
+        {
+            Id = id;
+            if (_nextId <= id)
+                Interlocked.Exchange(ref _nextId, id + 1);
+        }
+    }
+
     public Room Clone()
     {
         var clone = new Room

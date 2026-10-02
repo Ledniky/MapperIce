@@ -424,6 +424,11 @@ public class PrototypeIndexer
 
         var proto = new Prototype { Id = id, FilePath = filePath, Type = type };
 
+        // "abstract: true" — это шаблон-родитель (например BaseStructureWall), а не
+        // размещаемая сущность. Проверяем по свойству, а не по "Base" в id.
+        var abstractMatch = Regex.Match(block, @"(?m)^\s*abstract:\s*(true|yes)\b");
+        proto.IsAbstract = abstractMatch.Success;
+
         // Ищем ключ локализации (name:) — у тайлов это "tiles-*", ключ перевода в .ftl.
         var locKeyMatch = Regex.Match(block, @"(?m)^\s*name:\s*(\S+)\s*$");
         if (locKeyMatch.Success)
