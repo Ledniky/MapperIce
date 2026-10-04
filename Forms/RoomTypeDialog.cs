@@ -36,6 +36,7 @@ public partial class RoomTypeDialog : Form
     { "Cargo+", Color.FromArgb(180, 100, 0) },
     { "Command", Color.FromArgb(30, 50, 100) },        // Тёмно-синий (командный)
     { "Command+", Color.FromArgb(30, 50, 100) },
+    { "AI", Color.FromArgb(20, 45, 100) },             // Тёмно-синий (ИИ)
     
     // Общие (серый)
     { "Common", Color.FromArgb(80, 80, 80) },
@@ -303,7 +304,7 @@ public partial class RoomTypeDialog : Form
                     categoryNode.ForeColor = color;
                 }
 
-                foreach (var type in category.Value.OrderBy(t => t.DisplayName))
+                foreach (var type in category.Value.OrderBy(t => t.SortGroup).ThenByDescending(t => t.Priority).ThenBy(t => t.DisplayName))
                 {
                     var typeNode = new TreeNode(type.DisplayName)
                     {
@@ -490,6 +491,21 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Голопад"
+        var txtHolopad = CreateTextBox(type.HolopadProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblHolopad = CreateLabel("Голопад:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Шкафчик"
+        var txtLocker = CreateTextBox(type.LockerProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblLocker = CreateLabel("Шкафчик:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Скафандр"
+        var txtSuit = CreateTextBox(type.SuitStorageProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblSuit = CreateLabel("Скафандр:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки
         var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -548,8 +564,6 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var txtPriority = CreateTextBox(_manager.GetPriorityForType(type.Name).ToString(), leftMargin, y, labelWidth, controlWidthFull);
         var lblPriority = CreateLabel("Приоритет:", leftMargin, y + 3, labelWidth);
         y += rowHeight + 6;
-
-        // Кнопка "Сохранить"
         _btnSave = new Button
         {
             Text = "💾 Сохранить",
@@ -584,7 +598,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         txtGlassDoor.Text,
                         Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
                         Color.FromArgb(line[0], line[1], line[2], line[3]),
-                        priority
+                        priority,
+                        holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
+                        lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
+                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
                     );
                 }
 
@@ -600,7 +617,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         txtGlassDoor.Text,
                         Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
                         Color.FromArgb(line[0], line[1], line[2], line[3]),
-                        priority
+                        priority,
+                        holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
+                        lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
+                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
                     );
                 }
                 UpdateTreeView();
@@ -617,7 +637,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         // Добавляем все элементы на панель
         _editorPanel.Controls.AddRange(new Control[] {
         lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
-        lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor,
+        lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor, lblHolopad, txtHolopad, lblLocker, txtLocker, lblSuit, txtSuit,
         lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
     });
     }
@@ -792,6 +812,21 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblGlassDoor = CreateLabel("Стекл. дверь:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Голопад"
+        var txtHolopad = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblHolopad = CreateLabel("Голопад:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Шкафчик"
+        var txtLocker = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblLocker = CreateLabel("Шкафчик:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Скафандр"
+        var txtSuit = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblSuit = CreateLabel("Скафандр:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки комнаты
         var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -897,7 +932,10 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                     txtGlassDoor.Text,
                     Color.FromArgb(fill[0], fill[1], fill[2], fill[3]),
                     Color.FromArgb(line[0], line[1], line[2], line[3]),
-                    priority
+                    priority,
+                    holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
+                    lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
+                    suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
                 );
 
                 // Добавляем цвет категории ТОЛЬКО если категория новая
@@ -962,6 +1000,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblFloor, txtFloor,
         lblDoor, txtDoor,
         lblGlassDoor, txtGlassDoor,
+        lblHolopad, txtHolopad,
+        lblLocker, txtLocker,
+        lblSuit, txtSuit,
         lblFill, txtFill,
         lblLine, txtLine,
         lblPriority, txtPriority
@@ -1124,7 +1165,10 @@ private void ImportType()
                             type.GlassDoorProto,
                             type.FillColor,
                             type.LineColor,
-                            _manager.GetPriorityForType(type.Name)
+                            _manager.GetPriorityForType(type.Name),
+                            holopadProto: type.HolopadProto,
+                            lockerProto: type.LockerProto,
+                            suitStorageProto: type.SuitStorageProto
                         );
                     }
                 }

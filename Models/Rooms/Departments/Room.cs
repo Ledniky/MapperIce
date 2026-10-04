@@ -14,8 +14,11 @@ public class Room
     public string FloorProto { get; set; } = "Plating";
     public string DoorProto { get; set; } = "Airlock";
     public string GlassDoorProto { get; set; } = "AirlockGlass";
-    public string? AirAlarmProto { get; set; } = null;   // переопределение прототипа сигнализации для этой комнаты
+public string? AirAlarmProto { get; set; } = null;   // переопределение прототипа сигнализации для этой комнаты
     public string? FireAlarmProto { get; set; } = null;
+    public string? HolopadProto { get; set; } = null;   // прототип голопада, привязанный к этой комнате
+    public string? LockerProto { get; set; } = null;   // прототип шкафчика, привязанный к этой комнате
+    public string? SuitStorageProto { get; set; } = null;   // прототип хранилища скафандра, привязанный к этой комнате
     public Color FillColor { get; set; } = Color.FromArgb(100, 230, 230, 230);
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
@@ -78,6 +81,9 @@ public class Room
             GlassDoorProto = GlassDoorProto,
             AirAlarmProto = AirAlarmProto,
             FireAlarmProto = FireAlarmProto,
+            HolopadProto = HolopadProto,
+            LockerProto = LockerProto,
+            SuitStorageProto = SuitStorageProto,
             FillColor = FillColor,
             LineColor = LineColor,
             Id = Id,

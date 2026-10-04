@@ -202,6 +202,9 @@ public partial class MainForm
                     GlassDoorProto = room.GlassDoorProto,
                     AirAlarmProto = room.AirAlarmProto,
                     FireAlarmProto = room.FireAlarmProto,
+                    HolopadProto = room.HolopadProto,
+                    LockerProto = room.LockerProto,
+                    SuitStorageProto = room.SuitStorageProto,
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
                     DecalMode = room.DecalMode,
@@ -254,7 +257,8 @@ public partial class MainForm
                                 Subtractions = a.Subtractions.Select(s => new DecalAreaRectData
                                 {
                                     X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
-                                }).ToList()
+                                }).ToList(),
+                                CutCells = a.CutCells.Select(c => $"{c.X},{c.Y}").ToList()
                             }).ToList()
                         }).ToList()
                     };
@@ -269,7 +273,8 @@ public partial class MainForm
                         Subtractions = area.Subtractions.Select(s => new DecalAreaRectData
                         {
                             X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
-                        }).ToList()
+                        }).ToList(),
+                        CutCells = area.CutCells.Select(c => $"{c.X},{c.Y}").ToList()
                     });
                 }
 
@@ -374,6 +379,9 @@ public partial class MainForm
                         GlassDoorProto = roomData.GlassDoorProto ?? "AirlockGlass",
                         AirAlarmProto = roomData.AirAlarmProto,
                         FireAlarmProto = roomData.FireAlarmProto,
+                        HolopadProto = roomData.HolopadProto,
+                        LockerProto = roomData.LockerProto,
+                        SuitStorageProto = roomData.SuitStorageProto,
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor),
                         DecalMode = roomData.DecalMode,
@@ -442,7 +450,8 @@ public partial class MainForm
                                     Subtractions = a.Subtractions.Select(s => new DecalAreaRect
                                     {
                                         X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
-                                    }).ToList()
+                                    }).ToList(),
+                                    CutCells = ParseCutCells(a.CutCells)
                                 }).ToList()
                             }).ToList()
                         };
@@ -457,7 +466,8 @@ public partial class MainForm
                             Subtractions = areaData.Subtractions.Select(s => new DecalAreaRect
                             {
                                 X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
-                            }).ToList()
+                            }).ToList(),
+                            CutCells = ParseCutCells(areaData.CutCells)
                         });
                     }
 
@@ -567,5 +577,18 @@ public partial class MainForm
         }
         catch { }
         return Color.FromArgb(200, 230, 230, 230);
+    }
+
+    private static HashSet<(int X, int Y)> ParseCutCells(List<string> cells)
+    {
+        var result = new HashSet<(int X, int Y)>();
+        if (cells == null) return result;
+        foreach (var cellStr in cells)
+        {
+            var parts = cellStr.Split(',');
+            if (parts.Length == 2 && int.TryParse(parts[0], out var cx) && int.TryParse(parts[1], out var cy))
+                result.Add((cx, cy));
+        }
+        return result;
     }
 }

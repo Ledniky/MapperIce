@@ -18,6 +18,7 @@ public class ConferenceRoom : CommandPlusRoomType
     public override string DisplayName => "Конференц-зал";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override string? HolopadProto => "HolopadCommandMeetingRoom";
     public override int Priority => 150;
 }
 
@@ -29,21 +30,16 @@ public class CentralCommand : CommandPlusRoomType
     public override string GlassDoorProto => "AirlockCentralCommandGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 80, 30);
     public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
+    public override string? HolopadProto => "HolopadCentCommEvacShuttle";
     public override int Priority => 400;
 }
 
-public class AI : CommandPlusRoomType
+public class BridgeHallway : CommandPlusRoomType
 {
-    public override string Name => "AI";
-    public override string DisplayName => "ИИ";
-    public override string DoorProto => "AirlockAI";
-    public override string GlassDoorProto => "AirlockAIGlass";
-    public override int Priority => 170;
-}
-
-public class SatelliteAI : CommandPlusRoomType
-{
-    public override string Name => "Satellite";
-    public override string DisplayName => "Спутник ИИ";
-    public override int Priority => 160;
+    public override string Name => "BridgeHallway";
+    public override string DisplayName => "Коридор мостика";
+    public override string DoorProto => "AirlockCommandLocked";
+    public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override string? HolopadProto => "HolopadCommandBridgeHallway";
+    public override int Priority => 150;
 }

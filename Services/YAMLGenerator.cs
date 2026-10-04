@@ -299,6 +299,15 @@ public static class YAMLGenerator
         // 7. Прочие сущности
         GenerateGenericEntitiesGrouped(sb, grid, ref uid);
 
+        // 8. Голопады (привязки)
+        GenerateHolopadsGrouped(sb, grid, ref uid);
+
+        // 9. Шкафчики (привязки)
+        GenerateLockersGrouped(sb, grid, ref uid);
+
+        // 10. Хранилища скафандров (привязки)
+        GenerateSuitStoragesGrouped(sb, grid, ref uid);
+
         return sb.ToString();
     }
 
@@ -1582,6 +1591,7 @@ public static class YAMLGenerator
         var generic = grid.Entities
             .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity && e is not WireEntity &&
+                        e is not HolopadEntity && e is not LockerEntity && e is not SuitStorageEntity &&
                         e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
@@ -1642,6 +1652,135 @@ public static class YAMLGenerator
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация голопадов как авто-устанавливаемых объектов. Каждый голопад
+    /// выводится отдельным "- proto:" блоком со своим прототипом (HolopadProto).
+    /// </summary>
+    private static void GenerateHolopadsGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var holopads = grid.Entities.OfType<HolopadEntity>()
+            .Where(h => !string.IsNullOrEmpty(h.HolopadProto))
+            .ToList();
+
+        if (holopads.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var h in holopads)
+        {
+            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in holopads.GroupBy(h => h.HolopadProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var holopad in group)
+            {
+                var cell = ((int)Math.Round(holopad.X), (int)Math.Round(holopad.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = holopad.X;
+                float posY = -holopad.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация шкафчиков как авто-устанавливаемых объектов. Каждый шкафчик
+    /// выводится отдельным "- proto:" блоком со своим прототипом (LockerProto).
+    /// </summary>
+    private static void GenerateLockersGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var lockers = grid.Entities.OfType<LockerEntity>()
+            .Where(h => !string.IsNullOrEmpty(h.LockerProto))
+            .ToList();
+
+        if (lockers.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var h in lockers)
+        {
+            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in lockers.GroupBy(h => h.LockerProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var locker in group)
+            {
+                var cell = ((int)Math.Round(locker.X), (int)Math.Round(locker.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = locker.X;
+                float posY = -locker.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация хранилищ скафандров как авто-устанавливаемых объектов. Каждое
+    /// выводится отдельным "- proto:" блоком со своим прототипом (SuitStorageProto).
+    /// </summary>
+    private static void GenerateSuitStoragesGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var suits = grid.Entities.OfType<SuitStorageEntity>()
+            .Where(h => !string.IsNullOrEmpty(h.SuitStorageProto))
+            .ToList();
+
+        if (suits.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var h in suits)
+        {
+            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in suits.GroupBy(h => h.SuitStorageProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var suit in group)
+            {
+                var cell = ((int)Math.Round(suit.X), (int)Math.Round(suit.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = suit.X;
+                float posY = -suit.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
             }
         }
     }

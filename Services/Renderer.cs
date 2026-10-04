@@ -97,6 +97,7 @@ public class Renderer
     {
         _decalAreaEditRect = null;
         _decalAreaEditSubtractions = null;
+        _decalAreaEditCutCells = null;
     }
 
 
@@ -106,6 +107,28 @@ public class Renderer
     public void SetDecalAreaEditSubtractions(List<DecalAreaRect>? subtractions)
     {
         _decalAreaEditSubtractions = subtractions;
+    }
+
+    // Потайлёво вырезанные клетки декалей (кнопка «✖» в окне «Ручные области») —
+    // рисуются на карте при редактировании области, чтобы было видно, какие тайлы без декалей.
+    private HashSet<(int X, int Y)>? _decalAreaEditCutCells = null;
+
+    public void SetDecalAreaEditCutCells(HashSet<(int X, int Y)>? cutCells)
+    {
+        _decalAreaEditCutCells = cutCells;
+    }
+
+    // Растягиваемый мышью прямоугольник вырезки декалей (в режиме «✖»)
+    private (int x, int y, int w, int h)? _decalAreaCutDragRect = null;
+
+    public void SetDecalAreaCutDragRect(int x, int y, int w, int h)
+    {
+        _decalAreaCutDragRect = (x, y, w, h);
+    }
+
+    public void ClearDecalAreaCutDragRect()
+    {
+        _decalAreaCutDragRect = null;
     }
 
 
@@ -474,11 +497,15 @@ public class Renderer
     private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f)
     {
         // Многослойный прототип (YAML Sprite.layers) — рисуем все слои поверх друг
-        // друга отдельным путём и выходим, не трогая старую однослойную логику ниже
-        var layeredProto = !string.IsNullOrEmpty(protoId) ? _indexer?.FindPrototype(protoId) : null;
-        if (layeredProto != null && layeredProto.Layers.Count > 0)
+        // друга отдельным путём и выходим, не трогая старую однослойную логику ниже.
+        // GetLayers учитывает наследование от parent (в отличие от
+        // FindPrototype(...).Layers), поэтому наследуемые прототипы вроде
+        // Locker*Filled/Closet*Filled — которые переопределяют только parent и
+        // EntityTableContainerFill — тоже рисуются многослойно, как в панели репозитория.
+        var layered = !string.IsNullOrEmpty(protoId) ? _indexer?.GetLayers(protoId) : null;
+        if (layered != null && layered.Count > 0)
         {
-            DrawLayeredTexturedRect(g, protoId!, layeredProto, rect, tint, fallback, rotation);
+            DrawLayeredTexturedRect(g, protoId!, layered, rect, tint, fallback, rotation);
             return;
         }
 
@@ -552,7 +579,7 @@ public class Renderer
     /// раньше для одного слоя), а собственный offset конкретного слоя (если задан) —
     /// уже поверх этого, только к этому слою.
     /// </summary>
-    private void DrawLayeredTexturedRect(Graphics g, string protoId, Models.Prototype proto, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation)
+    private void DrawLayeredTexturedRect(Graphics g, string protoId, List<Models.SpriteLayer> layers, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation)
     {
         var (offX, offY) = _indexer?.GetSpriteOffset(protoId) ?? (0f, 0f);
         if (offX != 0f || offY != 0f)
@@ -572,16 +599,49 @@ public class Renderer
         float cx = rect.X + rect.Width / 2f;
         float cy = rect.Y + rect.Height / 2f;
 
-        for (int i = 0; i < proto.Layers.Count; i++)
+        // EntityStorageVisuals: шкафчики/локеры переопределяют state базовых слоёв
+        // спрайта (Base → stateBaseClosed, Door → stateDoorClosed), причём сам компонент
+        // Sprite с layers живёт у далёкого предка (ClosetBase, closet.rsi), а state —
+        // у конкретного наследника (LockerCaptionFilled и т.п.). Подменяем state слоя
+        // перед загрузкой текстуры, иначе рисовался бы дефолтный "generic"/"generic_door".
+        var storageViz = _indexer?.GetEntityStorageVisuals(protoId);
+
+        for (int i = 0; i < layers.Count; i++)
         {
-            var layer = proto.Layers[i];
+            var layer = layers[i];
             if (!layer.Visible) continue;
 
             // Составной ключ кэша — отдельная запись в _textureCache/_sourceRectCache
             // и т.п. на каждый слой каждого прототипа (а не одна на protoId, как для
-            // однослойных текстур)
-            string cacheKey = $"{protoId}__layer{i}";
-            Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer);
+            // однослойных текстур). State хранения включается в ключ, чтобы разные
+            // state (закрыто/открыто) не конфликтовали в кэше.
+            string effectiveState = layer.State;
+            if (storageViz != null)
+            {
+                bool isBase;
+                bool isDoor;
+                if (!string.IsNullOrEmpty(layer.MapKey))
+                {
+                    isBase = layer.MapKey.Contains("Base");
+                    isDoor = layer.MapKey.Contains("Door");
+                }
+                else
+                {
+                    bool first = i == 0;
+                    bool second = i == 1;
+                    isBase = first && !second;
+                    isDoor = !first && second;
+                }
+
+                string? overrideState = isBase ? storageViz.Value.baseClosed
+                                       : isDoor ? storageViz.Value.doorClosed
+                                       : null;
+                if (!string.IsNullOrEmpty(overrideState))
+                    effectiveState = overrideState;
+            }
+
+            string cacheKey = $"{protoId}__layer{i}__{effectiveState ?? "?"}";
+            Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer, effectiveState);
             if (layerTexture == null) continue;
 
             anyDrawn = true;
@@ -637,7 +697,7 @@ public class Renderer
     /// (_textureCache/_protoTextureDirCache/_protoStateNameCache), что и GetOrLoadTexture
     /// для обычных однослойных текстур, без коллизий с реальными protoId.
     /// </summary>
-    private Image? GetOrLoadLayerTexture(string cacheKey, string protoId, Models.SpriteLayer layer)
+    private Image? GetOrLoadLayerTexture(string cacheKey, string protoId, Models.SpriteLayer layer, string? stateOverride = null)
     {
         if (_textureCache.TryGetValue(cacheKey, out var cached))
             return cached;
@@ -645,7 +705,7 @@ public class Renderer
         Image? texture = null;
         if (_indexer != null)
         {
-            var texturePath = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State);
+            var texturePath = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, stateOverride ?? layer.State);
             if (texturePath != null && File.Exists(texturePath))
             {
                 try
@@ -653,9 +713,9 @@ public class Renderer
                     texture = Image.FromFile(texturePath);
                     _protoTextureDirCache[cacheKey] = Path.GetDirectoryName(texturePath) ?? "";
 
-                    string? stateFromLayer = layer.State;
-                    _protoStateNameCache[cacheKey] = !string.IsNullOrEmpty(stateFromLayer)
-                        ? stateFromLayer
+                    string? stateName = stateOverride ?? layer.State;
+                    _protoStateNameCache[cacheKey] = !string.IsNullOrEmpty(stateName)
+                        ? stateName
                         : Path.GetFileNameWithoutExtension(texturePath);
                 }
                 catch { }
@@ -1603,7 +1663,7 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity) continue;
             if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
@@ -1615,6 +1675,33 @@ public class Renderer
             if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
             var e = entity;
             renderQueue.Add((e.Y, dd, 0, _insertCounter++, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Голопады — отдельный слой «привязок» поверх остальных объектов
+        foreach (var holopad in grid.Entities.OfType<HolopadEntity>())
+        {
+            if (!IsPointVisible(holopad.X, holopad.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var h = holopad;
+            renderQueue.Add((h.Y, dd, 0, _insertCounter++, () => DrawSingleHolopad(g, h.HolopadProto, h.X, h.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Шкафчики — отдельный слой «привязок» поверх остальных объектов
+        foreach (var locker in grid.Entities.OfType<LockerEntity>())
+        {
+            if (!IsPointVisible(locker.X, locker.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var l = locker;
+            renderQueue.Add((l.Y, dd, 0, _insertCounter++, () => DrawSingleLocker(g, l.LockerProto, l.X, l.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Хранилища скафандров — отдельный слой «привязок» поверх остальных объектов
+        foreach (var suit in grid.Entities.OfType<SuitStorageEntity>())
+        {
+            if (!IsPointVisible(suit.X, suit.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var s = suit;
+            renderQueue.Add((s.Y, dd, 0, _insertCounter++, () => DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
@@ -1780,6 +1867,96 @@ public class Renderer
                 gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
             }
         }, rotation);
+    }
+
+    /// <summary>
+    /// Отрисовка голопада как отдельной «привязки»: маркер с иконкой 📟 и
+    /// подписью прототипа, чтобы привязка была видна как самостоятельный объект.
+    /// </summary>
+    private void DrawSingleHolopad(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Почти прозрачный жёлто-оранжевый фон — привязка / авто-объект
+        using var fillBrush = new SolidBrush(Color.FromArgb(40, 255, 170, 0));
+        g.FillRectangle(fillBrush, rect);
+        using var pen = new Pen(Color.FromArgb(255, 180, 90, 0), 1.5f);
+        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+
+        // Текстура прототипа голопада поверх маркера (если найдена в индексе)
+        if (!string.IsNullOrEmpty(protoId))
+        {
+            DrawTexturedRect(g, protoId, rect, null, null);
+        }
+
+        if (tileSize > 14)
+        {
+            // Иконка по центру
+            using var font = new Font("Segoe UI", 8);
+            using var textBrush = new SolidBrush(Color.FromArgb(90, 40, 0));
+            string label = "📟";
+            g.DrawString(label, font, textBrush, rect.X + rect.Width / 2 - 6, rect.Y + rect.Height / 2 - 8);
+
+            // Подпись "auto" вплотную к правому верхнему углу — маркер авто-объекта.
+            // За текстом рисуем непрозрачную подложку, чтобы сквозь него не просвечивали
+            // пиксели текстуры голопада (они выглядели как чёрная обводка вокруг букв).
+            using var autoFont = new Font("Segoe UI", 7, FontStyle.Bold);
+            using var autoBrush = new SolidBrush(Color.Black);
+            var autoSize = g.MeasureString("auto", autoFont);
+            g.DrawString("auto", autoFont, autoBrush, rect.Right - autoSize.Width, rect.Y);
+
+            // Подпись прототипа снизу
+            using var smallFont = new Font("Segoe UI", 6);
+            using var labelBrush = new SolidBrush(Color.FromArgb(220, 90, 50, 0));
+            string protoLabel = string.IsNullOrEmpty(protoId) ? "holopad" :
+                protoId.Replace("Holopad", "").Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
+                       .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
+                       .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");
+            g.DrawString(protoLabel, smallFont, labelBrush, rect.X + 1, rect.Bottom - 10);
+        }
+    }
+
+    private void DrawSingleLocker(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Тонкая зелёная рамка — маркер авто-объекта (шкафчик из свойств комнаты).
+        // Сам спрайт рисуем многослойно (State-слои из Sprite.layers), как обычные
+        // сущности и как превью в левом списке — см. DrawTexturedRect/GetLayers.
+        var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
+        if (texture != null)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null);
+        }
+        else
+        {
+            using var fillBrush = new SolidBrush(Color.FromArgb(40, 40, 180, 60));
+            g.FillRectangle(fillBrush, rect);
+        }
+
+        using var pen = new Pen(Color.FromArgb(180, 30, 140, 50), 1f);
+        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+    }
+
+    private void DrawSingleSuitStorage(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Тонкая голубая рамка — маркер авто-объекта (хранилище скафандра из свойств).
+        // Сам спрайт многослойный (State-слои из Sprite.layers), как у обычных сущностей.
+        var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
+        if (texture != null)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null);
+        }
+        else
+        {
+            using var fillBrush = new SolidBrush(Color.FromArgb(40, 40, 120, 200));
+            g.FillRectangle(fillBrush, rect);
+        }
+
+        using var pen = new Pen(Color.FromArgb(180, 40, 110, 200), 1f);
+        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
     }
 
     private void DrawSingleAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
@@ -2919,8 +3096,23 @@ public class Renderer
             }
         }
 
+        // Потайлёво вырезанные клетки декалей (кнопка «✖») — рисуются красноватым крестом,
+        // чтобы было видно, в каких тайлах декаль этой области не появляется.
+        if (_decalAreaEditCutCells != null && _decalAreaEditCutCells.Count > 0)
+        {
+            float cellPad = tileSize * 0.15f;
+            using var cutBrush = new SolidBrush(Color.FromArgb(160, 220, 40, 40));
+            foreach (var cell in _decalAreaEditCutCells)
+            {
+                float cl = cell.X * tileSize + gridOffsetX - viewOffset.X + cellPad;
+                float ct = cell.Y * tileSize + gridOffsetY - viewOffset.Y + cellPad;
+                float cls = tileSize - cellPad * 2;
+                g.FillRectangle(cutBrush, cl, ct, cls, cls);
+            }
+        }
 
-        
+
+
         // Угловые "ручки" для перетаскивания — фиксированный размер в пикселях экрана,
         // не зависящий от масштаба, чтобы хват оставался удобным при любом зуме
         float handleSize = 10f;
@@ -2937,6 +3129,24 @@ public class Renderer
             var rect = new RectangleF(cx - handleSize / 2, cy - handleSize / 2, handleSize, handleSize);
             g.FillRectangle(handleBrush, rect);
             g.DrawRectangle(handlePen, rect.X, rect.Y, rect.Width, rect.Height);
+        }
+
+        // Растягиваемый мышью прямоугольник вырезки декалей (режим «✖»)
+        if (_decalAreaCutDragRect != null)
+        {
+            var (cx2, cy2, cw2, ch2) = _decalAreaCutDragRect.Value;
+            float dl = cx2 * tileSize + gridOffsetX - viewOffset.X;
+            float dt = cy2 * tileSize + gridOffsetY - viewOffset.Y;
+            float dw = cw2 * tileSize;
+            float dh = ch2 * tileSize;
+
+            using var dfill = new SolidBrush(Color.FromArgb(70, 220, 40, 40));
+            g.FillRectangle(dfill, dl, dt, dw, dh);
+            using var dpen = new Pen(Color.FromArgb(255, 220, 40, 40), 2)
+            {
+                DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+            };
+            g.DrawRectangle(dpen, dl, dt, dw, dh);
         }
     }
 

@@ -10,6 +10,15 @@ public partial class MainForm
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
+        // Режим потайлёвой вырезки декалей (кнопка «✖» в окне «Ручные области»): клики
+        // по клеткам области переключают их в CutCells — тайл теряет свою декаль, остальные
+        // клетки строятся как обычно. Тянем мышью прямоугольник, как рамку выделения.
+        if (_isCuttingDecalCells && e.Button == MouseButtons.Left)
+        {
+            HandleDecalCellCutMouseDown(e);
+            return;
+        }
+
         // Растягивание НОВОЙ ручной области мышью (режим «Добавить область» в Decal Rule)
         if (_isDrawingDecalArea && e.Button == MouseButtons.Left)
         {
@@ -344,7 +353,24 @@ public partial class MainForm
                     bool isOnEdge = tileX == room.X || tileX == room.X + room.Width - 1 ||
                                     tileY == room.Y || tileY == room.Y + room.Height - 1;
 
-                    if (isOnEdge && room.Passages.Contains((tileX, tileY)))
+                    if (isOnEdge && room.Windows.Contains((tileX, tileY)))
+                    {
+                        // Удаляем окно: снимаем пометку окна и сносим сущности
+                        // окна и решётки на этой клетке. TileBuilder сам восстановит
+                        // стену при следующей пересборке (окна у него в списке пропуска)
+                        room.Windows.Remove((tileX, tileY));
+                        var winEntities = grid.Entities
+                            .Where(e => e.GetType() == typeof(MapEntity) &&
+                                        (int)e.X == tileX && (int)e.Y == tileY)
+                            .ToList();
+                        foreach (var we in winEntities)
+                            grid.Entities.Remove(we);
+                        RecalculateDecalPatterns();
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                    else if (isOnEdge && room.Passages.Contains((tileX, tileY)))
                     {
                         // Снимаем пометку прохода — TileBuilder сам восстановит
                         // стену на этой границе при следующей пересборке
@@ -853,6 +879,72 @@ public partial class MainForm
                 UpdateTileGrid();
                 Render();
             }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceHolopad)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room == null || string.IsNullOrEmpty(room.HolopadProto)) return;
+
+                if (grid.Entities.OfType<HolopadEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
+
+                var holopadEntity = new HolopadEntity
+                {
+                    X = tileX + 0.5f,
+                    Y = tileY + 0.5f,
+                    Proto = room.HolopadProto,
+                    HolopadProto = room.HolopadProto
+                };
+                grid.Entities.Add(holopadEntity);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceLocker)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room == null || string.IsNullOrEmpty(room.LockerProto)) return;
+
+                if (grid.Entities.OfType<LockerEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
+
+                var lockerEntity = new LockerEntity
+                {
+                    X = tileX + 0.5f,
+                    Y = tileY + 0.5f,
+                    Proto = room.LockerProto,
+                    LockerProto = room.LockerProto
+                };
+                grid.Entities.Add(lockerEntity);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceSuitStorage)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room == null || string.IsNullOrEmpty(room.SuitStorageProto)) return;
+
+                if (grid.Entities.OfType<SuitStorageEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
+
+                var suitEntity = new SuitStorageEntity
+                {
+                    X = tileX + 0.5f,
+                    Y = tileY + 0.5f,
+                    Proto = room.SuitStorageProto,
+                    SuitStorageProto = room.SuitStorageProto
+                };
+                grid.Entities.Add(suitEntity);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
             else if (_toolManager.CurrentTool == ToolManager.Tool.DecalRule)
             {
                 var grid = _map.ActiveGrid;
@@ -1006,6 +1098,13 @@ public partial class MainForm
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
+        // Перетаскивание прямоугольника вырезки декалей (кнопка «✖»)
+        if (_isCuttingDecalCells && _cuttingDecalMouseDown)
+        {
+            HandleDecalCellCutMouseMove(e);
+            return;
+        }
+
         // Растягивание новой ручной области — живое обновление рамки и декалей
         if (_isDrawingDecalArea && _decalAreaDrawMouseDown)
         {
@@ -1223,6 +1322,13 @@ public partial class MainForm
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
     {
+        // Завершение перетаскивания прямоугольника вырезки декалей (кнопка «✖»)
+        if (_isCuttingDecalCells && _cuttingDecalMouseDown && e.Button == MouseButtons.Left)
+        {
+            HandleDecalCellCutMouseUp(e);
+            return;
+        }
+
         // Завершение растягивания новой ручной области
         if (_isDrawingDecalArea && _decalAreaDrawMouseDown && e.Button == MouseButtons.Left)
         {

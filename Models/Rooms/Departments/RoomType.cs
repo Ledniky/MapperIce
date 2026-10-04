@@ -3,7 +3,7 @@ using System.Drawing;
 namespace MapperIce.Models;
 
 // ============================================================
-// БАЗОВЫЙ КЛАСС (все типы наследуются от него)
+// БАЗОВЫЙ КЛАСС (все комнаты наследуются от него)
 // ============================================================
 
 public abstract class RoomType
@@ -20,11 +20,25 @@ public abstract class RoomType
     public virtual string GlassDoorProto => "AirlockGlass";
     public virtual string? AirAlarmProto => null;  
     public virtual string? FireAlarmProto => null;
+    /// <summary>Прототип голопада (id из holopad.yml), привязанный к этому типу комнаты в свойствах.</summary>
+    public virtual string? HolopadProto => null;
+    /// <summary>Прототип шкафчика (id из Catalog/Fills/Lockers), привязанный к этому типу комнаты в свойствах.</summary>
+    public virtual string? LockerProto => null;
+    /// <summary>Прототип хранилища скафандра (id из suit_storage.yml), привязанный к этому типу комнаты в свойствах.</summary>
+    public virtual string? SuitStorageProto => null;
     public virtual Color FillColor => Color.FromArgb(100, 230, 230, 230);
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
     public virtual bool IsHidden => false;
     public virtual int Priority => 0;
+
+    /// <summary>
+    /// Группа сортировки внутри категории: обычные комнаты идут сначала (0),
+    /// атмосные — после всех инженерных (1) и т.д. Используется в списках типов
+    /// комнат (комбобокс, дерево диалога) как второй ключ после Category,
+    /// чтобы атмос-комнаты не перемешивались с инженерными.
+    /// </summary>
+    public virtual int SortGroup => 0;
 }
 
 // ============================================================
@@ -57,6 +71,8 @@ public class General : CommonRoomType
     public override string Name => "General";
     public override string DisplayName => "Общее";
     public override string Description => "Общая комната без специализации. Коридоры, холлы и базовые помещения.";
+    public override string? HolopadProto => "HolopadGeneralLounge";
+    public override string? LockerProto => "ClosetMaintenanceFilledRandom";
     public override int Priority => 0;
 }
 
@@ -66,6 +82,7 @@ public class Vox : CommonRoomType
     public override string DisplayName => "Вокс";
     public override string Description => "Комната для рассы воксов. Оснащена отдельной воздушной сигнализацией.";
     public override string? AirAlarmProto => "AirAlarmVox";
+    public override string? HolopadProto => "HolopadGeneralLounge";
     public override Color FillColor => Color.FromArgb(100, 254, 1, 230);
     public override Color LineColor => Color.FromArgb(100, 254, 1, 180);
     public override int Priority => 15;
@@ -79,6 +96,8 @@ public class Technical : CommonRoomType
     public override string DoorProto => "AirlockMaintLocked";
     public override string FloorProto => "Plating";
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
+    public override string? HolopadProto => "HolopadGeneralTools";
+    public override string? LockerProto => "ClosetMaintenanceFilledRandom";
     public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
     public override int Priority => 0;
@@ -89,6 +108,7 @@ public class Hallway : CommonRoomType
     public override string Name => "Hallway";
     public override string DisplayName => "Коридор";
     public override string Description => "Коридор. Светлое помещение с кафельным полом для основных проходов.";
+    public override string? HolopadProto => "HolopadGeneralTools";
     public override int Priority => 0;
 }
 
@@ -113,6 +133,7 @@ public class Syndicate : AntagRoomType
     public override string GlassDoorProto => "AirlockSyndicateGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 50, 50);
     public override Color LineColor => Color.FromArgb(255, 200, 50, 50);
+    public override string? SuitStorageProto => "SuitStorageEVASyndicate";
     public override int Priority => 250;
 }
 
@@ -125,6 +146,7 @@ public class Nukeop : AntagRoomType
     public override string GlassDoorProto => "AirlockSyndicateNukeopGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 30, 30);
     public override Color LineColor => Color.FromArgb(255, 200, 30, 30);
+    public override string? SuitStorageProto => "SuitStorageSyndie";
     public override int Priority => 300;
 }
 
@@ -153,6 +175,9 @@ public class CustomRoomType : RoomType
     public override string GlassDoorProto => Data.GlassDoorProto;
     public override string? AirAlarmProto => string.IsNullOrEmpty(Data.AirAlarmProto) ? null : Data.AirAlarmProto;
     public override string? FireAlarmProto => string.IsNullOrEmpty(Data.FireAlarmProto) ? null : Data.FireAlarmProto;
+    public override string? HolopadProto => string.IsNullOrEmpty(Data.HolopadProto) ? null : Data.HolopadProto;
+    public override string? LockerProto => string.IsNullOrEmpty(Data.LockerProto) ? null : Data.LockerProto;
+    public override string? SuitStorageProto => string.IsNullOrEmpty(Data.SuitStorageProto) ? null : Data.SuitStorageProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -186,6 +211,9 @@ public class CustomRoomTypeData
     public string GlassDoorProto { get; set; } = "AirlockGlass";
     public string? AirAlarmProto { get; set; } = null;
     public string? FireAlarmProto { get; set; } = null;
+    public string? HolopadProto { get; set; } = null;
+    public string? LockerProto { get; set; } = null;
+    public string? SuitStorageProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -203,6 +231,9 @@ public class ExportData
     public string FloorProto { get; set; } = "Plating";
     public string DoorProto { get; set; } = "Airlock";
     public string GlassDoorProto { get; set; } = "AirlockGlass";
+    public string? HolopadProto { get; set; }
+    public string? LockerProto { get; set; }
+    public string? SuitStorageProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

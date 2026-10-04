@@ -20,6 +20,7 @@ public class CargoOffice : CargoPlusRoomType
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 110, 30);
     public override Color LineColor => Color.FromArgb(255, 180, 110, 30);
+    public override string? HolopadProto => "HolopadCargoFront";
     public override int Priority => 20;
 }
 
@@ -31,6 +32,7 @@ public class Mailroom : CargoPlusRoomType
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 170, 100, 20);
     public override Color LineColor => Color.FromArgb(255, 170, 100, 20);
+    public override string? HolopadProto => "HolopadCargoMailroom";
     public override int Priority => 30;
 }
 
@@ -42,5 +44,18 @@ public class Recycling : CargoPlusRoomType
     public override string GlassDoorProto => "AirlockCargoGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 120, 40);
     public override Color LineColor => Color.FromArgb(255, 150, 120, 40);
+    public override string? HolopadProto => "HolopadCargoBay";
+    public override int Priority => 25;
+}
+
+public class CargoBreakroom : CargoPlusRoomType
+{
+    public override string Name => "CargoBreakroom";
+    public override string DisplayName => "Комната отдыха снабжения";
+    public override string DoorProto => "AirlockCargoLocked";
+    public override string GlassDoorProto => "AirlockCargoGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 170, 120, 40);
+    public override Color LineColor => Color.FromArgb(255, 170, 120, 40);
+    public override string? HolopadProto => "HolopadCargoBreakroom";
     public override int Priority => 25;
 }

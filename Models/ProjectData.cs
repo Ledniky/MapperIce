@@ -41,6 +41,9 @@ public class RoomGridData
     public string GlassDoorProto { get; set; } = "AirlockGlass";
     public string? AirAlarmProto { get; set; }
     public string? FireAlarmProto { get; set; }
+    public string? HolopadProto { get; set; }
+    public string? LockerProto { get; set; }
+    public string? SuitStorageProto { get; set; }
     public string FillColor { get; set; } = "100,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public List<DoorData> Doors { get; set; } = new();
@@ -78,6 +81,8 @@ public class ManualDecalAreaData
     public int Height { get; set; }
     public ManualAreaMode Mode { get; set; } = ManualAreaMode.WallRegion;
     public List<DecalAreaRectData> Subtractions { get; set; } = new();
+    // Потайлёво вырезанные клетки декалей — список строк "x,y"
+    public List<string> CutCells { get; set; } = new();
 }
 
 public class DecalAreaRectData

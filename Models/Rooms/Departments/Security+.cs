@@ -21,6 +21,7 @@ public class Interrogation : SecurityPlusRoomType
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 180, 80, 80);
     public override Color LineColor => Color.FromArgb(255, 180, 80, 80);
+    public override string? HolopadProto => "HolopadSecurityInterrogation";
     public override int Priority => 20;
 }
 
@@ -32,6 +33,8 @@ public class Permabrig : SecurityPlusRoomType
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 150, 50, 50);
     public override Color LineColor => Color.FromArgb(255, 150, 50, 50);
+    public override string? HolopadProto => "HolopadSecurityPerma";
+    public override string? SuitStorageProto => "SuitStorageEVAPrisoner";
     public override int Priority => 20;
 }
 
@@ -43,6 +46,7 @@ public class Checkpoint : SecurityPlusRoomType
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 100, 100);
     public override Color LineColor => Color.FromArgb(255, 200, 100, 100);
+    public override string? HolopadProto => "HolopadSecurityFront";
     public override int Priority => 20;
 }
 
@@ -54,6 +58,7 @@ public class SecurityPost : SecurityPlusRoomType
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 190, 90, 90);
     public override Color LineColor => Color.FromArgb(255, 190, 90, 90);
+    public override string? HolopadProto => "HolopadSecurityFront";
     public override int Priority => 20;
 }
 
@@ -65,5 +70,54 @@ public class SecurityOffice : SecurityPlusRoomType
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 200, 80, 80);
     public override Color LineColor => Color.FromArgb(255, 200, 80, 80);
+    public override string? HolopadProto => "HolopadSecurityFront";
+    public override int Priority => 20;
+}
+
+public class SecurityBreakroom : SecurityPlusRoomType
+{
+    public override string Name => "SecurityBreakroom";
+    public override string DisplayName => "Комната отдыха охраны";
+    public override string DoorProto => "AirlockSecurityLocked";
+    public override string GlassDoorProto => "AirlockSecurityGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 190, 90, 90);
+    public override Color LineColor => Color.FromArgb(255, 190, 90, 90);
+    public override string? HolopadProto => "HolopadSecurityBreakroom";
+    public override int Priority => 20;
+}
+
+public class BrigMed : SecurityPlusRoomType
+{
+    public override string Name => "BrigMed";
+    public override string DisplayName => "Медпункт брига";
+    public override string DoorProto => "AirlockMedicalLocked";
+    public override string GlassDoorProto => "AirlockMedicalGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 90, 90, 190);
+    public override Color LineColor => Color.FromArgb(255, 90, 90, 190);
+    public override string? HolopadProto => "HolopadSecurityBrigMed";
+    public override int Priority => 20;
+}
+
+public class EvacCheckpoint : SecurityPlusRoomType
+{
+    public override string Name => "EvacCheckpoint";
+    public override string DisplayName => "КПП эвакуации";
+    public override string DoorProto => "AirlockSecurityLocked";
+    public override string GlassDoorProto => "AirlockSecurityGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 180, 90, 90);
+    public override Color LineColor => Color.FromArgb(255, 180, 90, 90);
+    public override string? HolopadProto => "HolopadSecurityEvacCheckpoint";
+    public override int Priority => 20;
+}
+
+public class ArrivalsCheckpoint : SecurityPlusRoomType
+{
+    public override string Name => "ArrivalsCheckpoint";
+    public override string DisplayName => "КПП прибытия";
+    public override string DoorProto => "AirlockSecurityLocked";
+    public override string GlassDoorProto => "AirlockSecurityGlassLocked";
+    public override Color FillColor => Color.FromArgb(100, 170, 90, 90);
+    public override Color LineColor => Color.FromArgb(255, 170, 90, 90);
+    public override string? HolopadProto => "HolopadSecurityArrivalsCheckpoint";
     public override int Priority => 20;
 }

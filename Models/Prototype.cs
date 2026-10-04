@@ -58,6 +58,17 @@ public class Prototype
     /// поверх друга (как это делает сам движок Robust Toolbox).
     /// </summary>
     public List<SpriteLayer> Layers { get; set; } = new();
+
+    /// <summary>
+    /// Состояния закрытого хранения из компонента EntityStorageVisuals
+    /// ("stateBaseClosed", "stateDoorOpen", "stateDoorClosed") — это имена state
+    /// в RSI предков (например у шкафчиков/локеров из closet.rsi), которые
+    /// заставляют базовые слои спрайта (Base/Door) использовать именно эти state,
+    /// а не дефолтные "generic"/"generic_door". Хранит сырые значения из YAML.
+    /// </summary>
+    public string? StorageStateBaseClosed { get; set; }
+    public string? StorageStateDoorOpen { get; set; }
+    public string? StorageStateDoorClosed { get; set; }
 }
 
 /// <summary>
@@ -77,4 +88,6 @@ public class SpriteLayer
     public float OffsetX { get; set; } = 0f;
     public float OffsetY { get; set; } = 0f;
     public bool HasOffset { get; set; } = false;
+    /// <summary>Имя ключа карты слоя из YAML "map:" (например "enum.StorageVisualLayers.Door").</summary>
+    public string? MapKey { get; set; }
 }

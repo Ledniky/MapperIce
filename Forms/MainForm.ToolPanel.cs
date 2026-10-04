@@ -82,7 +82,8 @@ public partial class MainForm
         };
         _roomTypeCombo.DisplayMember = "DisplayName";
         _roomTypeCombo.ValueMember = "Name";
-        _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes().OrderBy(t => t.Category).ThenBy(t => t.DisplayName).ToList();
+        _roomTypeCombo.DataSource = _roomTypeManager.GetAllRoomTypes()
+            .OrderBy(t => t.Category).ThenBy(t => t.SortGroup).ThenByDescending(t => t.Priority).ThenBy(t => t.DisplayName).ToList();
 
 _roomTypeCombo.DrawItem += (s, e) =>
 {
@@ -288,7 +289,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Height = 40,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
-            Font = new Font("Arial", 10, FontStyle.Bold),
+            Font = new Font("Arial", 10),
             TextAlign = ContentAlignment.MiddleCenter
         };
         _btnLinkedEntities.Click += (s, e) => ShowLinkedEntitiesPanel();
@@ -568,7 +569,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
         _toolPanel.Controls.Add(utilPanel);
         y += 34 + 2;
 
-        // ТРУБЫ
+// ТРУБЫ
         var pipeLabel = new Label
         {
             Text = "Трубы:",
@@ -676,93 +677,6 @@ _roomTypeCombo.DrawItem += (s, e) =>
 
         _toolPanel.Controls.Add(pipePanel);
         y += 34 + 2;
-
-        // === СИГНАЛИЗАЦИЯ ===
-        var alarmLabel = new Label
-        {
-            Text = "Сигнализация:",
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 20,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Arial", 8, FontStyle.Bold),
-            ForeColor = Color.DarkGray
-        };
-        _toolPanel.Controls.Add(alarmLabel);
-        y += 20 + 2;
-
-        var alarmPanel = new Panel
-        {
-            Location = new Point(leftMargin + 2, y),
-            Width = contentWidth - 4,
-            Height = 34,
-            BackColor = Color.Transparent
-        };
-
-        int alarmButtonWidth = alarmPanel.Width / 3;
-
-        _btnAirAlarm = new Button
-        {
-            Location = new Point(0, 0),
-            Width = alarmButtonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Text = "🔊",
-            Font = new Font("Arial", 14)
-        };
-        _btnAirAlarm.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.AirAlarm);
-        };
-        alarmPanel.Controls.Add(_btnAirAlarm);
-
-        _btnFireAlarm = new Button
-        {
-            Location = new Point(alarmButtonWidth, 0),
-            Width = alarmButtonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Text = "🔥",
-            Font = new Font("Arial", 14)
-        };
-        _btnFireAlarm.Click += (s, e) =>
-        {
-            _toolManager.SetTool(ToolManager.Tool.FireAlarm);
-        };
-        alarmPanel.Controls.Add(_btnFireAlarm);
-
-        _btnAlarmSettings = new Button
-        {
-            Text = "⚙",
-            Location = new Point(alarmButtonWidth * 2, 0),
-            Width = alarmButtonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Font = new Font("Arial", 12)
-        };
-        _btnAlarmSettings.Click += (s, e) => ShowAlarmSettingsDialog();
-        alarmPanel.Controls.Add(_btnAlarmSettings);
-
-        alarmPanel.Resize += (s, e) =>
-        {
-            int bw = alarmPanel.Width / 3;
-            _btnAirAlarm.Width = bw - 1;
-            _btnFireAlarm.Location = new Point(bw, 0);
-            _btnFireAlarm.Width = bw - 1;
-            _btnAlarmSettings.Location = new Point(bw * 2, 0);
-            _btnAlarmSettings.Width = bw - 1;
-        };
-
-        _toolPanel.Controls.Add(alarmPanel);
-        y += 34 + 2;
-
-
-
 
         // === ПЕРЕМЕЩЕНИЕ ===
         var moveLabel = new Label
@@ -1266,21 +1180,17 @@ private static float HueToRgb(float p, float q, float t)
     /// </summary>
     private void UpdateWindowCombo()
     {
-        if (_doorToolCombo == null) return;
+        if (_windowToolCombo == null) return;
 
         var allIds = _indexer.GetPrototypeIds();
 
         string? prevProto = _selectedWindowProto;
-        _doorToolCombo.Items.Clear();
+        _windowToolCombo.Items.Clear();
 
         foreach (var oldIcon in _windowIconCache.Values)
             oldIcon?.Dispose();
         _windowIconCache.Clear();
         _windowProtoIdCache.Clear();
-
-        // Восстанавливаем старый список + добавляем новый пункт
-        foreach (var label in _doorToolMap.Keys)
-            _doorToolCombo.Items.Add(label);
 
         var windowIds = allIds.Where(i =>
             i.Contains("Window", StringComparison.OrdinalIgnoreCase) &&
@@ -1314,36 +1224,31 @@ private static float HueToRgb(float p, float q, float t)
             var label = displayNameCounts[displayName] > 1
                 ? $"🪟 {displayName} [{id}]"
                 : $"🪟 {displayName}";
-            _doorToolCombo.Items.Add(label);
+            _windowToolCombo.Items.Add(label);
             _windowIconCache[label] = GetPrototypeIcon(id);
             _windowProtoIdCache[label] = id;
         }
 
-        // Решётка — отдельный прототип без "Window" в ID, поэтому не проходит
-        // фильтр windowIds. Добавляем вручную, тем же префиксом 🪟 и тем же
-        // способом (кэш иконки + кэш ID), чтобы дальше работал тот же
-        // механизм выбора/клика, что и для окон, без отдельной ветки кода
-        if (_doorToolCombo.Items.Count > 0)
-            _doorToolCombo.SelectedIndex = 0;
+        if (_windowToolCombo.Items.Count > 0)
+            _windowToolCombo.SelectedIndex = 0;
 
         // Восстанавливаем выбранное окно
-                // Восстанавливаем выбранное окно
         if (prevProto != null)
         {
-            for (int i = 0; i < _doorToolCombo.Items.Count; i++)
+            for (int i = 0; i < _windowToolCombo.Items.Count; i++)
             {
-                var item = _doorToolCombo.Items[i].ToString();
+                var item = _windowToolCombo.Items[i].ToString();
                 if (item != null &&
                     _windowProtoIdCache.TryGetValue(item, out var itemProtoId) &&
                     itemProtoId == prevProto)
                 {
-                    _doorToolCombo.SelectedIndex = i;
+                    _windowToolCombo.SelectedIndex = i;
                     break;
                 }
             }
         }
 
-        _doorToolCombo.Invalidate();
+        _windowToolCombo.Invalidate();
     }
 
 
@@ -1390,7 +1295,7 @@ private static float HueToRgb(float p, float q, float t)
         foreach (var category in _roomTypeManager.GetCategories().OrderBy(c => c.Key))
         {
             var node = new TreeNode(category.Key);
-            foreach (var type in category.Value.OrderBy(t => t.DisplayName))
+            foreach (var type in category.Value.OrderBy(t => t.SortGroup).ThenByDescending(t => t.Priority).ThenBy(t => t.DisplayName))
             {
                 node.Nodes.Add(new TreeNode(type.DisplayName)
                 {

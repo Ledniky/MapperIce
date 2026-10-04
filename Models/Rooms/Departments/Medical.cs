@@ -25,6 +25,8 @@ public class Medical : MedicalRoomType
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 82, 180, 233);
     public override Color LineColor => Color.FromArgb(255, 82, 180, 233);
+    public override string? HolopadProto => "HolopadMedicalMedbay";
+    public override string? LockerProto => "LockerMedicalFilled";
     public override int Priority => 15;
 }
 
@@ -38,6 +40,7 @@ public class Virology : MedicalRoomType
     public override string GlassDoorProto => "AirlockVirologyGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 67, 153, 9);
     public override Color LineColor => Color.FromArgb(255, 67, 153, 9);
+    public override string? HolopadProto => "HolopadMedicalVirology";
     public override int Priority => 60;
 }
 
@@ -50,6 +53,8 @@ public class Chemistry : MedicalRoomType
     public override string GlassDoorProto => "AirlockChemistryGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 250, 117, 0);
     public override Color LineColor => Color.FromArgb(255, 250, 117, 0);
+    public override string? HolopadProto => "HolopadMedicalChemistry";
+    public override string? LockerProto => "LockerChemistryFilled";
     public override int Priority => 70;
 }
 
@@ -62,6 +67,7 @@ public class Morgue : MedicalRoomType
     public override string GlassDoorProto => "AirlockMedicalMorgueGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 60, 120, 160);
     public override Color LineColor => Color.FromArgb(255, 60, 120, 160);
+    public override string? HolopadProto => "HolopadMedicalMorgue";
     public override int Priority => 30;
 }
 
@@ -74,5 +80,8 @@ public class ChiefMedicalOfficer : MedicalRoomType
     public override string GlassDoorProto => "AirlockChiefMedicalOfficerGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 82, 180, 233);
+    public override string? HolopadProto => "HolopadCommandCmo";
+    public override string? LockerProto => "LockerChiefMedicalOfficerFilled";
+    public override string? SuitStorageProto => "SuitStorageCMO";
     public override int Priority => 250;
 }

@@ -25,6 +25,8 @@ public class Science : ScienceRoomType
     public override string Description => "Научная комната. Основной лабораторный отсек для научных исследований и экспериментов.";
     public override string DoorProto => "AirlockScienceLocked";
     public override string GlassDoorProto => "AirlockScienceGlassLocked";
+    public override string? HolopadProto => "HolopadScienceRnd";
+    public override string? LockerProto => "LockerScienceFilled";
     public override int Priority => 15;
 }
 
@@ -37,5 +39,8 @@ public class ResearchDirector : ScienceRoomType
     public override string GlassDoorProto => "AirlockResearchDirectorGlassLocked";
     public override Color FillColor => Color.FromArgb(100, 30, 50, 100);
     public override Color LineColor => Color.FromArgb(255, 211, 129, 201);
+    public override string? HolopadProto => "HolopadCommandRd";
+    public override string? LockerProto => "LockerResearchDirectorFilled";
+    public override string? SuitStorageProto => "SuitStorageRD";
     public override int Priority => 250;
 }

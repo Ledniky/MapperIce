@@ -310,6 +310,10 @@ private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDec
             if (!room.Contains(x, y)) continue;
             if (IsDoorAnywhereInGrid(grid, x, y)) continue;
             if (IsWallCell(room, x, y)) continue;
+            // Потайлёвая вырезка декалей (✖): на отмеченных клетках декали не рисуются,
+            // а соседние клетки строятся как обычно — эта клетка просто перестаёт получать
+            // свою декаль, не перестраивая форму области.
+            if (area.CutCells.Contains((x, y))) continue;
 
             PlaceWallRegionDecals(layer, layerIndex, room, area, x, y, ownerId, result);
         }
@@ -376,6 +380,10 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
             if (room.RemovedCells.Contains((x, y))) continue;
             if (IsDoorAnywhereInGrid(grid, x, y)) continue;
             if (IsWallCell(room, x, y)) continue;
+            // Потайлёвая вырезка декалей (✖): на отмеченных клетках декали не рисуются,
+            // а соседние клетки строятся как обычно — эта клетка просто перестаёт получать
+            // свою декаль, не перестраивая форму области.
+            if (area.CutCells.Contains((x, y))) continue;
 
             var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
             AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);

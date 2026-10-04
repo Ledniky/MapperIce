@@ -202,24 +202,46 @@ public partial class MainForm
                     };
                     row.Controls.Add(btnSubtract);
 
-                    var btnUndoSubtract = new Button
+                    var btnCutCell = new Button
                     {
-                        Text = "↶",
+                        Text = "✖",
                         Location = new Point(270, 30),
                         Width = 26,
                         Height = 24,
                         FlatStyle = FlatStyle.Flat,
-                        Enabled = area.Subtractions.Count > 0
+                        BackColor = (_isCuttingDecalCells && _cuttingDecalArea == area)
+                            ? Color.FromArgb(255, 200, 200)
+                            : Color.White
                     };
-                    new ToolTip().SetToolTip(btnUndoSubtract, "Убрать последний вычет");
-                    btnUndoSubtract.Click += (s, e) =>
+                    var cutCellTip = new ToolTip();
+                    cutCellTip.SetToolTip(btnCutCell,
+                        "Убрать декаль этой области в конкретных тайлах.\n" +
+                        "Включите режим, затем кликайте по клеткам (или тяните прямоугольник) на карте.\n" +
+                        "Декали в отмеченных клетках не рисуются, у соседних — как будто должны.");
+                    btnCutCell.Click += (s, e) =>
                     {
-                        if (area.Subtractions.Count == 0) return;
-                        area.Subtractions.RemoveAt(area.Subtractions.Count - 1);
+                        // Если этот же режим уже активен для этой области — выключаем его
+                        if (_isCuttingDecalCells && _cuttingDecalArea == area)
+                        {
+                            CancelDecalCellCut();
+                            RebuildAreas();
+                            return;
+                        }
+
+                        // Запускаем режим вырезки: активируем редактирование области
+                        // и перехват кликов на клетках
+                        CancelDecalCellCut();
+                        _isCuttingDecalCells = true;
+                        _cuttingDecalArea = area;
                         RebuildAreas();
-                        ApplyLiveChanges();
+                        BeginEditDecalArea(room, area, () =>
+                        {
+                            RecalculateDecalPatterns();
+                            Render();
+                        });
+                        Render();
                     };
-                    row.Controls.Add(btnUndoSubtract);
+                    row.Controls.Add(btnCutCell);
 
                     
                     var btnDelArea = new Button { Text = "🗑", Location = new Point(270, 2), Width = 26, Height = 24, FlatStyle = FlatStyle.Flat };
@@ -708,11 +730,22 @@ public partial class MainForm
         _editingDecalAreaRoom = room;
         _editingDecalArea = area;
         _editingDecalAreaApplyCallback = onChanged;
+        // Выходим из режима потайлёвой вырезки при входе в обычное редактирование
+        CancelDecalCellCut();
         _toolManager.ResetTool();
         _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
         _renderer.SetDecalAreaEditSubtractions(area.Subtractions);
+        _renderer.SetDecalAreaEditCutCells(area.CutCells);
         // Статус удалён — тип комнаты теперь в ComboBox
         Render();
+    }
+
+    private void CancelDecalCellCut()
+    {
+        _isCuttingDecalCells = false;
+        _cuttingDecalArea = null;
+        _cuttingDecalMouseDown = false;
+        _renderer.ClearDecalAreaCutDragRect();
     }
 
     private void EndEditDecalArea()
@@ -724,6 +757,7 @@ public partial class MainForm
         _draggingDecalCornerIndex = -1;
         _isDraggingDecalWholeArea = false;
         _decalAreaDragSnapshot = null;
+        CancelDecalCellCut();
         _renderer.ClearDecalAreaEditRect();
         UpdateTypeLabel();
         Render();
@@ -944,5 +978,97 @@ public partial class MainForm
 
         // Завершение перетаскивания — фиксируем одно состояние в undo/redo
         SaveState();
+    }
+
+    // ===== Потайлёвая вырезка декалей (кнопка «✖» в окне «Ручные области») =====
+    // Клик по клетке — переключить её в CutCells (декаль в ней не рисуется).
+    // Протяжка мышью — выделить прямоугольник и вырезать все попавшие в него клетки.
+    private void HandleDecalCellCutMouseDown(MouseEventArgs e)
+    {
+        if (_cuttingDecalArea == null || _map.ActiveGrid == null) return;
+        if (e.Button != MouseButtons.Left) return;
+
+        var (cx, cy) = GetTilePosition(e.Location);
+        _cuttingDecalMouseDown = true;
+        _cuttingDecalDrawStart = (cx, cy);
+        _cuttingDecalStartTile = (cx, cy);
+        _renderer.SetDecalAreaEditCutCells(_cuttingDecalArea.CutCells);
+        _renderer.SetDecalAreaCutDragRect(cx, cy, 1, 1);
+        Render();
+    }
+
+    private void HandleDecalCellCutMouseMove(MouseEventArgs e)
+    {
+        if (_cuttingDecalArea == null) return;
+        var (nx, ny) = GetTilePosition(e.Location);
+        int sx = _cuttingDecalDrawStart.x;
+        int sy = _cuttingDecalDrawStart.y;
+
+        int newX = Math.Min(nx, sx);
+        int newY = Math.Min(ny, sy);
+        int newW = Math.Max(1, Math.Abs(nx - sx) + 1);
+        int newH = Math.Max(1, Math.Abs(ny - sy) + 1);
+
+        _renderer.SetDecalAreaCutDragRect(newX, newY, newW, newH);
+        Render();
+    }
+
+    private void HandleDecalCellCutMouseUp(MouseEventArgs e)
+    {
+        _cuttingDecalMouseDown = false;
+        var area = _cuttingDecalArea;
+        if (area == null)
+        {
+            _renderer.ClearDecalAreaCutDragRect();
+            Render();
+            return;
+        }
+
+        var (nx, ny) = GetTilePosition(e.Location);
+        int sx = _cuttingDecalDrawStart.x;
+        int sy = _cuttingDecalDrawStart.y;
+        _renderer.ClearDecalAreaCutDragRect();
+
+        int x1 = Math.Min(nx, sx);
+        int y1 = Math.Min(ny, sy);
+        int x2 = Math.Max(nx, sx);
+        int y2 = Math.Max(ny, sy);
+
+        bool isSingleClick = x1 == x2 && y1 == y2;
+        bool anyChanged = false;
+
+        if (isSingleClick)
+        {
+            // Клик по одной клетке — переключаем её вырезку (вырезать/вернуть)
+            int x = x1, y = y1;
+            if (area.Contains(x, y))
+            {
+                if (area.CutCells.Contains((x, y)))
+                    area.CutCells.Remove((x, y));
+                else
+                    area.CutCells.Add((x, y));
+                anyChanged = true;
+            }
+        }
+        else
+        {
+            // Протяжка по прямоугольнику — всегда вырезаем (добавляем в CutCells)
+            for (int x = x1; x <= x2; x++)
+            {
+                for (int y = y1; y <= y2; y++)
+                {
+                    if (!area.Contains(x, y)) continue; // не выходим за пределы области
+                    if (area.CutCells.Add((x, y)))
+                        anyChanged = true;
+                }
+            }
+        }
+
+        if (anyChanged)
+        {
+            _editingDecalAreaApplyCallback?.Invoke();
+            SaveState();
+        }
+        Render();
     }
 }

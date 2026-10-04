@@ -247,7 +247,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 21;
+    private const int CacheFormatVersion = 22;
 
     private class CacheEnvelope
     {
@@ -563,6 +563,23 @@ public class PrototypeIndexer
         // потому что порядок и границы элементов списка layers: критичны для отступов
         proto.Layers = ParseSpriteLayers(ExtractComponentBlock(block, "Sprite"));
 
+        // EntityStorageVisuals (шкафчики/локеры/ящики) — state имена закрытого хранения,
+        // которые переопределяют state базовых слоёв спрайта (Base/Door). Пример:
+        //   - type: EntityStorageVisuals
+        //     stateBaseClosed: eng
+        //     stateDoorOpen: eng_open
+        //     stateDoorClosed: eng_tool_door
+        var esvBlock = ExtractComponentBlock(block, "EntityStorageVisuals");
+        if (!string.IsNullOrWhiteSpace(esvBlock))
+        {
+            var mBase = Regex.Match(esvBlock, @"stateBaseClosed:\s*([^\s#]+)");
+            if (mBase.Success) proto.StorageStateBaseClosed = mBase.Groups[1].Value;
+            var mOpen = Regex.Match(esvBlock, @"stateDoorOpen:\s*([^\s#]+)");
+            if (mOpen.Success) proto.StorageStateDoorOpen = mOpen.Groups[1].Value;
+            var mClosed = Regex.Match(esvBlock, @"stateDoorClosed:\s*([^\s#]+)");
+            if (mClosed.Success) proto.StorageStateDoorClosed = mClosed.Groups[1].Value;
+        }
+
         return proto;
     }
 
@@ -711,6 +728,9 @@ public class PrototypeIndexer
                 current.HasOffset = true;
                 continue;
             }
+
+            var mapMatch = Regex.Match(fieldLine, "^map:\\s*\\[\\s*[\"']?([^\"',\\]]+)");
+            if (mapMatch.Success) { current.MapKey = mapMatch.Groups[1].Value.Trim(); continue; }
         }
         if (current != null) layers.Add(current);
 
@@ -1355,6 +1375,63 @@ public class PrototypeIndexer
     public List<SpriteLayer> GetLayers(string id)
     {
         return FindLayersRecursive(id, 0) ?? new List<SpriteLayer>();
+    }
+
+/// <summary>
+    /// Публичный доступ к state имена сущности EntityStorageVisuals (шкафчики/локеры).
+    /// Каждое поле (stateBaseClosed/stateDoorOpen/stateDoorClosed) отдельно ищется по
+    /// цепочке родителей: наследник может переопределить только часть полей (например,
+    /// у ClosetMaintenance заданы только doorOpen/doorClosed, а stateBaseClosed
+    /// наследуется от ClosetSteelBase→ClosetBase). Возвращает null, если ни у самого
+    /// прототипа, ни у родителей нет компонента EntityStorageVisuals.
+    /// </summary>
+    public (string? baseClosed, string? doorOpen, string? doorClosed)? GetEntityStorageVisuals(string id)
+    {
+        // Проходим всю цепочку (от самого прототипа к корню) и на каждом шаге
+        // заполняем ещё не найденные поля — так ближайший предок, задавший поле,
+        // имеет приоритет над более дальним.
+        string? baseClosed = null, doorOpen = null, doorClosed = null;
+        var chain = BuildParentChain(id);
+        if (chain.Length == 0) return null;
+
+        foreach (var nodeId in chain)
+        {
+            var proto = FindPrototype(nodeId);
+            if (proto == null) continue;
+
+            if (baseClosed == null && proto.StorageStateBaseClosed != null) baseClosed = proto.StorageStateBaseClosed;
+            if (doorOpen == null && proto.StorageStateDoorOpen != null) doorOpen = proto.StorageStateDoorOpen;
+            if (doorClosed == null && proto.StorageStateDoorClosed != null) doorClosed = proto.StorageStateDoorClosed;
+
+            if (baseClosed != null && doorOpen != null && doorClosed != null)
+                break;
+        }
+
+        if (baseClosed == null && doorOpen == null && doorClosed == null)
+            return null;
+
+        return (baseClosed, doorOpen, doorClosed);
+    }
+
+    /// <summary>
+    /// Собирает цепочку наследования [id, parent, grandparent, ...] до корня
+    /// (первый прототип без Parent) или до предела глубины.
+    /// </summary>
+    private string[] BuildParentChain(string id)
+    {
+        var chain = new List<string>();
+        var seen = new HashSet<string>();
+        string? current = id;
+        int depth = 0;
+        while (current != null && !seen.Contains(current) && depth <= 20)
+        {
+            seen.Add(current);
+            chain.Add(current);
+            var proto = FindPrototype(current);
+            current = proto?.Parents.FirstOrDefault();
+            depth++;
+        }
+        return chain.ToArray();
     }
 
     // Ищем state СНАЧАЛА у самого прототипа, потом у родителей

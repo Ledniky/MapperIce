@@ -48,6 +48,7 @@ public partial class MainForm : Form
     // сохранения в тот же файл. null — файл ещё ни разу не открывался/не сохранялся.
     private string? _currentProjectPath;
 private ComboBox _doorToolCombo = null!;
+    private ComboBox _windowToolCombo = null!;
     // Ключ — подпись пункта в списке, значение — инструмент (как _utilToolMap)
     private readonly Dictionary<string, ToolManager.Tool> _doorToolMap = new()
     {
@@ -142,6 +143,12 @@ private ComboBox _doorToolCombo = null!;
     private string? _selectedWindowProto = null;
     private Button _btnAirAlarm = null!;
     private Button _btnFireAlarm = null!;
+    private Button _btnPlaceHolopad = null!;
+    private Image? _holopadIcon;
+    private Button _btnPlaceLocker = null!;
+    private Image? _lockerIcon;
+    private Button _btnPlaceSuitStorage = null!;
+    private Image? _suitStorageIcon;
     private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
@@ -228,6 +235,14 @@ private ComboBox _doorToolCombo = null!;
     // Слой, в который добавится растягиваемая область — нужен для живого
     // предпросмотра декалей пока область ещё не закоммичена.
     private DecalLayer? _decalAreaPendingLayer = null;
+
+    // Режим потайлёвой вырезки декалей (кнопка «✖» в окне «Ручные области»):
+    // клики по клеткам области переключают их в CutCells (декали там не рисуются).
+    private bool _isCuttingDecalCells = false;
+    private ManualDecalArea? _cuttingDecalArea = null;
+    private (int x, int y) _cuttingDecalStartTile;
+    private bool _cuttingDecalMouseDown = false;
+    private (int x, int y) _cuttingDecalDrawStart;
 
 
     private class MoveSnapshotItem
@@ -381,13 +396,12 @@ private ComboBox _doorToolCombo = null!;
         _renderer.ClearDecalAreaDrawRect();
 
         // Откат заново создал комнаты и их облаcти (room.Clone() в GridSnapshot).
-        // Пересчитываем декали из свежих объектов, чтобы узор сново привязался
-        // к областям и не "отсоединялся" после Ctrl+Z.
+        // Снимок уже хранит САМ декали узора (GridSnapshot.Decals), согласованные с
+        // этими областями, поэтому пересчитывать их тут НЕ нужно — это был основной
+        // источник фриза на крупных картах при многократном Ctrl+Z (дорогой скан
+        // PurgeLegacyOrphanDecals # O(комнаты × слои × площадь)). Берём декали как есть.
         _renderer.SetSelection(_selectedObjects);
 
-        // Декали узора строим заново из откатанных областей, а не берём из снимка:
-        // так они физически не могут разойтись с областью.
-        RecalculateDecalPatterns();
         UpdateTileGrid();
         Render();
     }
@@ -398,6 +412,12 @@ private ComboBox _doorToolCombo = null!;
         if (keyData == Keys.Escape && _isDrawingDecalArea)
         {
             CancelDrawDecalArea();
+            return true;
+        }
+
+        if (keyData == Keys.Escape && _isCuttingDecalCells)
+        {
+            CancelDecalCellCut();
             return true;
         }
 
@@ -589,6 +609,7 @@ private ComboBox _doorToolCombo = null!;
         _btnDeleteArea.BackColor = Color.White;
         _btnDeleteSettings.BackColor = Color.White;
         if (_doorToolCombo != null) _doorToolCombo.BackColor = Color.White;
+        if (_windowToolCombo != null) _windowToolCombo.BackColor = Color.White;
         if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.White;
         if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.White;
         if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
@@ -606,6 +627,9 @@ private ComboBox _doorToolCombo = null!;
         if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
+        if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = Color.White;
+        if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = Color.White;
+        if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.White;
         if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
 
@@ -676,6 +700,12 @@ private ComboBox _doorToolCombo = null!;
                     _doorToolCombo.SelectedItem = "Восстановить стену";
                 }
                 break;
+            case ToolManager.Tool.ReplaceWallWithWindow:
+                if (_windowToolCombo != null)
+                {
+                    _windowToolCombo.BackColor = Color.LightBlue;
+                }
+                break;
             case ToolManager.Tool.PipeDistra:
                 if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.LightBlue;
                 break;
@@ -715,6 +745,15 @@ private ComboBox _doorToolCombo = null!;
             case ToolManager.Tool.FireAlarm:
                 if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.PlaceHolopad:
+                if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PlaceLocker:
+                if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = Color.LightBlue;
+                break;
+            case ToolManager.Tool.PlaceSuitStorage:
+                if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.LightBlue;
+                break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
@@ -749,6 +788,9 @@ private ComboBox _doorToolCombo = null!;
             ToolManager.Tool.UtilWrenches => Cursors.Help,
             ToolManager.Tool.UtilNodeLabel => Cursors.Help,
             ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm => Cursors.Help,
+            ToolManager.Tool.PlaceHolopad => Cursors.Help,
+            ToolManager.Tool.PlaceLocker => Cursors.Help,
+            ToolManager.Tool.PlaceSuitStorage => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

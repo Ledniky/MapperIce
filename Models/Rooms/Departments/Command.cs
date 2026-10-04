@@ -27,6 +27,7 @@ public class Command : CommandRoomType
     public override string Description => "Комната командования. Основной командный отсек для координации действий экипажа.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override string? HolopadProto => "HolopadCommandBridge";
     public override int Priority => 150;
 }
 
@@ -37,6 +38,8 @@ public class EVA : CommandRoomType
     public override string Description => "Хранилище скафандров";
     public override string DoorProto => "AirlockEVALocked";
     public override string GlassDoorProto => "AirlockEVAGlassLocked";
+    public override string? HolopadProto => "HolopadGeneralEVAStorage";
+    public override string? SuitStorageProto => "SuitStorageEVA";
     public override int Priority => 140;
 }
 
@@ -47,6 +50,8 @@ public class Vault : CommandRoomType
     public override string Description => "Хранилище. Укреплённое помещение с высокосекьюрными дверями для хранения ценных ресурсов.";
     public override string DoorProto => "HighSecCommandLocked";
     public override string GlassDoorProto => "HighSecCommandLocked";
+    public override string? HolopadProto => "HolopadCommandVault";
+    public override string? LockerProto => "LockerFreezerVaultFilled";
     public override int Priority => 150;
 }
 
@@ -57,6 +62,9 @@ public class Captain : CommandRoomType
     public override string Description => "Капитанская каюта. Личные покои капитана станции с максимальной защитой.";
     public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
+    public override string? HolopadProto => "HolopadCommandCaptain";
+    public override string? LockerProto => "LockerCaptainFilled";
+    public override string? SuitStorageProto => "SuitStorageCaptain";
     public override int Priority => 300;
 }
 
@@ -67,6 +75,8 @@ public class HeadOfPersonnel : CommandRoomType
     public override string Description => "Кабинет начальника кадров. Офис руководителя отдела кадров и управления персоналом.";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
+    public override string? HolopadProto => "HolopadCommandHop";
+    public override string? LockerProto => "LockerHeadOfPersonnelFilled";
     public override int Priority => 250;
 }
 
@@ -77,5 +87,17 @@ public class Bridge : CommandRoomType
     public override string Description => "Мостик. Центральная командная точка управления станцией с полным обзором.";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override string? HolopadProto => "HolopadCommandBridge";
+    public override int Priority => 150;
+}
+
+public class CommandLounge : CommandRoomType
+{
+    public override string Name => "CommandLounge";
+    public override string DisplayName => "Зал совещаний";
+    public override string Description => "Зал совещаний. Командная комната для проведения встреч и переговоров.";
+    public override string DoorProto => "AirlockCommandLocked";
+    public override string GlassDoorProto => "AirlockCommandGlassLocked";
+    public override string? HolopadProto => "HolopadCommandLounge";
     public override int Priority => 150;
 }

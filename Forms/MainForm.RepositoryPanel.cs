@@ -665,6 +665,36 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
         {
             var layers = _indexer.GetLayers(protoId);
 
+            // EntityStorageVisuals: шкафчики/локеры переопределяют state слоёв спрайта
+            // (Base → stateBaseClosed, Door → stateDoorClosed). Без подстановки все шкафы
+            // рисовались бы generic/generic_door, хотя у каждого свой набор текстур в RSI.
+            var storageViz = _indexer.GetEntityStorageVisuals(protoId);
+            string? ResolveLayerState(Models.SpriteLayer layer, int layerIndex)
+            {
+                if (storageViz == null) return layer.State;
+
+                bool isBase;
+                bool isDoor;
+                if (!string.IsNullOrEmpty(layer.MapKey))
+                {
+                    // По map-ключу: enum.StorageVisualLayers.Base / .Door
+                    isBase = layer.MapKey.Contains("Base");
+                    isDoor = layer.MapKey.Contains("Door");
+                }
+                else
+                {
+                    // Слои без map: первый слой = база (корпус), второй со state-дверью.
+                    // (SuitStorageBase: "base" без map первым, потом "door" без map)
+                    bool first = layerIndex == 0;
+                    bool second = layerIndex == 1;
+                    isBase = first && !second;
+                    isDoor = !first && second;
+                }
+
+                string? ov = isBase ? storageViz.Value.baseClosed : isDoor ? storageViz.Value.doorClosed : null;
+                return !string.IsNullOrEmpty(ov) ? ov : layer.State;
+            }
+
             // Многослойные прототипы (Sprite.layers) показываем КОМПОЗИЦИЕЙ всех видимых
             // слоёв друг поверх друга — так же, как они рисуются на канвасе в Renderer
             // (см. DrawLayeredTexturedRect), чтобы превью в панели совпадало с рендером.
@@ -681,7 +711,7 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
                 {
                     foreach (var layer in visibleLayers)
                     {
-                        var lp = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State, stateOverride);
+                        var lp = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, ResolveLayerState(layer, visibleLayers.IndexOf(layer)), stateOverride);
                         if (lp == null || !File.Exists(lp)) continue;
                         var tex = Image.FromFile(lp);
                         loadedLayers.Add((tex, GetRsiFrameSize(lp, tex)));
@@ -771,6 +801,33 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
         _doorIconAirlock = GetPrototypeIcon("Airlock");
         _doorIconAirlockGlass = GetPrototypeIcon("AirlockGlass");
         if (_doorToolCombo != null && !_doorToolCombo.IsDisposed) _doorToolCombo.Invalidate();
+        if (_btnPlaceHolopad != null && !_btnPlaceHolopad.IsDisposed)
+        {
+            _holopadIcon?.Dispose();
+            _holopadIcon = GetPrototypeIcon("Holopad");
+            _btnPlaceHolopad.Image = _holopadIcon;
+            _btnPlaceHolopad.Invalidate();
+        }
+        if (_btnPlaceLocker != null && !_btnPlaceLocker.IsDisposed)
+        {
+            _lockerIcon?.Dispose();
+            // Иконка кнопки — шкаф комнаты General (дефолтный прототип шкафчика,
+            // прописанный в свойствах типа General), чтобы кнопка показывала ту же
+            // текстуру, что ставит инструмент в General-комнаты.
+            var generalLocker = _roomTypeManager?.GetRoomType("General")?.LockerProto;
+            _lockerIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalLocker) ? generalLocker : "Closet");
+            _btnPlaceLocker.Image = _lockerIcon;
+            _btnPlaceLocker.Invalidate();
+        }
+        if (_btnPlaceSuitStorage != null && !_btnPlaceSuitStorage.IsDisposed)
+        {
+            _suitStorageIcon?.Dispose();
+            // Иконка кнопки — базовое хранилище скафандра
+            var generalSuit = _roomTypeManager?.GetRoomType("General")?.SuitStorageProto;
+            _suitStorageIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalSuit) ? generalSuit : "SuitStorageBase");
+            _btnPlaceSuitStorage.Image = _suitStorageIcon;
+            _btnPlaceSuitStorage.Invalidate();
+        }
     }
     
     private Image? GetCachedProtoIcon(string protoId)

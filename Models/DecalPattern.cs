@@ -111,6 +111,12 @@ public class ManualDecalArea
     // сохранениях поля нет — десериализуется как пустой список.
     public List<DecalAreaRect> Subtractions { get; set; } = new();
 
+    // Клетки, в которых декали узора НЕ рисуются (потайлёвая вырезка декалей, «✖»).
+    // В отличие от Subtractions/RemovedCells, вырезанная клетка НЕ перестаёт быть частью
+    // области для расчёта формы: соседи просто пропускаются в декаль, а текущая клетка
+    // не получает своей декали. Остальные декали области не перестраиваются.
+    public HashSet<(int X, int Y)> CutCells { get; set; } = new();
+
     /// <summary>Клетка входит в область: внутри основного прямоугольника и вне всех вычетов.</summary>
     public bool Contains(int x, int y)
     {
@@ -127,7 +133,8 @@ public class ManualDecalArea
             X = X, Y = Y, Width = Width, Height = Height, Mode = Mode,
             Subtractions = Subtractions
                 .Select(s => new DecalAreaRect { X = s.X, Y = s.Y, Width = s.Width, Height = s.Height })
-                .ToList()
+                .ToList(),
+            CutCells = new HashSet<(int X, int Y)>(CutCells)
         };
     }
 }
