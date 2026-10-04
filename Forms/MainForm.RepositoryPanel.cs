@@ -341,6 +341,11 @@ listContainer.Controls.Add(_protoList);
         if (hasRepo && repo!.IsIndexed)
         {
             _indexer.IndexRepository(repo);
+            // Репозиторий сменился — текстуры на карте (ткани, стены, сущности)
+            // кэшируются в Renderer. Сбрасываем кэш рендера, иначе спрайты
+            // продолжают показывать текстуры старого репозитория.
+            _renderer?.ClearCache();
+            Render();
         }
         else if (hasRepo)
         {

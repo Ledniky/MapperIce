@@ -1143,7 +1143,6 @@ public class Renderer
     {
         if (pipes.Count == 0) return;
 
-        float markerSize = tileSize / 3f;
         var dirs = new (int dx, int dy)[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
 
         // Группируем трубы по слою: конец определяется по соседям того же слоя
@@ -1168,26 +1167,29 @@ public class Renderer
                 // Не конец трубы — пропускаем
                 if (neighbors != 1) continue;
 
-                var (cx, cy) = GetPipeNodeScreenCenter(pipe, tileSize, viewOffset, gridOffset);
-
                 if (pipe.PipeType == "Util")
                 {
-                    // Утилизация сохраняет прежнюю логику: маркер по EndpointType
-                    Color markerColor = pipe.EndpointType == EndpointType.MailingUnit
-                        ? Color.FromArgb(255, 200, 200, 100) // охровый/жёлтый
-                        : Color.FromArgb(255, 100, 200, 100); // зелёный
+                    // Утилизация: на конце трубы рисуем спрайт соответствующей мебели
+                    // — DisposalUnit или MailingUnit — так же, как обычные трубы рисуют
+                    // спрайт вентиляции (DrawLastLayerOnly). Раньше здесь была просто
+                    // цветная точка-маркер, теперь — реальный спрайт приёмника.
+                    string unitProto = pipe.EndpointType == EndpointType.MailingUnit
+                        ? "MailingUnit"
+                        : "DisposalUnit";
 
-                    using var brush = new SolidBrush(markerColor);
-                    g.FillEllipse(brush, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
-                    using var pen = new Pen(Color.FromArgb(255, 255, 255, 255), 1);
-                    g.DrawEllipse(pen, cx - markerSize / 2, cy - markerSize / 2, markerSize, markerSize);
+                    int cellX = (int)Math.Round((pipe.X + gridOffset.X) * tileSize - viewOffset.X);
+                    int cellY = (int)Math.Round((pipe.Y + gridOffset.Y) * tileSize - viewOffset.Y);
+                    var cellRect = new Rectangle(cellX, cellY, tileSize, tileSize);
+                    DrawLastLayerOnly(g, unitProto, cellRect);
 
-                    // Тег на MailingUnit
+                    // Тег на MailingUnit (текст под/над приёмником)
                     if (pipe.EndpointType == EndpointType.MailingUnit && !string.IsNullOrEmpty(pipe.FilterLabel))
                     {
                         var tag = pipe.FilterLabel.TrimEnd(',');
-                        using var font = new Font("Arial", Math.Max(7f, markerSize / 3f));
-                        DrawCenteredText(g, tag, font, Color.White, cx, cy);
+                        using var font = new Font("Arial", Math.Max(7f, tileSize / 5f));
+                        using var brush = new SolidBrush(Color.White);
+                        var size = g.MeasureString(tag, font);
+                        g.DrawString(tag, font, brush, cellX + tileSize / 2f - size.Width / 2, cellY - size.Height);
                     }
                 }
                 else

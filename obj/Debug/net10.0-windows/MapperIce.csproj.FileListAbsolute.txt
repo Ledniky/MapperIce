@@ -144,3 +144,13 @@ C:\Users\Администратор\AppData\Local\Temp\mapperice_build19\MapperI
 C:\Users\Администратор\AppData\Local\Temp\mapperice_build19\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\mapperice_build19\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\mapperice_build19\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build20\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build20\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build20\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build20\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build20\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build21\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build21\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build21\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build21\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\mapperice_build21\MapperIce.pdb
