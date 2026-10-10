@@ -176,8 +176,14 @@ public partial class MainForm
     /// не помещается) и маленькая кнопка "✕" справа. deleteAction — null, если для
     /// этого типа объекта нет прямого удаления (см. пол/стена ниже — они выводятся
     /// из границ комнаты, а не хранятся как отдельный объект, поэтому кнопки нет).
+    ///
+    /// placeProtoId — если задан, клик по строке "забирает" прототип из панели
+    /// репозитория: включает инструмент "Разместить прототип" с этим ID, как если
+    /// бы пользователь выбрал его в списке прототипов (см. ArmPrototypePlacement).
+    /// Ряд с кнопкой удаления тоже кликабелен — нажатие на саму строку берет
+    /// предмет, нажатие на "✕" удаляет.
     /// </summary>
-    private void AddMagnifierRow(string text, Action? deleteAction)
+    private void AddMagnifierRow(string text, Action? deleteAction, string? placeProtoId = null)
     {
         if (_magnifierListPanel == null) return;
 
@@ -196,9 +202,17 @@ public partial class MainForm
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Consolas", 8.5f)
+            Font = new Font("Consolas", 8.5f),
+            Cursor = placeProtoId != null ? Cursors.Hand : Cursors.Default
         };
         row.Controls.Add(label);
+
+        if (!string.IsNullOrEmpty(placeProtoId))
+        {
+            string protoId = placeProtoId;
+            label.Click += (s, e) => ArmMagnifierPrototypePlacement(protoId);
+            row.Click += (s, e) => ArmMagnifierPrototypePlacement(protoId);
+        }
 
         if (deleteAction != null)
         {
@@ -292,12 +306,14 @@ public partial class MainForm
         var floorTile = _tileGrid.GetTilesByContent(TileContent.Floor)
             .FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (floorTile != null)
-            AddMagnifierRow($"Пол: {floorTile.ProtoId ?? "Plating"}", null);
+            AddMagnifierRow($"Пол: {floorTile.ProtoId ?? "Plating"}", null,
+                placeProtoId: floorTile.ProtoId ?? "Plating");
 
         var wallTile = _tileGrid.GetTilesByContent(TileContent.Wall)
             .FirstOrDefault(t => t.X == tileX && t.Y == tileY);
         if (wallTile != null)
-            AddMagnifierRow($"Стена: {wallTile.ProtoId ?? "WallSolid"}", null);
+            AddMagnifierRow($"Стена: {wallTile.ProtoId ?? "WallSolid"}", null,
+                placeProtoId: wallTile.ProtoId ?? "WallSolid");
 
         // Дверь — удаляется через DoorUpdater, как и в инструменте "Удалить"
         var doorTile = _tileGrid.GetTilesByContent(TileContent.Door)
@@ -318,7 +334,7 @@ public partial class MainForm
                     UpdateTileGrid();
                     Render();
                 }
-            }));
+            }), placeProtoId: doorTile.ProtoId ?? "Airlock");
         }
 
         // Вручную размещённые тайлы (инструмент "Разместить прототип" → tile)
@@ -331,7 +347,7 @@ public partial class MainForm
                 SaveState();
                 UpdateTileGrid();
                 Render();
-            }));
+            }), placeProtoId: ptRef.Proto);
         }
 
         // Комнаты, реально владеющие этой клеткой (учитывает вырезы через Room.Contains)
@@ -392,20 +408,20 @@ public partial class MainForm
                             EndpointType.DisposalUnit => " [DisposalUnit]",
                             _ => ""
                         };
-                        AddMagnifierRow(pipeLine, DeleteEntity);
+                        AddMagnifierRow(pipeLine, DeleteEntity, placeProtoId: pipe.Proto);
                         break;
                     }
                 case FirelockEntity firelock:
-                    AddMagnifierRow($"Огнешлюз: {firelock.Proto}{(firelock.IsGlass ? " (стекло)" : "")}", DeleteEntity);
+                    AddMagnifierRow($"Огнешлюз: {firelock.Proto}{(firelock.IsGlass ? " (стекло)" : "")}", DeleteEntity, placeProtoId: firelock.Proto);
                     break;
                 case AirAlarmEntity air:
-                    AddMagnifierRow($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)", DeleteEntity);
+                    AddMagnifierRow($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)", DeleteEntity, placeProtoId: air.Proto);
                     break;
                 case FireAlarmEntity fire:
-                    AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity);
+                    AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity, placeProtoId: fire.Proto);
                     break;
                 default:
-                    AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity);
+                    AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity, placeProtoId: entity.Proto);
                     break;
             }
         }
@@ -456,12 +472,27 @@ public partial class MainForm
                     SaveState();
                     UpdateTileGrid();
                     Render();
-                }));
+                }), placeProtoId: decalRef.Proto);
         }
 
         if (_magnifierListPanel.Controls.Count == 0)
             AddMagnifierRow("(пусто)", null);
 
         _magnifierListPanel.ResumeLayout();
+    }
+
+    /// <summary>
+    /// "Забирает" прототип предмета из строки лупы, как если бы он был выбран в
+    /// списке прототипов панели репозитория: ставит _protoToPlace и включает
+    /// инструмент "Разместить прототип" (то же, что ArmPrototypePlacement).
+    /// После этого окошко лупы скрывается (инструмент сменился) и пользователь
+    /// кликом на карте ставит такой же предмет.
+    /// </summary>
+    private void ArmMagnifierPrototypePlacement(string protoId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return;
+
+        _protoToPlace = protoId;
+        _toolManager.ForceSetTool(ToolManager.Tool.PlacePrototype);
     }
 }
