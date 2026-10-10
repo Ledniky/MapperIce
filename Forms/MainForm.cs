@@ -38,6 +38,10 @@ public partial class MainForm : Form
     private float _scale = 1.0f;
 
     private PictureBox _canvas = null!;
+    // Последний отрисованный кадр: пока окошко лупы просто двигается, карта не меняется,
+    // поэтому OnPaint рисует этот кадр, а не гоняет полный рендер карты на каждую перерисовку
+    private Bitmap? _lastFrame;
+    private bool _reuseLastFrame = false;
     private Panel _toolPanel = null!;
     private ComboBox _roomTypeCombo = null!;
     private Button _btnCreateRoom = null!;
@@ -819,10 +823,9 @@ private ComboBox _doorToolCombo = null!;
             _ => Cursors.Default
         };
 
-        if (_magnifierPanel != null)
+        if (_magnifierPanel != null && _magnifierForm != null)
         {
             bool showMagnifier = tool == ToolManager.Tool.Magnifier;
-            _magnifierPanel.Visible = showMagnifier;
             if (showMagnifier)
             {
                 // Каждое новое включение инструмента начинается с "живого" (неприкреплённого)
@@ -833,6 +836,15 @@ private ComboBox _doorToolCombo = null!;
                 _lastMagnifierTile = (-1, -1);
                 RepositionMagnifierPanel();
                 UpdateMagnifierPanel();
+                _magnifierFollowTimer?.Start();
+                if (!_magnifierForm.Visible)
+                    _magnifierForm.Show(this);
+            }
+            else
+            {
+                _magnifierFollowTimer?.Stop();
+                if (_magnifierForm.Visible)
+                    _magnifierForm.Hide();
             }
         }
 
@@ -852,14 +864,21 @@ private ComboBox _doorToolCombo = null!;
     {
         if (_renderer != null)
         {
-            e.Graphics.DrawImage(_renderer.Render(_map, _scale, _viewOffset, _currentRoom,
-                _toolManager.CurrentTool.ToString()), 0, 0);
+            if (!_reuseLastFrame || _lastFrame == null)
+            {
+                _lastFrame = _renderer.Render(_map, _scale, _viewOffset, _currentRoom,
+                    _toolManager.CurrentTool.ToString());
+            }
+            e.Graphics.DrawImage(_lastFrame, 0, 0);
         }
     }
 
 
     private void Render()
     {
+        // Любой явный Render() означает, что карта изменилась — кадр нужно строить заново
+        _reuseLastFrame = false;
+
         _renderer.HideRoomOverlay = _hideRoomOverlay;
         _renderer.ShowPipeOverlay = _showPipeOverlay;
         _renderer.ShowAlarmConnections = _showAlarmConnections;

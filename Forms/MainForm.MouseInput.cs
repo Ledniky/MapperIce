@@ -1199,6 +1199,9 @@ public partial class MainForm
         {
             if (!_magnifierPinned)
             {
+                // Окошко следует за курсором, пока тайл не закреплён через ЛКМ
+                RepositionMagnifierPanel();
+
                 var tilePos = GetTilePosition(e.Location);
                 if (tilePos != _lastMagnifierTile)
                 {

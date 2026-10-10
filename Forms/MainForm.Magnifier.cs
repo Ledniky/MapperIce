@@ -9,16 +9,47 @@ public partial class MainForm
 {
     // ===== Инструмент "Лупа" — окошко со списком объектов под курсором =====
 
+
+    // Лупа живёт в собственном безрамочном окне без активации: окно двигается силами ОС
+    // и не вызывает перерисовку холста с картой (дочерний контрол вызывал бы)
+    private MagnifierHostForm? _magnifierForm;
+    private System.Windows.Forms.Timer? _magnifierFollowTimer;
+
+    private sealed class MagnifierHostForm : Form
+    {
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+        public MagnifierHostForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+        }
+
+        protected override bool ShowWithoutActivation => true;
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+                return cp;
+            }
+        }
+    }
+
+
     private void CreateMagnifierPanel()
     {
         _magnifierPanel = new Panel
         {
             Width = 260,
             Height = 190,
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(255, 250, 250, 235),
-            BorderStyle = BorderStyle.FixedSingle,
-            Visible = false
+            BorderStyle = BorderStyle.FixedSingle
         };
 
         var headerPanel = new Panel
@@ -52,6 +83,7 @@ public partial class MainForm
             _magnifierPinned = false;
             _magnifierPinnedTile = null;
             _lastMagnifierTile = (-1, -1);
+            RepositionMagnifierPanel();
             UpdateMagnifierPanel();
         };
         headerPanel.Controls.Add(_btnMagnifierUnpin);
@@ -86,18 +118,17 @@ public partial class MainForm
 
         headerPanel.BringToFront();
 
-        _canvas.Controls.Add(_magnifierPanel);
-        _magnifierPanel.BringToFront();
+        _magnifierForm = new MagnifierHostForm
+        {
+            ClientSize = _magnifierPanel.Size
+        };
+        _magnifierForm.Controls.Add(_magnifierPanel);
 
-        // На момент вызова этого метода (конструктор MainForm) реальный докинг ещё
-        // не выполнен — форма ещё не показана, WindowState=Maximized ещё не применён,
-        // поэтому _canvas.Width тут может быть равен начальному Size(1024,768) формы,
-        // а не финальному размеру экрана. Пересчёт всё равно происходит (на случай,
-        // если размеры уже корректны), но окончательно верное положение гарантируется
-        // повторным вызовом из OnResize (см. MainForm.cs) и из OnToolChanged при
-        // каждом включении инструмента — оба момента наступают уже после реального
-        // докинга.
-        RepositionMagnifierPanel();
+        // Таймер подтягивает окошко к курсору, даже если мышь на миг оказалась над самим
+        // окошком (тогда холст не получает MouseMove)
+        _magnifierFollowTimer = new System.Windows.Forms.Timer { Interval = 10 };
+        _magnifierFollowTimer.Tick += (s, e) => RepositionMagnifierPanel();
+
     }
 
     /// <summary>
@@ -106,15 +137,40 @@ public partial class MainForm
     /// </summary>
     private void RepositionMagnifierPanel()
     {
-        if (_magnifierPanel == null || _canvas == null) return;
-        if (_canvas.Width <= 0 || _canvas.Height <= 0) return;
+        if (_magnifierForm == null || _canvas == null) return;
+        if (!_canvas.IsHandleCreated) return;
 
-        const int rightMargin = 200; // ширина панели инструментов
-        _magnifierPanel.Location = new Point(
-            Math.Max(0, _canvas.Width - _magnifierPanel.Width - rightMargin),
-            Math.Max(0, _canvas.Height - _magnifierPanel.Height - 10));
+        // Закреплённое окошко стоит на месте — за мышью не ходит
+        if (_magnifierPinned) return;
+
+        const int cursorGap = 16; // смещение от курсора, чтобы окошко не перекрывало тайл под мышью
+
+        var area = _canvas.RectangleToScreen(_canvas.ClientRectangle);
+        if (area.Width <= 0 || area.Height <= 0) return;
+
+        var cursor = Cursor.Position;
+        cursor.X = Math.Max(area.Left, Math.Min(cursor.X, area.Right - 1));
+        cursor.Y = Math.Max(area.Top, Math.Min(cursor.Y, area.Bottom - 1));
+
+        int w = _magnifierForm.Width;
+        int h = _magnifierForm.Height;
+
+        int x = cursor.X + cursorGap;
+        int y = cursor.Y + cursorGap;
+
+        // У правого/нижнего края холста переворачиваем смещение
+        if (x + w > area.Right)
+            x = cursor.X - cursorGap - w;
+        if (y + h > area.Bottom)
+            y = cursor.Y - cursorGap - h;
+
+        x = Math.Max(area.Left, Math.Min(x, area.Right - w));
+        y = Math.Max(area.Top, Math.Min(y, area.Bottom - h));
+
+        var newLocation = new Point(x, y);
+        if (_magnifierForm.Location != newLocation)
+            _magnifierForm.Location = newLocation;
     }
-
     /// <summary>
     /// Добавляет одну строку в список: текст слева (обрезается многоточием, если
     /// не помещается) и маленькая кнопка "✕" справа. deleteAction — null, если для
@@ -189,13 +245,23 @@ public partial class MainForm
         if (_magnifierPanel == null || _magnifierListPanel == null || _magnifierHeaderLabel == null)
             return;
 
-        _magnifierListPanel.Controls.Clear();
+        // Controls.Clear() не освобождает контролы — на каждой смене тайла копились
+        // Panel/Label/Button с живыми дескрипторами. Удаляем и освобождаем явно,
+        // а раскладку откладываем до конца пересборки списка.
+        _magnifierListPanel.SuspendLayout();
+        for (int i = _magnifierListPanel.Controls.Count - 1; i >= 0; i--)
+        {
+            var oldRow = _magnifierListPanel.Controls[i];
+            _magnifierListPanel.Controls.RemoveAt(i);
+            oldRow.Dispose();
+        }
 
         var grid = _map.ActiveGrid;
         if (grid == null)
         {
             _magnifierHeaderLabel.Text = "🔍 Лупа — нет активного грида";
             if (_btnMagnifierUnpin != null) _btnMagnifierUnpin.Visible = false;
+            _magnifierListPanel.ResumeLayout();
             return;
         }
 
@@ -395,5 +461,7 @@ public partial class MainForm
 
         if (_magnifierListPanel.Controls.Count == 0)
             AddMagnifierRow("(пусто)", null);
+
+        _magnifierListPanel.ResumeLayout();
     }
 }
