@@ -19,6 +19,15 @@ public partial class MainForm
             return;
         }
 
+        // Режим потайлового изменения ФОРМЫ области (кнопка «➖ Вычесть» в окне «Ручные области»):
+        // клики по клеткам области удаляют их из формы (RemovedCells) — клетка перестаёт быть
+        // частью области, контур/декали пересчитываются.
+        if (_isSubtractingDecalCells && e.Button == MouseButtons.Left)
+        {
+            HandleDecalCellSubtractMouseDown(e);
+            return;
+        }
+
         // Растягивание НОВОЙ ручной области мышью (режим «Добавить область» в Decal Rule)
         if (_isDrawingDecalArea && e.Button == MouseButtons.Left)
         {
@@ -1105,6 +1114,13 @@ public partial class MainForm
             return;
         }
 
+        // Перетаскивание прямоугольника вырезки КЛЕТОК ФОРМЫ области (кнопка «➖ Вычесть»)
+        if (_isSubtractingDecalCells && _subtractingDecalMouseDown)
+        {
+            HandleDecalCellSubtractMouseMove(e);
+            return;
+        }
+
         // Растягивание новой ручной области — живое обновление рамки и декалей
         if (_isDrawingDecalArea && _decalAreaDrawMouseDown)
         {
@@ -1326,6 +1342,13 @@ public partial class MainForm
         if (_isCuttingDecalCells && _cuttingDecalMouseDown && e.Button == MouseButtons.Left)
         {
             HandleDecalCellCutMouseUp(e);
+            return;
+        }
+
+        // Завершение перетаскивания прямоугольника вырезки КЛЕТОК ФОРМЫ области (кнопка «➖ Вычесть»)
+        if (_isSubtractingDecalCells && _subtractingDecalMouseDown && e.Button == MouseButtons.Left)
+        {
+            HandleDecalCellSubtractMouseUp(e);
             return;
         }
 

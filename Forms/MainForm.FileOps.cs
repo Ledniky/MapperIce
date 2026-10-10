@@ -258,7 +258,8 @@ public partial class MainForm
                                 {
                                     X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
                                 }).ToList(),
-                                CutCells = a.CutCells.Select(c => $"{c.X},{c.Y}").ToList()
+                                CutCells = a.CutCells.Select(c => $"{c.X},{c.Y}").ToList(),
+                                RemovedCells = a.RemovedCells.Select(c => $"{c.X},{c.Y}").ToList()
                             }).ToList()
                         }).ToList()
                     };
@@ -274,7 +275,8 @@ public partial class MainForm
                         {
                             X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
                         }).ToList(),
-                        CutCells = area.CutCells.Select(c => $"{c.X},{c.Y}").ToList()
+                        CutCells = area.CutCells.Select(c => $"{c.X},{c.Y}").ToList(),
+                        RemovedCells = area.RemovedCells.Select(c => $"{c.X},{c.Y}").ToList()
                     });
                 }
 
@@ -394,6 +396,27 @@ public partial class MainForm
                     // (PlacedDecal.PatternOwnerId) снова совпали по ключу с комнатой.
                     room.RestoreId(roomData.Id);
 
+                    // БЭКФИЛЛ привязок: проекты, сохранённые ДО появления фичи привязок
+                    // (голопад/шкафчик/скафандр), могли записать эти поля пустыми, хотя
+                    // у типа комнаты они заданы. Заполняем недостающие из типа комнаты,
+                    // НЕ перезаписывая явные значения (например, кастомно убранный голопад).
+                    // Применяем только для реально существующего типа: GetRoomType для
+                    // неизвестного имени молча вернёт General, и не желаем прибивать его
+                    // привязки к комнатам с удалённым кастомным типом.
+                    if (_roomTypeManager.TypeExists(room.RoomType))
+                    {
+                        var rt = _roomTypeManager.GetRoomType(room.RoomType);
+                        if (rt != null)
+                        {
+                            if (string.IsNullOrEmpty(room.HolopadProto) && !string.IsNullOrEmpty(rt.HolopadProto))
+                                room.HolopadProto = rt.HolopadProto;
+                            if (string.IsNullOrEmpty(room.LockerProto) && !string.IsNullOrEmpty(rt.LockerProto))
+                                room.LockerProto = rt.LockerProto;
+                            if (string.IsNullOrEmpty(room.SuitStorageProto) && !string.IsNullOrEmpty(rt.SuitStorageProto))
+                                room.SuitStorageProto = rt.SuitStorageProto;
+                        }
+                    }
+
                     // Восстанавливаем RemovedCells
                     foreach (var cellStr in roomData.RemovedCells)
                     {
@@ -451,7 +474,8 @@ public partial class MainForm
                                     {
                                         X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
                                     }).ToList(),
-                                    CutCells = ParseCutCells(a.CutCells)
+                                    CutCells = ParseCutCells(a.CutCells),
+                                    RemovedCells = ParseCutCells(a.RemovedCells)
                                 }).ToList()
                             }).ToList()
                         };
@@ -467,7 +491,8 @@ public partial class MainForm
                             {
                                 X = s.X, Y = s.Y, Width = s.Width, Height = s.Height
                             }).ToList(),
-                            CutCells = ParseCutCells(areaData.CutCells)
+                            CutCells = ParseCutCells(areaData.CutCells),
+                            RemovedCells = ParseCutCells(areaData.RemovedCells)
                         });
                     }
 

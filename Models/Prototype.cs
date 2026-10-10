@@ -7,6 +7,12 @@ public class Prototype
     public string? SpritePath { get; set; }
     public string? RsiPath { get; set; }
     public string? State { get; set; }
+    /// <summary>
+    /// YAML-поле "suffix:" (например "Open" у открытых штор). Иногда движок выбирает
+    /// спрайт по суффиксу, а не по state: если suffix начинается с "Open", и в папке
+    /// RSI есть файл "open.png", то рисуем его (см. GetFullTexturePath).
+    /// </summary>
+    public string? Suffix { get; set; }
     public string FilePath { get; set; } = "";
     public string? Parent { get; set; }
     public List<string> Parents { get; set; } = new();

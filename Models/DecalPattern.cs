@@ -115,7 +115,15 @@ public class ManualDecalArea
     // В отличие от Subtractions/RemovedCells, вырезанная клетка НЕ перестаёт быть частью
     // области для расчёта формы: соседи просто пропускаются в декаль, а текущая клетка
     // не получает своей декали. Остальные декали области не перестраиваются.
+    // Координаты абсолютные (в клетках карты), привязка к карте.
     public HashSet<(int X, int Y)> CutCells { get; set; } = new();
+
+    // Потайлёвое изменение ФОРМЫ области (кнопка «➖ Вычесть»): клетки здесь вычитаются из
+    // области целиком — они больше НЕ являются частью области ни для расчёта формы, ни для
+    // вывода декалей. В отличие от CutCells (убирает только декаль, форма остаётся), эта клетка
+    // перестаёт существовать в области: внешний контур/открытые стороны пересчитываются.
+    // Координаты абсолютные (в клетках карты).
+    public HashSet<(int X, int Y)> RemovedCells { get; set; } = new();
 
     /// <summary>Клетка входит в область: внутри основного прямоугольника и вне всех вычетов.</summary>
     public bool Contains(int x, int y)
@@ -123,6 +131,7 @@ public class ManualDecalArea
         if (x < X || x >= X + Width || y < Y || y >= Y + Height) return false;
         foreach (var s in Subtractions)
             if (s.Contains(x, y)) return false;
+        if (RemovedCells.Contains((x, y))) return false;
         return true;
     }
 
@@ -134,7 +143,8 @@ public class ManualDecalArea
             Subtractions = Subtractions
                 .Select(s => new DecalAreaRect { X = s.X, Y = s.Y, Width = s.Width, Height = s.Height })
                 .ToList(),
-            CutCells = new HashSet<(int X, int Y)>(CutCells)
+            CutCells = new HashSet<(int X, int Y)>(CutCells),
+            RemovedCells = new HashSet<(int X, int Y)>(RemovedCells)
         };
     }
 }

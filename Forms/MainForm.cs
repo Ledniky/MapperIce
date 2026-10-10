@@ -244,6 +244,15 @@ private ComboBox _doorToolCombo = null!;
     private bool _cuttingDecalMouseDown = false;
     private (int x, int y) _cuttingDecalDrawStart;
 
+    // Режим потайлового изменения ФОРМЫ области (кнопка «➖ Вычесть» в окне «Ручные области»):
+    // клики по клеткам области удаляют их из формы (RemovedCells) — клетка перестаёт быть
+    // частью области, контур/декали вокруг пересчитываются. Это инструмент формы, а не удаления
+    // декалей — в отличие от «✖» (убирает только декаль, форма остаётся).
+    private bool _isSubtractingDecalCells = false;
+    private ManualDecalArea? _subtractingDecalArea = null;
+    private bool _subtractingDecalMouseDown = false;
+    private (int x, int y) _subtractingDecalDrawStart;
+
 
     private class MoveSnapshotItem
     {
@@ -394,6 +403,14 @@ private ComboBox _doorToolCombo = null!;
         _decalAreaDragSnapshot = null;
         _renderer.ClearDecalAreaEditRect();
         _renderer.ClearDecalAreaDrawRect();
+        _isCuttingDecalCells = false;
+        _cuttingDecalArea = null;
+        _cuttingDecalMouseDown = false;
+        _renderer.ClearDecalAreaCutDragRect();
+        _isSubtractingDecalCells = false;
+        _subtractingDecalArea = null;
+        _subtractingDecalMouseDown = false;
+        _renderer.ClearDecalAreaSubtractDragRect();
 
         // Откат заново создал комнаты и их облаcти (room.Clone() в GridSnapshot).
         // Снимок уже хранит САМ декали узора (GridSnapshot.Decals), согласованные с
@@ -418,6 +435,12 @@ private ComboBox _doorToolCombo = null!;
         if (keyData == Keys.Escape && _isCuttingDecalCells)
         {
             CancelDecalCellCut();
+            return true;
+        }
+
+        if (keyData == Keys.Escape && _isSubtractingDecalCells)
+        {
+            CancelDecalCellSubtract();
             return true;
         }
 

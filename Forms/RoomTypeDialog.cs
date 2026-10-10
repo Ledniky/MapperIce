@@ -19,6 +19,11 @@ public partial class RoomTypeDialog : Form
     private Button? _btnExport;
     private Button? _btnSave;
 
+    // Кэш открытости ветвей дерева на время сеанса программы.
+    // Пути узлов (pack и pack|category), которые были развёрнуты при последнем закрытии окна.
+    private static readonly HashSet<string> _expandedPaths = new();
+    private static bool _stateInitialized = false;
+
     private static readonly Dictionary<string, Color> _categoryColors = new()
 {
     // Основные отделы (более тёмные для контраста на белом фоне)
@@ -280,8 +285,81 @@ public partial class RoomTypeDialog : Form
         mainPanel.Controls.Add(leftPanel);
         mainPanel.Controls.Add(_editorPanel);
 
+        // Сохраняем открытость ветвей при каждом закрытии окна
+        this.FormClosing += (s, e) => SaveExpandedState();
+
         // Обновляем дерево
         UpdateTreeView();
+    }
+
+    /// <summary>Запоминает, какие пакеты и категории сейчас развёрнуты.</summary>
+    private void SaveExpandedState()
+    {
+        _expandedPaths.Clear();
+        foreach (TreeNode packNode in _treeView.Nodes)
+        {
+            var pack = packNode.Tag as CategoryNode;
+            if (pack == null || pack.Level != NodeLevel.Pack) continue;
+
+            if (packNode.IsExpanded)
+                _expandedPaths.Add(pack.Name);
+
+            foreach (TreeNode categoryNode in packNode.Nodes)
+            {
+                var category = categoryNode.Tag as CategoryNode;
+                if (category == null || category.Level != NodeLevel.Category) continue;
+
+                if (categoryNode.IsExpanded)
+                    _expandedPaths.Add($"{pack.Name}|{category.Name}");
+            }
+        }
+    }
+
+    /// <summary>Восстанавливает открытость ветвей из кэша. На самом первом запуске
+    /// программы (кэш ещё не инициализирован) задаёт состояние по умолчанию: все
+    /// пакеты раскрыты, категории внутри закрыты.</summary>
+    private void RestoreExpandedState()
+    {
+        bool hasAnyExpandedPack = _expandedPaths.Any(p => !p.Contains('|'));
+
+        foreach (TreeNode packNode in _treeView.Nodes)
+        {
+            var pack = packNode.Tag as CategoryNode;
+            if (pack == null || pack.Level != NodeLevel.Pack) continue;
+
+            bool expandPack = hasAnyExpandedPack
+                ? _expandedPaths.Contains(pack.Name)
+                : true; // первый запуск программы — раскрыты все пакеты
+
+            if (expandPack)
+                packNode.Expand();
+            else
+                packNode.Collapse();
+
+            if (!expandPack) continue;
+
+            foreach (TreeNode categoryNode in packNode.Nodes)
+            {
+                var category = categoryNode.Tag as CategoryNode;
+                if (category == null || category.Level != NodeLevel.Category) continue;
+
+                bool expandCategory;
+                if (!_stateInitialized)
+                {
+                    // Первый запуск: категории внутри пакета закрыты, не раскрываем
+                    expandCategory = false;
+                }
+                else
+                {
+                    expandCategory = _expandedPaths.Contains($"{pack.Name}|{category.Name}");
+                }
+
+                if (expandCategory)
+                    categoryNode.Expand();
+            }
+        }
+
+        _stateInitialized = true;
     }
 
     private void UpdateTreeView()
@@ -320,10 +398,7 @@ public partial class RoomTypeDialog : Form
             _treeView.Nodes.Add(packNode);
         }
 
-        foreach (TreeNode packNode in _treeView.Nodes)
-        {
-            packNode.Expand();
-        }
+        RestoreExpandedState();
     }
 
 

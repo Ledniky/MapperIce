@@ -83,6 +83,8 @@ public class ManualDecalAreaData
     public List<DecalAreaRectData> Subtractions { get; set; } = new();
     // Потайлёво вырезанные клетки декалей — список строк "x,y"
     public List<string> CutCells { get; set; } = new();
+    // Потайлёво удалённые из области клетки (изменение формы, «➖ Вычесть») — список строк "x,y"
+    public List<string> RemovedCells { get; set; } = new();
 }
 
 public class DecalAreaRectData

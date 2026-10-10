@@ -337,18 +337,26 @@ private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDec
         bool openW = !InArea(x - 1, y);
         int openCount = (openN ? 1 : 0) + (openS ? 1 : 0) + (openE ? 1 : 0) + (openW ? 1 : 0);
 
-
-        if (openCount == 0)
+        // Внутренние углы ставятся для ЛЮБОЙ клетки (не только внутренней), если диагональный
+        // сосед не входит в область, а обе прилегающие к нему ортогональные стороны открыты.
+        // Это даёт внутренние углы и на клетках с уже стоящей декалью (Side/OuterCorner) —
+        // например, у вогнутого угла, образованного вырезанной/вычтенной клеткой. ВАЖНО:
+        // та же логика, что и в авто-режиме (PlacePatternDecals) — там углы собираются до
+        // ортогональной классификации, поэтому авто-режим таких багов не даёт.
+        void AddInner(DecalPosition pos, int nx, int ny, bool openA, bool openB)
         {
-            // Внутренняя клетка. Если выпадает диагональный сосед (вогнутый угол
-            // после вычитания) — ставим внутренний угол в эту сторону.
-            if (!InArea(x + 1, y - 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerNE, ownerId, result);
-            if (!InArea(x - 1, y - 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerNW, ownerId, result);
-            if (!InArea(x + 1, y + 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerSE, ownerId, result);
-            if (!InArea(x - 1, y + 1)) AddDecalForLayerPosition(layer, layerIndex, room, x, y, DecalPosition.InnerCornerSW, ownerId, result);
-            return;
+            if (!InArea(nx, ny) && !openA && !openB)
+                AddDecalForLayerPosition(layer, layerIndex, room, x, y, pos, ownerId, result);
         }
 
+        AddInner(DecalPosition.InnerCornerNE, x + 1, y - 1, openN, openE);
+        AddInner(DecalPosition.InnerCornerNW, x - 1, y - 1, openN, openW);
+        AddInner(DecalPosition.InnerCornerSE, x + 1, y + 1, openS, openE);
+        AddInner(DecalPosition.InnerCornerSW, x - 1, y + 1, openS, openW);
+
+        // Внутренняя клетка: ортогональные соседи все в области — дальше классификатора нет.
+        if (openCount == 0)
+            return;
 
         void Place(DecalPosition pos) => AddDecalForLayerPosition(layer, layerIndex, room, x, y, pos, ownerId, result);
 

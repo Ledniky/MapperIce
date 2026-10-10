@@ -247,7 +247,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 22;
+    private const int CacheFormatVersion = 23;
 
     private class CacheEnvelope
     {
@@ -516,6 +516,15 @@ public class PrototypeIndexer
         if (stateMatch.Success)
         {
             proto.State = stateMatch.Groups[1].Value;
+        }
+
+        // Ищем suffix — поле метапрототипа/прототипа движка. Пример: у открытых штор
+        // CurtainsGreenOpen "suffix: Open, Fancy green": по суффиксу движок выбирает
+        // другой спрайт (open.png), а не дефолтный state родителя.
+        var suffixMatch = Regex.Match(block, @"suffix:\s*([^#\r\n]+)");
+        if (suffixMatch.Success)
+        {
+            proto.Suffix = suffixMatch.Groups[1].Value.Trim().TrimEnd(',');
         }
 
         // Ищем все компоненты
@@ -1211,7 +1220,16 @@ public class PrototypeIndexer
         if (!string.IsNullOrEmpty(stateOverride))
             state = stateOverride;
 
-        // 5. Собираем полный путь
+        // 5. Suffix "Open*" (открытые шторы) — движок выбирает open.png по суффиксу
+        // даже если state/override указывает на закрытый кадр. Проверяем после
+        // override, чтобы суффикс имел приоритет в любом случае.
+        if (proto.Suffix != null &&
+            proto.Suffix.StartsWith("Open", StringComparison.OrdinalIgnoreCase))
+        {
+            state = "open";
+        }
+
+        // 6. Собираем полный путь
         path = path.Replace("/", "\\").TrimStart('\\');
         if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
             path = path.Substring(9);
@@ -1270,6 +1288,9 @@ public class PrototypeIndexer
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;
 
+        var proto = FindPrototype(protoId);
+        if (proto == null) return null;
+
         string? path = layerSpritePath ?? layerRsiPath;
         if (string.IsNullOrEmpty(path))
             path = FindPathRecursive(protoId, 0);
@@ -1282,6 +1303,16 @@ public class PrototypeIndexer
         // stateOverride полностью заменяет state (для иконок кабелей и т.п.)
         if (!string.IsNullOrEmpty(stateOverride))
             state = stateOverride;
+
+        // Suffix "Open*" (открытые шторы) — движок выбирает open.png по суффиксу,
+        // даже если у слоя/родителя задан закрытый state (например "green").
+        // Шкафчики/локеры (у которых есть EntityStorageVisuals) суффикса не имеют,
+        // так что конфликта с их storage-оверрайдом нет.
+        if (proto.Suffix != null &&
+            proto.Suffix.StartsWith("Open", StringComparison.OrdinalIgnoreCase))
+        {
+            state = "open";
+        }
 
         path = path.Replace("/", "\\").TrimStart('\\');
         if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))

@@ -162,51 +162,49 @@ public partial class MainForm
                     {
                         Text = "➖ Вычесть",
                         Location = new Point(175, 30),
-                        Width = 90,
+                        Width = 67,
                         Height = 24,
-                        FlatStyle = FlatStyle.Flat
+                        FlatStyle = FlatStyle.Flat,
+                        BackColor = (_isSubtractingDecalCells && _subtractingDecalArea == area)
+                            ? Color.FromArgb(230, 220, 220)
+                            : Color.White
                     };
+                    var subtractTip = new ToolTip();
+                    subtractTip.SetToolTip(btnSubtract,
+                        "Изменить ФОРМУ области потайлово.\n" +
+                        "Включите режим, затем кликайте по клеткам (или тяните прямоугольник) на карте.\n" +
+                        "Отмеченные клетки полностью удаляются из области: узор и контур вокруг них пересчитываются.");
                     btnSubtract.Click += (s, e) =>
                     {
-                        btnSubtract.Text = "выделите…";
-                        // Переиспользуем протяжку рамки от "Добавить область":
-                        // результат падает в _decalAreaPending, дальше кладём его в вычеты.
-                        _editingDecalAreaCommitAction = () =>
+                        // Если этот же режим уже активен для этой области — выключаем его
+                        if (_isSubtractingDecalCells && _subtractingDecalArea == area)
                         {
-                            var pending = _decalAreaPending;
-                            if (pending == null) return;
-                            area.Subtractions.Add(new DecalAreaRect
-                            {
-                                X = pending.X,
-                                Y = pending.Y,
-                                Width = pending.Width,
-                                Height = pending.Height
-                            });
+                            CancelDecalCellSubtract();
                             RebuildAreas();
-                            ApplyLiveChanges();
-                            // Возвращаемся в режим редактирования этой области,
-                            // чтобы вырезы были видны на карте
-                            BeginEditDecalArea(room, area, () =>
-                            {
-                                RecalculateDecalPatterns();
-                                Render();
-                            });
-                        };
-                        _editingDecalAreaCancelAction = () => btnSubtract.Text = "➖ Вычесть";
-                        BeginDrawDecalArea();
-                        // BeginDrawDecalArea гасит рамку области — возвращаем её, чтобы
-                        // было видно, откуда вычитаем (только отрисовка, режим редактирования не включается)
-                        _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
-                        _renderer.SetDecalAreaEditSubtractions(area.Subtractions);
+                            return;
+                        }
+
+                        // Запускаем режим потайлового изменения формы: включаем редактирование
+                        // области и перехват кликов на клетках (в RemovedCells).
+                        CancelDecalCellCut();
+                        CancelDecalCellSubtract();
+                        BeginEditDecalArea(room, area, () =>
+                        {
+                            RecalculateDecalPatterns();
+                            Render();
+                        });
+                        _isSubtractingDecalCells = true;
+                        _subtractingDecalArea = area;
+                        RebuildAreas();
                         Render();
                     };
                     row.Controls.Add(btnSubtract);
 
                     var btnCutCell = new Button
                     {
-                        Text = "✖",
-                        Location = new Point(270, 30),
-                        Width = 26,
+                        Text = "🗑 Удалить",
+                        Location = new Point(247, 30),
+                        Width = 67,
                         Height = 24,
                         FlatStyle = FlatStyle.Flat,
                         BackColor = (_isCuttingDecalCells && _cuttingDecalArea == area)
@@ -217,7 +215,8 @@ public partial class MainForm
                     cutCellTip.SetToolTip(btnCutCell,
                         "Убрать декаль этой области в конкретных тайлах.\n" +
                         "Включите режим, затем кликайте по клеткам (или тяните прямоугольник) на карте.\n" +
-                        "Декали в отмеченных клетках не рисуются, у соседних — как будто должны.");
+                        "Декали в отмеченных клетках не рисуются, у соседних — как будто должны.\n" +
+                        "Форма области при этом не меняется — удаляется только сама декаль.");
                     btnCutCell.Click += (s, e) =>
                     {
                         // Если этот же режим уже активен для этой области — выключаем его
@@ -231,14 +230,15 @@ public partial class MainForm
                         // Запускаем режим вырезки: активируем редактирование области
                         // и перехват кликов на клетках
                         CancelDecalCellCut();
-                        _isCuttingDecalCells = true;
-                        _cuttingDecalArea = area;
-                        RebuildAreas();
+                        CancelDecalCellSubtract();
                         BeginEditDecalArea(room, area, () =>
                         {
                             RecalculateDecalPatterns();
                             Render();
                         });
+                        _isCuttingDecalCells = true;
+                        _cuttingDecalArea = area;
+                        RebuildAreas();
                         Render();
                     };
                     row.Controls.Add(btnCutCell);
@@ -537,7 +537,7 @@ public partial class MainForm
 
                 var chkDoorAsWall = new CheckBox
                 {
-                    Text = "декаль на дверь",
+                    Text = "заходить под дверь",
                     Location = new Point(340, 33),
                     Width = 140,
                     Checked = !layer.TreatDoorAsWall
@@ -730,12 +730,14 @@ public partial class MainForm
         _editingDecalAreaRoom = room;
         _editingDecalArea = area;
         _editingDecalAreaApplyCallback = onChanged;
-        // Выходим из режима потайлёвой вырезки при входе в обычное редактирование
+        // Выходим из режима потайлёвой вырезки и изменения формы при входе в обычное редактирование
         CancelDecalCellCut();
+        CancelDecalCellSubtract();
         _toolManager.ResetTool();
         _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
         _renderer.SetDecalAreaEditSubtractions(area.Subtractions);
         _renderer.SetDecalAreaEditCutCells(area.CutCells);
+        _renderer.SetDecalAreaEditRemovedCells(area.RemovedCells);
         // Статус удалён — тип комнаты теперь в ComboBox
         Render();
     }
@@ -748,6 +750,15 @@ public partial class MainForm
         _renderer.ClearDecalAreaCutDragRect();
     }
 
+    // Выход из режима потайлового изменения формы области (кнопка «➖ Вычесть»)
+    private void CancelDecalCellSubtract()
+    {
+        _isSubtractingDecalCells = false;
+        _subtractingDecalArea = null;
+        _subtractingDecalMouseDown = false;
+        _renderer.ClearDecalAreaSubtractDragRect();
+    }
+
     private void EndEditDecalArea()
     {
         if (_editingDecalArea == null) return;
@@ -758,6 +769,7 @@ public partial class MainForm
         _isDraggingDecalWholeArea = false;
         _decalAreaDragSnapshot = null;
         CancelDecalCellCut();
+        CancelDecalCellSubtract();
         _renderer.ClearDecalAreaEditRect();
         UpdateTypeLabel();
         Render();
@@ -766,6 +778,12 @@ public partial class MainForm
     // ===== Растягивание НОВОЙ ручной области мышью (как рамка выделения) =====
     private void BeginDrawDecalArea()
     {
+        // Выходим из режимов потайлового изменения формы и удаления декалей — иначе их
+        // активные флаги (_isSubtractingDecalCells/_isCuttingDecalCells) перехватят клики
+        // в OnMouseDown раньше, чем начнётся растягивание новой области, и вторую область
+        // будет невозможно нарисовать.
+        CancelDecalCellSubtract();
+        CancelDecalCellCut();
         _isDrawingDecalArea = true;
         _decalAreaDrawMouseDown = false;
         _decalAreaPending = null;
@@ -797,7 +815,9 @@ public partial class MainForm
         if (_map.ActiveGrid == null) return;
         if (e.Button != MouseButtons.Left) return;
 
-        var (cx, cy) = GetTileCornerPosition(e.Location);
+        // Клетка под курсором (Floor), а не угол (Round): иначе клик в середине тайла
+        // округляется к следующей границе и область сразу стартует на пол-тайла вниз-вправо.
+        var (cx, cy) = GetTilePosition(e.Location);
         _decalAreaDrawMouseDown = true;
         _decalAreaDrawStart = (cx, cy);
         _decalAreaPending = new ManualDecalArea
@@ -815,7 +835,8 @@ public partial class MainForm
     private void HandleDecalAreaDrawMouseMove(MouseEventArgs e)
     {
         if (_decalAreaPending == null) return;
-        var (nx, ny) = GetTileCornerPosition(e.Location);
+        // Также Floor — прямоугольник покрывает тайлы от начального до текущего включительно.
+        var (nx, ny) = GetTilePosition(e.Location);
 
         int sx = _decalAreaDrawStart.x;
         int sy = _decalAreaDrawStart.y;
@@ -823,8 +844,8 @@ public partial class MainForm
 
         int newX = Math.Min(nx, sx);
         int newY = Math.Min(ny, sy);
-        int newW = Math.Max(1, Math.Abs(nx - sx));
-        int newH = Math.Max(1, Math.Abs(ny - sy));
+        int newW = Math.Max(1, Math.Abs(nx - sx) + 1);
+        int newH = Math.Max(1, Math.Abs(ny - sy) + 1);
 
         // Рамка привязана к углам тайла: между пересечениями границ тайла значения не
         // меняются. Пропускаем пересчёт декалей и рендер в этих "пустых" пикселях —
@@ -903,7 +924,11 @@ public partial class MainForm
             _isDraggingDecalWholeArea = true;
             _draggingDecalCornerIndex = -1;
             _decalAreaDragSnapshot = area.Clone();
-            _decalAreaDragStartMouseTile = GetTileCornerPosition(e.Location);
+            // Для перетаскивания всей области нужна КЛЕТКА под курсором (Floor), а не угол
+            // (Round). Иначе клик в середине тайла округляется к следующему углу и область
+            // сразу «прыгает» вниз-вправо на пол тайла. Перенос всей области идёт целыми
+            // тайлами от этой клетки, как у комнат/тайлов.
+            _decalAreaDragStartMouseTile = GetTilePosition(e.Location);
         }
     }
 
@@ -945,7 +970,7 @@ public partial class MainForm
 
         if (_isDraggingDecalWholeArea && _decalAreaDragSnapshot != null)
         {
-            var (curX, curY) = GetTileCornerPosition(e.Location);
+            var (curX, curY) = GetTilePosition(e.Location);
             int dx = curX - _decalAreaDragStartMouseTile.x;
             int dy = curY - _decalAreaDragStartMouseTile.y;
 
@@ -963,6 +988,13 @@ public partial class MainForm
                 area.Subtractions[i].X = _decalAreaDragSnapshot.Subtractions[i].X + dx;
                 area.Subtractions[i].Y = _decalAreaDragSnapshot.Subtractions[i].Y + dy;
             }
+
+            // Клетки ФОРМЫ (RemovedCells, «➖ Вычесть») — часть геометрии области:
+            // переносим их вместе с областью. CutCells (удаление декали, «✖») НЕ трогаем —
+            // они привязаны к абсолютным координатам карты.
+            area.RemovedCells.Clear();
+            foreach (var cell in _decalAreaDragSnapshot.RemovedCells)
+                area.RemovedCells.Add((cell.X + dx, cell.Y + dy));
 
             _renderer.SetDecalAreaEditRect(area.X, area.Y, area.Width, area.Height);
             _editingDecalAreaApplyCallback?.Invoke();
@@ -1070,5 +1102,107 @@ public partial class MainForm
             SaveState();
         }
         Render();
+    }
+
+    // ===== Потайловое изменение ФОРМЫ области (кнопка «➖ Вычесть» в окне «Ручные области») =====
+    // Клик по клетке — удалить её из формы области (RemovedCells), клетка полностью перестаёт
+    // быть частью области: контур/декали вокруг неё пересчитываются. Протяжка — вырезать все
+    // попавшие в прямоугольник клетки формы.
+    private void HandleDecalCellSubtractMouseDown(MouseEventArgs e)
+    {
+        if (_subtractingDecalArea == null || _map.ActiveGrid == null) return;
+        if (e.Button != MouseButtons.Left) return;
+
+        var (cx, cy) = GetTilePosition(e.Location);
+        _subtractingDecalMouseDown = true;
+        _subtractingDecalDrawStart = (cx, cy);
+        _renderer.SetDecalAreaEditRemovedCells(_subtractingDecalArea.RemovedCells);
+        _renderer.SetDecalAreaSubtractDragRect(cx, cy, 1, 1);
+        Render();
+    }
+
+    private void HandleDecalCellSubtractMouseMove(MouseEventArgs e)
+    {
+        if (_subtractingDecalArea == null) return;
+        var (nx, ny) = GetTilePosition(e.Location);
+        int sx = _subtractingDecalDrawStart.x;
+        int sy = _subtractingDecalDrawStart.y;
+
+        int newX = Math.Min(nx, sx);
+        int newY = Math.Min(ny, sy);
+        int newW = Math.Max(1, Math.Abs(nx - sx) + 1);
+        int newH = Math.Max(1, Math.Abs(ny - sy) + 1);
+
+        _renderer.SetDecalAreaSubtractDragRect(newX, newY, newW, newH);
+        Render();
+    }
+
+    private void HandleDecalCellSubtractMouseUp(MouseEventArgs e)
+    {
+        _subtractingDecalMouseDown = false;
+        var area = _subtractingDecalArea;
+        if (area == null)
+        {
+            _renderer.ClearDecalAreaSubtractDragRect();
+            Render();
+            return;
+        }
+
+        var (nx, ny) = GetTilePosition(e.Location);
+        int sx = _subtractingDecalDrawStart.x;
+        int sy = _subtractingDecalDrawStart.y;
+        _renderer.ClearDecalAreaSubtractDragRect();
+
+        int x1 = Math.Min(nx, sx);
+        int y1 = Math.Min(ny, sy);
+        int x2 = Math.Max(nx, sx);
+        int y2 = Math.Max(ny, sy);
+
+        bool isSingleClick = x1 == x2 && y1 == y2;
+        bool anyChanged = false;
+
+        if (isSingleClick)
+        {
+            // Клик по одной клетке — переключаем её форму (удалить из формы/вернуть)
+            int x = x1, y = y1;
+            if (OriginalAreaContains(area, x, y))
+            {
+                if (area.RemovedCells.Contains((x, y)))
+                    area.RemovedCells.Remove((x, y));
+                else
+                    area.RemovedCells.Add((x, y));
+                anyChanged = true;
+            }
+        }
+        else
+        {
+            // Протяжка по прямоугольнику — всегда вырезаем из формы (добавляем в RemovedCells)
+            for (int x = x1; x <= x2; x++)
+            {
+                for (int y = y1; y <= y2; y++)
+                {
+                    if (!OriginalAreaContains(area, x, y)) continue; // не выходим за пределы области
+                    if (area.RemovedCells.Add((x, y)))
+                        anyChanged = true;
+                }
+            }
+        }
+
+        if (anyChanged)
+        {
+            _editingDecalAreaApplyCallback?.Invoke();
+            SaveState();
+        }
+        Render();
+    }
+
+    // Проверка попадания клетки в область БЕЗ учёта RemovedCells — чтобы можно было
+    // кликом вернуть уже вырезанную из формы клетку обратно (иначе Contains вернёт false,
+    // и клетку нельзя будет восстановить). Вычеты Subtractions тоже не учитываем: возвращаем
+    // клетку в форму, если она в основном прямоугольнике.
+    private bool OriginalAreaContains(ManualDecalArea area, int x, int y)
+    {
+        return x >= area.X && x < area.X + area.Width &&
+               y >= area.Y && y < area.Y + area.Height;
     }
 }

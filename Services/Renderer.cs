@@ -98,6 +98,7 @@ public class Renderer
         _decalAreaEditRect = null;
         _decalAreaEditSubtractions = null;
         _decalAreaEditCutCells = null;
+        _decalAreaEditRemovedCells = null;
     }
 
 
@@ -118,6 +119,15 @@ public class Renderer
         _decalAreaEditCutCells = cutCells;
     }
 
+    // Потайлёво удалённые из области клетки (изменение формы, «➖ Вычесть») — рисуются
+    // тёмным, чтобы было видно, какие тайлы вырезаны из формы области.
+    private HashSet<(int X, int Y)>? _decalAreaEditRemovedCells = null;
+
+    public void SetDecalAreaEditRemovedCells(HashSet<(int X, int Y)>? removedCells)
+    {
+        _decalAreaEditRemovedCells = removedCells;
+    }
+
     // Растягиваемый мышью прямоугольник вырезки декалей (в режиме «✖»)
     private (int x, int y, int w, int h)? _decalAreaCutDragRect = null;
 
@@ -129,6 +139,20 @@ public class Renderer
     public void ClearDecalAreaCutDragRect()
     {
         _decalAreaCutDragRect = null;
+    }
+
+    // Растягиваемый мышью прямоугольник вырезки КЛЕТОК ФОРМЫ области (режим «➖ Вычесть») —
+    // отдельный от вырезки декалей (✖), чтобы оба инструмента можно было использовать на карте.
+    private (int x, int y, int w, int h)? _decalAreaSubtractDragRect = null;
+
+    public void SetDecalAreaSubtractDragRect(int x, int y, int w, int h)
+    {
+        _decalAreaSubtractDragRect = (x, y, w, h);
+    }
+
+    public void ClearDecalAreaSubtractDragRect()
+    {
+        _decalAreaSubtractDragRect = null;
     }
 
 
@@ -1180,7 +1204,11 @@ public class Renderer
                     int cellX = (int)Math.Round((pipe.X + gridOffset.X) * tileSize - viewOffset.X);
                     int cellY = (int)Math.Round((pipe.Y + gridOffset.Y) * tileSize - viewOffset.Y);
                     var cellRect = new Rectangle(cellX, cellY, tileSize, tileSize);
-                    DrawLastLayerOnly(g, unitProto, cellRect);
+                    // Для почтового/утилизаторного блока на узле трубы рисуем ТОЛЬКО базовый
+                    // слой корпуса (Base → mailing.png / disposal.png), а не всю композицию
+                    // слоёв: на маленьком узле трубы оверлеи (ручка/зарядка/сброс) только
+                    // захламляют картинку, и блок должен выглядеть как обычная единица сети.
+                    DrawBaseLayerOnly(g, unitProto, cellRect);
 
                     // Тег на MailingUnit (текст под/над приёмником)
                     if (pipe.EndpointType == EndpointType.MailingUnit && !string.IsNullOrEmpty(pipe.FilterLabel))
@@ -1246,6 +1274,47 @@ public class Renderer
         DrawTexturedRect(g, protoId, rect, null, null, 0f);
     }
 
+    /// <summary>
+    /// Рисует ТОЛЬКО базовый слой (корпус) многослойного прототипа — слой, чей map-ключ
+    /// содержит "Base" (например, "enum.DisposalUnitVisualLayers.Base" → state "mailing"/
+    /// "disposal"). Если такого слоя нет — берём первый видимый слой. Нужно для маленьких
+    /// маркеров (конец утиль-трубы), где композиция всех слоёв захламляет картинку, а
+    /// последний слой — почти пустой оверлей ручки.
+    /// </summary>
+    private void DrawBaseLayerOnly(Graphics g, string protoId, Rectangle rect)
+    {
+        var proto = _indexer?.FindPrototype(protoId);
+        if (proto == null || proto.Layers.Count == 0)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null, 0f);
+            return;
+        }
+
+        var visible = proto.Layers.Where(l => l.Visible).ToList();
+        // Сначала слой с map-ключом Base (корпус), иначе первый видимый
+        Models.SpriteLayer? target = visible.FirstOrDefault(l => !string.IsNullOrEmpty(l.MapKey) && l.MapKey.Contains("Base"))
+                                   ?? visible.FirstOrDefault();
+        if (target == null)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null, 0f);
+            return;
+        }
+
+        int idx = proto.Layers.IndexOf(target);
+        string cacheKey = $"{protoId}__layer{idx}";
+        var tex = GetOrLoadLayerTexture(cacheKey, protoId, target);
+        if (tex == null)
+        {
+            DrawTexturedRect(g, protoId, rect, null, null, 0f);
+            return;
+        }
+
+        var src = GetSourceRect(cacheKey, tex, 0f);
+        if (src.Width > 0 && src.Height > 0)
+            DrawPreservingAspect(g, tex, rect, src);
+        else
+            DrawTexturedRect(g, protoId, rect, null, null, 0f);
+    }
     /// <summary>
     /// Дефолтный тип вентиляции для конца трубы слоя, если у конкретного узла
     /// не запечён свой VentProto (старые карты). Совпадает с экспортной логикой
@@ -3098,18 +3167,29 @@ public class Renderer
             }
         }
 
-        // Потайлёво вырезанные клетки декалей (кнопка «✖») — рисуются красноватым крестом,
-        // чтобы было видно, в каких тайлах декаль этой области не появляется.
+        // Потайлёво вырезанные клетки декалей (кнопка «🗑 Удалить») — заливаются красным,
+        // чтобы было видно, в каких тайлах декаль этой области не появляется. Заливаем весь тайл.
         if (_decalAreaEditCutCells != null && _decalAreaEditCutCells.Count > 0)
         {
-            float cellPad = tileSize * 0.15f;
             using var cutBrush = new SolidBrush(Color.FromArgb(160, 220, 40, 40));
             foreach (var cell in _decalAreaEditCutCells)
             {
-                float cl = cell.X * tileSize + gridOffsetX - viewOffset.X + cellPad;
-                float ct = cell.Y * tileSize + gridOffsetY - viewOffset.Y + cellPad;
-                float cls = tileSize - cellPad * 2;
-                g.FillRectangle(cutBrush, cl, ct, cls, cls);
+                float cl = cell.X * tileSize + gridOffsetX - viewOffset.X;
+                float ct = cell.Y * tileSize + gridOffsetY - viewOffset.Y;
+                g.FillRectangle(cutBrush, cl, ct, tileSize, tileSize);
+            }
+        }
+
+        // Потайлёво удалённые из формы области клетки («➖ Вычесть») — закрашиваются тёмным,
+        // чтобы было видно, где форма области реально вырезана. Заливаем весь тайл.
+        if (_decalAreaEditRemovedCells != null && _decalAreaEditRemovedCells.Count > 0)
+        {
+            using var remBrush = new SolidBrush(Color.FromArgb(190, 60, 60, 80));
+            foreach (var cell in _decalAreaEditRemovedCells)
+            {
+                float cl = cell.X * tileSize + gridOffsetX - viewOffset.X;
+                float ct = cell.Y * tileSize + gridOffsetY - viewOffset.Y;
+                g.FillRectangle(remBrush, cl, ct, tileSize, tileSize);
             }
         }
 
@@ -3150,8 +3230,25 @@ public class Renderer
             };
             g.DrawRectangle(dpen, dl, dt, dw, dh);
         }
-    }
 
+        // Растягиваемый мышью прямоугольник вырезки КЛЕТОК ФОРМЫ области (режим «➖ Вычесть»)
+        if (_decalAreaSubtractDragRect != null)
+        {
+            var (ex, ey, ew, eh) = _decalAreaSubtractDragRect.Value;
+            float el = ex * tileSize + gridOffsetX - viewOffset.X;
+            float et = ey * tileSize + gridOffsetY - viewOffset.Y;
+            float ew2 = ew * tileSize;
+            float eh2 = eh * tileSize;
+
+            using var efill = new SolidBrush(Color.FromArgb(70, 40, 40, 40));
+            g.FillRectangle(efill, el, et, ew2, eh2);
+            using var epen = new Pen(Color.FromArgb(255, 60, 60, 60), 2)
+            {
+                DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+            };
+            g.DrawRectangle(epen, el, et, ew2, eh2);
+        }
+    }
 
     private void DrawSelectionHighlight(Graphics g, float scale, PointF viewOffset)
     {
