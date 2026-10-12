@@ -141,7 +141,7 @@ public class RoomTypeManager
     }
 
     public void CreateCustomType(string pack, string name, string category, string wallProto, string floorProto,
-        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null)
+        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null)
     {
         if (_types.ContainsKey(name))
         {
@@ -161,6 +161,9 @@ public class RoomTypeManager
             Description = description,
             HolopadProto = holopadProto,
             LockerProto = lockerProto,
+            SuitStorageProto = suitStorageProto,
+            BedProto = bedProto,
+            BedsheetProto = bedsheetProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -174,7 +177,7 @@ public class RoomTypeManager
     }
 
     public void EditCustomType(string oldName, string newName, string pack, string category, string wallProto,
-        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null)
+        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
@@ -200,6 +203,8 @@ public class RoomTypeManager
             HolopadProto = holopadProto,
             LockerProto = lockerProto,
             SuitStorageProto = suitStorageProto,
+            BedProto = bedProto,
+            BedsheetProto = bedsheetProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -299,6 +304,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
     room.HolopadProto = type.HolopadProto;
     room.LockerProto = type.LockerProto;
     room.SuitStorageProto = type.SuitStorageProto;
+    room.BedProto = type.BedProto;
+    room.BedsheetProto = type.BedsheetProto;
     room.FillColor = type.FillColor;
     room.LineColor = type.LineColor;
     room.RoomType = type.Name;
@@ -332,6 +339,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             HolopadProto = type.HolopadProto,
             LockerProto = type.LockerProto,
             SuitStorageProto = type.SuitStorageProto,
+            BedProto = type.BedProto,
+            BedsheetProto = type.BedsheetProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -374,6 +383,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             HolopadProto = type.HolopadProto,
             LockerProto = type.LockerProto,
             SuitStorageProto = type.SuitStorageProto,
+            BedProto = type.BedProto,
+            BedsheetProto = type.BedsheetProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -415,8 +426,10 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 DoorProto = type.DoorProto,
                 GlassDoorProto = type.GlassDoorProto,
                 HolopadProto = type.HolopadProto,
-            LockerProto = type.LockerProto,
-            SuitStorageProto = type.SuitStorageProto,
+                LockerProto = type.LockerProto,
+                SuitStorageProto = type.SuitStorageProto,
+                BedProto = type.BedProto,
+                BedsheetProto = type.BedsheetProto,
                 FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
                 LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
                 Priority = type.Priority
@@ -454,6 +467,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 HolopadProto = data.HolopadProto,
                 LockerProto = data.LockerProto,
                 SuitStorageProto = data.SuitStorageProto,
+                BedProto = data.BedProto,
+                BedsheetProto = data.BedsheetProto,
                 FillColor = data.FillColor,
                 LineColor = data.LineColor,
                 Priority = data.Priority
@@ -493,6 +508,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             HolopadProto = data.HolopadProto,
                 LockerProto = data.LockerProto,
                 SuitStorageProto = data.SuitStorageProto,
+                BedProto = data.BedProto,
+                BedsheetProto = data.BedsheetProto,
             FillColor = data.FillColor,
             LineColor = data.LineColor,
             Priority = data.Priority

@@ -581,6 +581,16 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblSuit = CreateLabel("Скафандр:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Кровать"
+        var txtBed = CreateTextBox(type.BedProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblBed = CreateLabel("Кровать:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Одеяло"
+        var txtBedsheet = CreateTextBox(type.BedsheetProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки
         var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -676,7 +686,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         priority,
                         holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
                         lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
-                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
+                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
+                        bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
+                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
                     );
                 }
 
@@ -695,7 +707,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         priority,
                         holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
                         lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
-                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
+                        suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
+                        bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
+                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
                     );
                 }
                 UpdateTreeView();
@@ -713,6 +727,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         _editorPanel.Controls.AddRange(new Control[] {
         lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
         lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor, lblHolopad, txtHolopad, lblLocker, txtLocker, lblSuit, txtSuit,
+        lblBed, txtBed, lblBedsheet, txtBedsheet,
         lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
     });
     }
@@ -902,6 +917,16 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblSuit = CreateLabel("Скафандр:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Кровать"
+        var txtBed = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblBed = CreateLabel("Кровать:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Одеяло"
+        var txtBedsheet = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки комнаты
         var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -1010,7 +1035,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                     priority,
                     holopadProto: string.IsNullOrWhiteSpace(txtHolopad.Text) ? null : txtHolopad.Text,
                     lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
-                    suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text
+                    suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
+                    bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
+                    bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
                 );
 
                 // Добавляем цвет категории ТОЛЬКО если категория новая
@@ -1078,6 +1105,8 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblHolopad, txtHolopad,
         lblLocker, txtLocker,
         lblSuit, txtSuit,
+        lblBed, txtBed,
+        lblBedsheet, txtBedsheet,
         lblFill, txtFill,
         lblLine, txtLine,
         lblPriority, txtPriority
@@ -1243,7 +1272,9 @@ private void ImportType()
                             _manager.GetPriorityForType(type.Name),
                             holopadProto: type.HolopadProto,
                             lockerProto: type.LockerProto,
-                            suitStorageProto: type.SuitStorageProto
+                            suitStorageProto: type.SuitStorageProto,
+                            bedProto: type.BedProto,
+                            bedsheetProto: type.BedsheetProto
                         );
                     }
                 }

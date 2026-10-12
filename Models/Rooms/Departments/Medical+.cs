@@ -21,6 +21,8 @@ public class MedicalBreakRoom : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalBreakroom";
+    public override string? BedProto => "MedicalBed";
+    public override string? BedsheetProto => "BedsheetMedical";
     public override int Priority => 20;
 }
 
@@ -31,6 +33,7 @@ public class Cryogenetics : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalCryopods";
+    public override string? BedProto => "StasisBed";
     public override int Priority => 20;
 }
 
@@ -42,6 +45,7 @@ public class Paramedic : MedicalPlusRoomType
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalParamed";
     public override string? LockerProto => "LockerParamedicFilled";
+    public override string? BedProto => "RollerBed";
     public override int Priority => 25;
 }
 
@@ -52,6 +56,7 @@ public class Psychologist : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalFront";
+    public override string? BedProto => "PsychBed";
     public override int Priority => 20;
 }
 
@@ -62,6 +67,7 @@ public class MedicalStorage : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalMedbay";
+    public override string? BedProto => "CheapRollerBed";
     public override int Priority => 20;
 }
 
@@ -72,6 +78,7 @@ public class MedicalSurgery : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalSurgery";
+    public override string? BedProto => "OperatingTable";
     public override int Priority => 20;
 }
 
@@ -82,5 +89,7 @@ public class MedicalClinic : MedicalPlusRoomType
     public override string DoorProto => "AirlockMedicalLocked";
     public override string GlassDoorProto => "AirlockMedicalGlassLocked";
     public override string? HolopadProto => "HolopadMedicalClinic";
+    public override string? BedProto => "MedicalBed";
+    public override string? BedsheetProto => "BedsheetMedical";
     public override int Priority => 20;
 }

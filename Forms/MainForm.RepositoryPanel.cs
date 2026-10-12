@@ -833,6 +833,15 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             _btnPlaceSuitStorage.Image = _suitStorageIcon;
             _btnPlaceSuitStorage.Invalidate();
         }
+        if (_btnPlaceBed != null && !_btnPlaceBed.IsDisposed)
+        {
+            _bedIcon?.Dispose();
+            // Иконка кнопки — кровать комнаты General (дефолтный прототип кровати)
+            var generalBed = _roomTypeManager?.GetRoomType("General")?.BedProto;
+            _bedIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalBed) ? generalBed : "Bed");
+            _btnPlaceBed.Image = _bedIcon;
+            _btnPlaceBed.Invalidate();
+        }
     }
     
     private Image? GetCachedProtoIcon(string protoId)

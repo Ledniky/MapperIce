@@ -42,5 +42,7 @@ public class ResearchDirector : ScienceRoomType
     public override string? HolopadProto => "HolopadCommandRd";
     public override string? LockerProto => "LockerResearchDirectorFilled";
     public override string? SuitStorageProto => "SuitStorageRD";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetRD";
     public override int Priority => 250;
 }

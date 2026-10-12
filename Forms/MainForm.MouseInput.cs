@@ -954,6 +954,29 @@ public partial class MainForm
                 UpdateTileGrid();
                 Render();
             }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceBed)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room == null || string.IsNullOrEmpty(room.BedProto)) return;
+
+                if (grid.Entities.OfType<BedEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
+
+                var bedEntity = new BedEntity
+                {
+                    X = tileX + 0.5f,
+                    Y = tileY + 0.5f,
+                    Proto = room.BedProto,
+                    BedProto = room.BedProto,
+                    BedsheetProto = room.BedsheetProto ?? ""
+                };
+                grid.Entities.Add(bedEntity);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
             else if (_toolManager.CurrentTool == ToolManager.Tool.DecalRule)
             {
                 var grid = _map.ActiveGrid;

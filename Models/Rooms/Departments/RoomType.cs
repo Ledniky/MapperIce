@@ -26,6 +26,10 @@ public abstract class RoomType
     public virtual string? LockerProto => null;
     /// <summary>Прототип хранилища скафандра (id из suit_storage.yml), привязанный к этому типу комнаты в свойствах.</summary>
     public virtual string? SuitStorageProto => null;
+    /// <summary>Прототип кровати (id из beds.yml), привязанный к этому типу комнаты в свойствах.</summary>
+    public virtual string? BedProto => null;
+    /// <summary>Прототип одеяла (id из bedsheets.yml), привязанный к этому типу комнаты в свойствах.</summary>
+    public virtual string? BedsheetProto => null;
     public virtual Color FillColor => Color.FromArgb(100, 230, 230, 230);
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
@@ -73,6 +77,7 @@ public class General : CommonRoomType
     public override string Description => "Общая комната без специализации. Коридоры, холлы и базовые помещения.";
     public override string? HolopadProto => "HolopadGeneralLounge";
     public override string? LockerProto => "ClosetMaintenanceFilledRandom";
+    public override string? BedProto => "Bed";
     public override int Priority => 0;
 }
 
@@ -134,6 +139,8 @@ public class Syndicate : AntagRoomType
     public override Color FillColor => Color.FromArgb(100, 200, 50, 50);
     public override Color LineColor => Color.FromArgb(255, 200, 50, 50);
     public override string? SuitStorageProto => "SuitStorageEVASyndicate";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetSyndie";
     public override int Priority => 250;
 }
 
@@ -178,6 +185,8 @@ public class CustomRoomType : RoomType
     public override string? HolopadProto => string.IsNullOrEmpty(Data.HolopadProto) ? null : Data.HolopadProto;
     public override string? LockerProto => string.IsNullOrEmpty(Data.LockerProto) ? null : Data.LockerProto;
     public override string? SuitStorageProto => string.IsNullOrEmpty(Data.SuitStorageProto) ? null : Data.SuitStorageProto;
+    public override string? BedProto => string.IsNullOrEmpty(Data.BedProto) ? null : Data.BedProto;
+    public override string? BedsheetProto => string.IsNullOrEmpty(Data.BedsheetProto) ? null : Data.BedsheetProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -214,6 +223,8 @@ public class CustomRoomTypeData
     public string? HolopadProto { get; set; } = null;
     public string? LockerProto { get; set; } = null;
     public string? SuitStorageProto { get; set; } = null;
+    public string? BedProto { get; set; } = null;
+    public string? BedsheetProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -234,6 +245,8 @@ public class ExportData
     public string? HolopadProto { get; set; }
     public string? LockerProto { get; set; }
     public string? SuitStorageProto { get; set; }
+    public string? BedProto { get; set; }
+    public string? BedsheetProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

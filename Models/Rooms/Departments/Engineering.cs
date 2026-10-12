@@ -69,5 +69,7 @@ public class ChiefEngineer : EngineeringRoomType
     public override string? HolopadProto => "HolopadCommandCe";
     public override string? LockerProto => "LockerChiefEngineerFilled";
     public override string? SuitStorageProto => "SuitStorageCE";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetCE";
     public override int Priority => 250;
 }

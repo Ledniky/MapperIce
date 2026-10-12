@@ -44,6 +44,8 @@ public class RoomGridData
     public string? HolopadProto { get; set; }
     public string? LockerProto { get; set; }
     public string? SuitStorageProto { get; set; }
+    public string? BedProto { get; set; }
+    public string? BedsheetProto { get; set; }
     public string FillColor { get; set; } = "100,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public List<DoorData> Doors { get; set; } = new();

@@ -1734,7 +1734,7 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity) continue;
             if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
@@ -1773,6 +1773,15 @@ public class Renderer
             int dd = _drawDepthManager.GetOffset("Objects") + 1;
             var s = suit;
             renderQueue.Add((s.Y, dd, 0, _insertCounter++, () => DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Кровати — отдельный слой «привязок» поверх остальных объектов
+        foreach (var bed in grid.Entities.OfType<BedEntity>())
+        {
+            if (!IsPointVisible(bed.X, bed.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var b = bed;
+            renderQueue.Add((b.Y, dd, 0, _insertCounter++, () => DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
@@ -1946,31 +1955,81 @@ public class Renderer
     /// </summary>
     private void DrawSingleHolopad(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
     {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 255, 170, 0),
+            fallbackPen: Color.FromArgb(255, 180, 90, 0),
+            protoLabel: "holopad");
+    }
+
+    private void DrawSingleLocker(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 40, 180, 60),
+            fallbackPen: Color.FromArgb(180, 30, 140, 50),
+            protoLabel: "locker");
+    }
+
+    private void DrawSingleSuitStorage(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 40, 120, 200),
+            fallbackPen: Color.FromArgb(180, 40, 110, 200),
+            protoLabel: "suit");
+    }
+
+    private void DrawSingleBed(Graphics g, string protoId, string bedsheetProto, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
-        // Почти прозрачный жёлто-оранжевый фон — привязка / авто-объект
-        using var fillBrush = new SolidBrush(Color.FromArgb(40, 255, 170, 0));
-        g.FillRectangle(fillBrush, rect);
-        using var pen = new Pen(Color.FromArgb(255, 180, 90, 0), 1.5f);
-        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+        // Рисуем сперва кровать, а поверх неё одеяло (если задано) в том же прямоугольнике.
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 120, 90, 200),
+            fallbackPen: Color.FromArgb(180, 90, 60, 200),
+            protoLabel: "bed");
 
-        // Текстура прототипа голопада поверх маркера (если найдена в индексе)
-        if (!string.IsNullOrEmpty(protoId))
+        if (!string.IsNullOrEmpty(bedsheetProto))
+        {
+            var sheetTexture = GetOrLoadTexture(bedsheetProto);
+            if (sheetTexture != null)
+            {
+                DrawTexturedRect(g, bedsheetProto, rect, null, null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Общая отрисовка «привязки» (авто-объекта из свойств комнаты): почти прозрачный
+    /// оранжевый прямоугольник-маркер + рамка, поверх — текстура прототипа (если есть),
+    /// а при достаточном зуме — подпись "auto" справа сверху и короткое имя прототипа снизу.
+    /// Голопад рисуется тем же методом, что и остальные привязки (шкафчик/скафандр/кровать).
+    /// </summary>
+    private void DrawAutoObject(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset,
+        Color fallbackBrush, Color fallbackPen, string protoLabel)
+    {
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Почти прозрачный жёлто-оранжевый фон — привязка / авто-объект (единый для всех)
+        using (var fillBrush = new SolidBrush(Color.FromArgb(40, 255, 170, 0)))
+            g.FillRectangle(fillBrush, rect);
+        using (var pen = new Pen(Color.FromArgb(255, 180, 90, 0), 1.5f))
+            g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+
+        var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
+        if (texture != null)
         {
             DrawTexturedRect(g, protoId, rect, null, null);
+        }
+        else
+        {
+            using var fill = new SolidBrush(fallbackBrush);
+            g.FillRectangle(fill, rect);
+            using var p = new Pen(fallbackPen, 1f);
+            g.DrawRectangle(p, rect.X, rect.Y, rect.Width, rect.Height);
         }
 
         if (tileSize > 14)
         {
-            // Иконка по центру
-            using var font = new Font("Segoe UI", 8);
-            using var textBrush = new SolidBrush(Color.FromArgb(90, 40, 0));
-            string label = "📟";
-            g.DrawString(label, font, textBrush, rect.X + rect.Width / 2 - 6, rect.Y + rect.Height / 2 - 8);
-
-            // Подпись "auto" вплотную к правому верхнему углу — маркер авто-объекта.
-            // За текстом рисуем непрозрачную подложку, чтобы сквозь него не просвечивали
-            // пиксели текстуры голопада (они выглядели как чёрная обводка вокруг букв).
+            // Подпись "auto" вплотную к правому верхнему углу — маркер авто-объекта
             using var autoFont = new Font("Segoe UI", 7, FontStyle.Bold);
             using var autoBrush = new SolidBrush(Color.Black);
             var autoSize = g.MeasureString("auto", autoFont);
@@ -1979,56 +2038,17 @@ public class Renderer
             // Подпись прототипа снизу
             using var smallFont = new Font("Segoe UI", 6);
             using var labelBrush = new SolidBrush(Color.FromArgb(220, 90, 50, 0));
-            string protoLabel = string.IsNullOrEmpty(protoId) ? "holopad" :
-                protoId.Replace("Holopad", "").Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
-                       .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
-                       .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");
-            g.DrawString(protoLabel, smallFont, labelBrush, rect.X + 1, rect.Bottom - 10);
+            string label = string.IsNullOrEmpty(protoId) ? protoLabel : ShortenProtoLabel(protoId);
+            g.DrawString(label, smallFont, labelBrush, rect.X + 1, rect.Bottom - 10);
         }
     }
 
-    private void DrawSingleLocker(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
-    {
-        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-
-        // Тонкая зелёная рамка — маркер авто-объекта (шкафчик из свойств комнаты).
-        // Сам спрайт рисуем многослойно (State-слои из Sprite.layers), как обычные
-        // сущности и как превью в левом списке — см. DrawTexturedRect/GetLayers.
-        var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
-        if (texture != null)
-        {
-            DrawTexturedRect(g, protoId, rect, null, null);
-        }
-        else
-        {
-            using var fillBrush = new SolidBrush(Color.FromArgb(40, 40, 180, 60));
-            g.FillRectangle(fillBrush, rect);
-        }
-
-        using var pen = new Pen(Color.FromArgb(180, 30, 140, 50), 1f);
-        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
-    }
-
-    private void DrawSingleSuitStorage(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
-    {
-        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-
-        // Тонкая голубая рамка — маркер авто-объекта (хранилище скафандра из свойств).
-        // Сам спрайт многослойный (State-слои из Sprite.layers), как у обычных сущностей.
-        var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
-        if (texture != null)
-        {
-            DrawTexturedRect(g, protoId, rect, null, null);
-        }
-        else
-        {
-            using var fillBrush = new SolidBrush(Color.FromArgb(40, 40, 120, 200));
-            g.FillRectangle(fillBrush, rect);
-        }
-
-        using var pen = new Pen(Color.FromArgb(180, 40, 110, 200), 1f);
-        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
-    }
+    /// <summary>Короткое имя прототипа для подписи снизу у привязок.</summary>
+    private static string ShortenProtoLabel(string protoId) =>
+        protoId.Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
+               .Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
+               .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
+               .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");
 
     private void DrawSingleAlarm(Graphics g, MapEntity entity, int tileSize, PointF viewOffset, PointF gridOffset, string protoId, Color bgColor)
     {

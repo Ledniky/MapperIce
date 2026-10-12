@@ -247,7 +247,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 23;
+    private const int CacheFormatVersion = 27;
 
     private class CacheEnvelope
     {
@@ -516,6 +516,26 @@ public class PrototypeIndexer
         if (stateMatch.Success)
         {
             proto.State = stateMatch.Groups[1].Value;
+        }
+
+        // Коррекция для одеял и прочей экипируемой одежды: если в блоке есть компонент
+        // Clothing со своим "sprite: Clothing/..." И у компонента Sprite своего sprite нет
+        // (он унаследован от родителя, как у BedsheetBlack → BedsheetBase), то первый
+        // "sprite:" по всему блоку — это спрайт НАДЕТОЙ одежды, а не спрайта на карте.
+        // Сбрасываем SpritePath, чтобы путь унаследовался от родителя через FindPathRecursive.
+        var clothingBlock = ExtractComponentBlock(block, "Clothing");
+        if (!string.IsNullOrWhiteSpace(clothingBlock))
+        {
+            var clothingSprite = Regex.Match(clothingBlock, @"sprite:\s*([^\s]+)");
+            var spriteComponentBlock2 = ExtractComponentBlock(block, "Sprite");
+            bool spriteComponentHasOwnSprite = Regex.IsMatch(spriteComponentBlock2, @"sprite:\s*([^\s]+)");
+
+            if (clothingSprite.Success && !spriteComponentHasOwnSprite &&
+                !string.IsNullOrEmpty(proto.SpritePath) &&
+                proto.SpritePath.StartsWith("Clothing\\", StringComparison.OrdinalIgnoreCase))
+            {
+                proto.SpritePath = null;
+            }
         }
 
         // Ищем suffix — поле метапрототипа/прототипа движка. Пример: у открытых штор

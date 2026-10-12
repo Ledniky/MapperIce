@@ -31,6 +31,8 @@ public class CentralCommand : CommandPlusRoomType
     public override Color FillColor => Color.FromArgb(100, 30, 80, 30);
     public override Color LineColor => Color.FromArgb(255, 60, 160, 60);
     public override string? HolopadProto => "HolopadCentCommEvacShuttle";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetCentcom";
     public override int Priority => 400;
 }
 

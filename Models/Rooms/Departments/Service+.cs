@@ -47,6 +47,8 @@ public class Dorms : ServicePlusRoomType
     public override Color LineColor => Color.FromArgb(255, 200, 180, 200);
     public override string? HolopadProto => "HolopadGeneralLounge";
     public override string? LockerProto => "WardrobeMixedFilled";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetWhite";
     public override int Priority => 10;
 }
 
@@ -173,6 +175,8 @@ public class Clown : ServicePlusRoomType
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override string? HolopadProto => "HolopadServiceClown";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetClown";
     public override int Priority => 10;
 }
 
@@ -193,5 +197,7 @@ public class Mime : ServicePlusRoomType
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
     public override string? HolopadProto => "HolopadServiceMime";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetMime";
     public override int Priority => 10;
 }

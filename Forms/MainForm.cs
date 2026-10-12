@@ -153,6 +153,8 @@ private ComboBox _doorToolCombo = null!;
     private Image? _lockerIcon;
     private Button _btnPlaceSuitStorage = null!;
     private Image? _suitStorageIcon;
+    private Button _btnPlaceBed = null!;
+    private Image? _bedIcon;
     private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
@@ -657,6 +659,7 @@ private ComboBox _doorToolCombo = null!;
         if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = Color.White;
         if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = Color.White;
         if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.White;
+        if (_btnPlaceBed != null) _btnPlaceBed.BackColor = Color.White;
         if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.White;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
 
@@ -781,6 +784,9 @@ private ComboBox _doorToolCombo = null!;
             case ToolManager.Tool.PlaceSuitStorage:
                 if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.LightBlue;
                 break;
+            case ToolManager.Tool.PlaceBed:
+                if (_btnPlaceBed != null) _btnPlaceBed.BackColor = Color.LightBlue;
+                break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
@@ -818,6 +824,7 @@ private ComboBox _doorToolCombo = null!;
             ToolManager.Tool.PlaceHolopad => Cursors.Help,
             ToolManager.Tool.PlaceLocker => Cursors.Help,
             ToolManager.Tool.PlaceSuitStorage => Cursors.Help,
+            ToolManager.Tool.PlaceBed => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

@@ -31,6 +31,7 @@ public class ToolManager
         PlaceHolopad,
         PlaceLocker,
         PlaceSuitStorage,
+        PlaceBed,
         PlacePrototype,
         Move,
         DecalRule,

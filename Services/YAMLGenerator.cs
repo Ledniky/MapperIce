@@ -308,6 +308,9 @@ public static class YAMLGenerator
         // 10. Хранилища скафандров (привязки)
         GenerateSuitStoragesGrouped(sb, grid, ref uid);
 
+        // 11. Кровати (привязки) — кровать + привязанное одеяло
+        GenerateBedsGrouped(sb, grid, ref uid);
+
         return sb.ToString();
     }
 
@@ -1591,7 +1594,7 @@ public static class YAMLGenerator
         var generic = grid.Entities
             .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity && e is not WireEntity &&
-                        e is not HolopadEntity && e is not LockerEntity && e is not SuitStorageEntity &&
+                        e is not HolopadEntity && e is not LockerEntity && e is not SuitStorageEntity && e is not BedEntity &&
                         e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
@@ -1773,6 +1776,80 @@ public static class YAMLGenerator
 
                 float posX = suit.X;
                 float posY = -suit.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация кроватей как авто-устанавливаемых объектов. Каждая кровать выводится
+    /// отдельным "- proto:" блоком со своим прототипом (BedProto); если у комнаты
+    /// задано одеяло (BedsheetProto), вторым блоком выводится одеяло на той же клетке.
+    /// </summary>
+    private static void GenerateBedsGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var beds = grid.Entities.OfType<BedEntity>()
+            .Where(h => !string.IsNullOrEmpty(h.BedProto))
+            .ToList();
+
+        if (beds.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), (int bedUid, int sheetUid)>();
+        foreach (var bed in beds)
+        {
+            int bedUid = uid++;
+            int sheetUid = string.IsNullOrEmpty(bed.BedsheetProto) ? -1 : uid++;
+            posToUid[((int)Math.Round(bed.X), (int)Math.Round(bed.Y))] = (bedUid, sheetUid);
+        }
+
+        // Кровати — группируем по прототипу кровати
+        foreach (var group in beds.GroupBy(h => h.BedProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var bed in group)
+            {
+                var cell = ((int)Math.Round(bed.X), (int)Math.Round(bed.Y));
+                int thisUid = posToUid[cell].bedUid;
+
+                float posX = bed.X;
+                float posY = -bed.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+
+        // Одеяла — группируем по прототипу одеяла отдельным блоком (чтобы не смешивать
+        // прототипы кроватей и одеял в одном "- proto:" блоке разного вида).
+        var sheets = beds.Where(h => !string.IsNullOrEmpty(h.BedsheetProto)).ToList();
+        if (sheets.Count == 0) return;
+
+        foreach (var group in sheets.GroupBy(h => h.BedsheetProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var bed in group)
+            {
+                var cell = ((int)Math.Round(bed.X), (int)Math.Round(bed.Y));
+                int thisUid = posToUid[cell].sheetUid;
+
+                float posX = bed.X;
+                float posY = -bed.Y + 1.0f;
 
                 sb.AppendLine($"  - uid: {thisUid}");
                 sb.AppendLine($"    components:");

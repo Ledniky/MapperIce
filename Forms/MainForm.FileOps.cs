@@ -205,6 +205,8 @@ public partial class MainForm
                     HolopadProto = room.HolopadProto,
                     LockerProto = room.LockerProto,
                     SuitStorageProto = room.SuitStorageProto,
+                    BedProto = room.BedProto,
+                    BedsheetProto = room.BedsheetProto,
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
                     DecalMode = room.DecalMode,
@@ -384,6 +386,8 @@ public partial class MainForm
                         HolopadProto = roomData.HolopadProto,
                         LockerProto = roomData.LockerProto,
                         SuitStorageProto = roomData.SuitStorageProto,
+                        BedProto = roomData.BedProto,
+                        BedsheetProto = roomData.BedsheetProto,
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor),
                         DecalMode = roomData.DecalMode,
@@ -414,6 +418,10 @@ public partial class MainForm
                                 room.LockerProto = rt.LockerProto;
                             if (string.IsNullOrEmpty(room.SuitStorageProto) && !string.IsNullOrEmpty(rt.SuitStorageProto))
                                 room.SuitStorageProto = rt.SuitStorageProto;
+                            if (string.IsNullOrEmpty(room.BedProto) && !string.IsNullOrEmpty(rt.BedProto))
+                                room.BedProto = rt.BedProto;
+                            if (string.IsNullOrEmpty(room.BedsheetProto) && !string.IsNullOrEmpty(rt.BedsheetProto))
+                                room.BedsheetProto = rt.BedsheetProto;
                         }
                     }
 

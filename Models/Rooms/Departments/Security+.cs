@@ -95,6 +95,8 @@ public class BrigMed : SecurityPlusRoomType
     public override Color FillColor => Color.FromArgb(100, 90, 90, 190);
     public override Color LineColor => Color.FromArgb(255, 90, 90, 190);
     public override string? HolopadProto => "HolopadSecurityBrigMed";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetBrigmedic";
     public override int Priority => 20;
 }
 

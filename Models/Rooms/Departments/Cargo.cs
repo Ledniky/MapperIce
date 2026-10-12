@@ -68,5 +68,7 @@ public class Quartermaster : CargoRoomType
     public override Color LineColor => Color.FromArgb(255, 164, 97, 6);
     public override string? HolopadProto => "HolopadCommandQm";
     public override string? LockerProto => "LockerQuarterMasterFilled";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetQM";
     public override int Priority => 250;
 }

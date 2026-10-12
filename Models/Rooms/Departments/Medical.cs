@@ -27,6 +27,8 @@ public class Medical : MedicalRoomType
     public override Color LineColor => Color.FromArgb(255, 82, 180, 233);
     public override string? HolopadProto => "HolopadMedicalMedbay";
     public override string? LockerProto => "LockerMedicalFilled";
+    public override string? BedProto => "MedicalBed";
+    public override string? BedsheetProto => "BedsheetMedical";
     public override int Priority => 15;
 }
 
@@ -41,6 +43,8 @@ public class Virology : MedicalRoomType
     public override Color FillColor => Color.FromArgb(100, 67, 153, 9);
     public override Color LineColor => Color.FromArgb(255, 67, 153, 9);
     public override string? HolopadProto => "HolopadMedicalVirology";
+    public override string? BedProto => "MedicalBed";
+    public override string? BedsheetProto => "BedsheetMedical";
     public override int Priority => 60;
 }
 
@@ -55,6 +59,8 @@ public class Chemistry : MedicalRoomType
     public override Color LineColor => Color.FromArgb(255, 250, 117, 0);
     public override string? HolopadProto => "HolopadMedicalChemistry";
     public override string? LockerProto => "LockerChemistryFilled";
+    public override string? BedProto => "MedicalBed";
+    public override string? BedsheetProto => "BedsheetMedical";
     public override int Priority => 70;
 }
 
@@ -68,6 +74,7 @@ public class Morgue : MedicalRoomType
     public override Color FillColor => Color.FromArgb(100, 60, 120, 160);
     public override Color LineColor => Color.FromArgb(255, 60, 120, 160);
     public override string? HolopadProto => "HolopadMedicalMorgue";
+    public override string? BedProto => "OperatingTable";
     public override int Priority => 30;
 }
 
@@ -83,5 +90,7 @@ public class ChiefMedicalOfficer : MedicalRoomType
     public override string? HolopadProto => "HolopadCommandCmo";
     public override string? LockerProto => "LockerChiefMedicalOfficerFilled";
     public override string? SuitStorageProto => "SuitStorageCMO";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetCMO";
     public override int Priority => 250;
 }

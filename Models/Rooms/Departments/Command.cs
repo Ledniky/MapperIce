@@ -65,6 +65,8 @@ public class Captain : CommandRoomType
     public override string? HolopadProto => "HolopadCommandCaptain";
     public override string? LockerProto => "LockerCaptainFilled";
     public override string? SuitStorageProto => "SuitStorageCaptain";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetCaptain";
     public override int Priority => 300;
 }
 
@@ -77,6 +79,8 @@ public class HeadOfPersonnel : CommandRoomType
     public override string GlassDoorProto => "AirlockHeadOfPersonnelGlassLocked";
     public override string? HolopadProto => "HolopadCommandHop";
     public override string? LockerProto => "LockerHeadOfPersonnelFilled";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetHOP";
     public override int Priority => 250;
 }
 

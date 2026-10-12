@@ -273,6 +273,25 @@ public partial class MainForm
         _btnPlaceSuitStorage.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceSuitStorage);
         _linkedEntitiesPanel.Controls.Add(_btnPlaceSuitStorage);
         y += 40 + 2;
+
+        // === КНОПКА УСТАНОВКИ КРОВАТИ ===
+        _btnPlaceBed = new Button
+        {
+            Text = "  Кровать",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _bedIcon
+        };
+        _btnPlaceBed.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceBed);
+        _linkedEntitiesPanel.Controls.Add(_btnPlaceBed);
+        y += 40 + 2;
     }
 
     private ComboBox BuildDoorWindowCombo(bool drawDoorIcons)

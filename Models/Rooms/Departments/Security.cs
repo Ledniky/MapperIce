@@ -101,5 +101,7 @@ public class HeadOfSecurity : SecurityRoomType
     public override string? HolopadProto => "HolopadCommandHos";
     public override string? LockerProto => "LockerHeadOfSecurityFilled";
     public override string? SuitStorageProto => "SuitStorageHOS";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetHOS";
     public override int Priority => 250;
 }
