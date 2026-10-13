@@ -2941,10 +2941,6 @@ public class Renderer
         if (!_showExpandPreview || _expandPreviewRoom == null) return;
         if (_currentMap?.ActiveGrid == null) return;
 
-        var newCells = RoomSubtractor.GetExpandRunNewCells(
-            _expandPreviewRoom, _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
-        if (newCells.Count == 0) return;
-
         int tileSize = (int)(Constants.TILE_SIZE * scale);
         int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid);
         float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
@@ -2955,9 +2951,17 @@ public class Renderer
         using var blockedBrush = new SolidBrush(Color.FromArgb(150, 220, 40, 40));
         using var blockedPen = new Pen(Color.DarkRed, 2);
 
-        foreach (var (cx, cy) in newCells)
+        // Проверка занятости идёт циклически по каждой клетке края ВШИРЬ (вправо
+        // и влево относительно направления расширения), пересчитываясь заново на
+        // каждом шаге — см. ExpandRunScanCells. Свободные/общая стена — зелёный,
+        // внутренний пол чужой комнаты — красный. Это единый алгоритм с фактическим
+        // применением (ExpandRoomBorder), поэтому превью и результат не расходятся.
+        var scanCells = RoomSubtractor.ExpandRunScanCells(
+            _currentMap.ActiveGrid, _expandPreviewRoom,
+            _expandPreviewCellX, _expandPreviewCellY, _expandPreviewDx, _expandPreviewDy);
+
+        foreach (var (cx, cy, blocked) in scanCells)
         {
-            bool blocked = RoomSubtractor.IsCellBlocked(_currentMap.ActiveGrid, _expandPreviewRoom, (cx, cy));
             var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
             g.FillRectangle(blocked ? blockedBrush : freeBrush, rect);
             g.DrawRectangle(blocked ? blockedPen : freePen, rect);

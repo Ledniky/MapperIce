@@ -211,43 +211,6 @@ public static class RoomSubtractor
 
 
         /// <summary>
-    /// Возвращает клетки, которые появятся у комнаты при расширении на 1 тайл в
-    /// направлении (dx, dy) от пограничной клетки (cellX, cellY). Расширяется не
-    /// вся сторона ограничивающего прямоугольника, а только непрерывный отрезок
-    /// реальной границы, которому принадлежит эта клетка (соседние по
-    /// перпендикулярной оси клетки, у которых тоже открыта сторона dx,dy) —
-    /// поэтому корректно работает для нерямоугольных/L-образных комнат с
-    /// вырезами. Пустой список — клетка не граница комнаты в эту сторону.
-    /// </summary>
-    public static List<(int x, int y)> GetExpandRunNewCells(Room room, int cellX, int cellY, int dx, int dy)
-    {
-        if (!room.HasWallOnSide(cellX, cellY, dx, dy))
-            return new List<(int x, int y)>();
-
-        var run = new List<(int x, int y)> { (cellX, cellY) };
-
-        // Движение вдоль оси, ПЕРПЕНДИКУЛЯРНОЙ направлению расширения
-        int stepX = dy != 0 ? 1 : 0;
-        int stepY = dx != 0 ? 1 : 0;
-
-        int cx = cellX + stepX, cy = cellY + stepY;
-        while (room.HasWallOnSide(cx, cy, dx, dy))
-        {
-            run.Add((cx, cy));
-            cx += stepX; cy += stepY;
-        }
-
-        cx = cellX - stepX; cy = cellY - stepY;
-        while (room.HasWallOnSide(cx, cy, dx, dy))
-        {
-            run.Add((cx, cy));
-            cx -= stepX; cy -= stepY;
-        }
-
-        return run.Select(c => (x: c.x + dx, y: c.y + dy)).ToList();
-    }
-
-    /// <summary>
     /// true, если конкретная клетка cell уже принадлежит ДРУГОЙ комнате грида
     /// (не room) — то есть занята и расширяться в неё нельзя. Проверяется по
     /// одной клетке, а не по всему отрезку — так соседняя комната, вклинившаяся
@@ -268,31 +231,114 @@ public static class RoomSubtractor
         // Блокируем только настоящую внутреннюю территорию (пол) чужой
         // комнаты — клетку, у которой нет ни одной открытой стороны.
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+        var diagonals = new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) };
+
+        // Ортогональная открытая сторона — обычная граница/стена.
         bool otherIsBoundary = directions.Any(d => other.HasWallOnSide(cell.x, cell.y, d.Item1, d.Item2));
+
+        // Внутренний угол (вогнутая выемка другой комнаты): у клетки НЕТ открытой
+        // ортогональной стороны (с четырёх сторон внутри другой комнаты), но по
+        // диагонали к ней примыкает клетка ВНЕ другой комнаты (вырез/чужая комната).
+        // Такой тайл тоже физически стена — на нём стоит внутренний угол, и в него
+        // можно расширяться (общая стена), а не блокировать расширение как во
+        // внутренний пол. Проверяем оба примыкающих ортогональных соседа по
+        // диагонали, чтобы отличить "пинч"-угол от просто внутреннего пола.
+        if (!otherIsBoundary)
+        {
+            foreach (var (dx, dy) in diagonals)
+            {
+                bool bothOrthoInside = other.Contains(cell.x + dx, cell.y) &&
+                                       other.Contains(cell.x, cell.y + dy);
+                if (!bothOrthoInside) continue;
+
+                bool diagOutside = !other.Contains(cell.x + dx, cell.y + dy);
+                if (diagOutside)
+                {
+                    otherIsBoundary = true;
+                    break;
+                }
+            }
+        }
+
         return !otherIsBoundary;
     }
 
     /// <summary>
-    /// Применяет "умное" расширение комнаты на 1 тайл от пограничной клетки
-    /// (cellX, cellY) в направлении (dx, dy) — см. GetExpandRunNewCells.
-    /// Прямоугольник комнаты расширяется ровно настолько, чтобы вместить новые
-    /// клетки; всё, что попало в новый прямоугольник, но не было частью старой
-    /// формы и не входит в добавляемый отрезок, помечается как вырезанное
-    /// (RemovedCells) — иначе узкий отрезок растянул бы прямоугольник на всю
-    /// ширину новой строки/столбца.
+    /// Сканирует край комнаты ВШИРЬ (вправо и влево относительно направления
+    /// расширения dx,dy) от стартовой пограничной клетки (cellX, cellY), по одной
+    /// клетке за шаг. Для каждой клетки края заново вычисляется "дополнительная
+    /// проверка" занятости (IsCellBlocked): внешняя клетка, куда комната растёт,
+    /// помечается либо как свободная/общая стена (green), либо как внутренний пол
+    /// чужой комнаты (red — упёрлись). Обход по каждой из сторон останавливается,
+    /// когда очередная внешняя клетка оказывается заблокированной либо когда край
+    /// комнаты закончился. Возвращает упорядоченный список клеток ВМЕСТЕ с флагом
+    /// блокировки, чтобы превью и фактическое применение опирались на один и тот же
+    /// цикл.
+    /// </summary>
+    public static List<(int x, int y, bool blocked)> ExpandRunScanCells(Grid grid, Room room, int cellX, int cellY, int dx, int dy)
+    {
+        var result = new List<(int x, int y, bool blocked)>();
+        if (!room.HasWallOnSide(cellX, cellY, dx, dy))
+            return result;
+
+        // Движение вширь вдоль оси, ПЕРПЕНДИКУЛЯРНОЙ направлению расширения
+        int stepX = dy != 0 ? 1 : 0;
+        int stepY = dx != 0 ? 1 : 0;
+
+        // Стартовая клетка
+        bool startBlocked = IsCellBlocked(grid, room, (cellX + dx, cellY + dy));
+        result.Add((cellX + dx, cellY + dy, startBlocked));
+
+        // Растём вправо и влево по отдельности
+        for (int sign = -1; sign <= 1; sign += 2)
+        {
+            int wx = cellX + sign * stepX;
+            int wy = cellY + sign * stepY;
+
+            // Пока следующая клетка стены комнаты ещё принадлежит краю расширения
+            while (room.HasWallOnSide(wx, wy, dx, dy))
+            {
+                var newCell = (x: wx + dx, y: wy + dy);
+                bool cellBlocked = IsCellBlocked(grid, room, newCell);
+                result.Add((newCell.x, newCell.y, cellBlocked));
+                // Уперлись во внутренний пол чужой комнаты — дальше по этой стороне не идём
+                if (cellBlocked) break;
+
+                wx += sign * stepX;
+                wy += sign * stepY;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Только свободные (не заблокированные) клетки из ExpandRunScanCells — то есть
+    /// те, которые комната реально займёт при расширении.
+    /// </summary>
+    public static List<(int x, int y)> ExpandRunAddableCells(Grid grid, Room room, int cellX, int cellY, int dx, int dy)
+    {
+        return ExpandRunScanCells(grid, room, cellX, cellY, dx, dy)
+            .Where(c => !c.blocked)
+            .Select(c => (c.x, c.y))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Применяет "умное" расширение комнаты на 1 тайл в направлении (dx, dy) от
+    /// пограничной клетки (cellX, cellY), сканируя край ВШИРЬ по одной клетке —
+    /// см. ExpandRunScanCells. Прямоугольник комнаты расширяется ровно настолько,
+    /// чтобы вместить новые клетки; всё, что попало в новый прямоугольник, но не
+    /// было частью старой формы и не входит в добавляемый отрезок, помечается как
+    /// вырезанное (RemovedCells) — иначе узкий отрезок растянул бы прямоугольник
+    /// на всю ширину новой строки/столбца.
     /// </summary>
     public static bool ExpandRoomBorder(Grid grid, Room room, int cellX, int cellY, int dx, int dy)
     {
-        var newCells = GetExpandRunNewCells(room, cellX, cellY, dx, dy);
-        if (newCells.Count == 0) return false;
-
-        // Клетки, которые реально свободны — их и займём. Занятые (в том числе
-        // на краю отрезка) просто пропускаем, а не блокируем расширение целиком:
-        // прямоугольник всё равно растягивается на весь отрезок (включая занятые
-        // клетки), но занятые останутся вырезом (RemovedCells), а не территорией
-        // комнаты — так соседняя комната "обходится", а свободная часть границы
-        // расширяется как обычно.
-        var addableCells = newCells.Where(c => !IsCellBlocked(grid, room, c)).ToList();
+        // Сканируем край ВШИРЬ по одной клетке, на каждом шаге заново пересчитывая
+        // "дополнительную проверку" занятости (граница соседней комнаты — можно,
+        // общая стена; внутренний пол чужой комнаты — стоп).
+        var addableCells = ExpandRunAddableCells(grid, room, cellX, cellY, dx, dy);
         if (addableCells.Count == 0) return false;
 
         var oldCells = new HashSet<(int X, int Y)>();
@@ -301,10 +347,10 @@ public static class RoomSubtractor
                 if (room.Contains(x, y))
                     oldCells.Add((x, y));
 
-        int minX = Math.Min(room.X, newCells.Min(c => c.x));
-        int minY = Math.Min(room.Y, newCells.Min(c => c.y));
-        int maxX = Math.Max(room.X + room.Width - 1, newCells.Max(c => c.x));
-        int maxY = Math.Max(room.Y + room.Height - 1, newCells.Max(c => c.y));
+        int minX = Math.Min(room.X, addableCells.Min(c => c.x));
+        int minY = Math.Min(room.Y, addableCells.Min(c => c.y));
+        int maxX = Math.Max(room.X + room.Width - 1, addableCells.Max(c => c.x));
+        int maxY = Math.Max(room.Y + room.Height - 1, addableCells.Max(c => c.y));
 
         room.X = minX;
         room.Y = minY;
