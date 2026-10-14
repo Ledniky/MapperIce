@@ -32,6 +32,13 @@ public class Renderer
     private readonly HashSet<int> _dirtyTileGrids = new();
     private readonly Dictionary<int, TileGrid> _tileGridCache = new();
 
+    // Кэш кадров IconSmooth-стейтов: ключ "прототип|имя файла стейта" -> Image.
+    // Один state_N.png (например state_3.png, 64×64) содержит 4 кадра-фриза по 32×32 —
+    // по одному на каждый угол (SE/NW/NE/SW). Отдельный кэш от _textureCache, потому
+    // что у обычных текстур один кадр на стейт, а тут — 4, и лежат они под вменяемым
+    // ключом (не конфликтуют с прототипом).
+    private readonly Dictionary<string, Image> _iconSmoothStateCache = new();
+
     // Размеры тайлов в пикселях для кэширования
     private int _cachedTileSize = 0;
 
@@ -1588,6 +1595,10 @@ public class Renderer
         var renderQueue = new List<(double WorldY, int DrawDepthOffset, int LayerOrder, int InsertOrder, Action draw)>();
         int _insertCounter = 0;
 
+        // Индекс IconSmooth (тайл → smooth-ключи): собирает И тайлы-стены, И сущности, чтобы
+        // стены из генератора комнат и из панели репозитория сглаживались друг с другом.
+        BuildIconSmoothIndex(grid, tileGrid, visibleRect);
+
         // Пол
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Floor))
         {
@@ -1632,7 +1643,7 @@ public class Renderer
             }
             if (dd == 0) dd = _drawDepthManager.GetOffset("Walls");
             var t = tile;
-            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, false, opacity)));
+            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawWallTile(g, tileGrid, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, opacity)));
         }
 
         // Двери
@@ -1806,6 +1817,58 @@ public class Renderer
         DrawEntityNetworkLinks(g, grid, tileSize, viewOffset, gridOffset);
     }
 
+    /// <summary>
+    /// Стена-тайл: если прототип (или предок) имеет IconSmooth — рисует её сглаженной
+    /// (как и сущности-столы), иначе — обычный тайл. Соседи стены — соседние тайлы
+    /// TileContent.Wall в tileGrid (стены в этом редакторе лежат на тайлах, а не как сущности).
+    /// </summary>
+    private void DrawWallTile(Graphics g, TileGrid tileGrid, int x, int y, string protoId, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
+    {
+        if (_indexer?.GetIconSmoothInfo(protoId) is { } smoothInfo && smoothInfo.Enabled && smoothInfo.Base != null)
+        {
+            // Соседи по 8 направлениям ищем в едином индексе (_smoothKeysByTile), куда входят
+            // и тайлы-стены (генератор комнат), и сущности (панель репозитория) — поэтому стены
+            // из обоих источников сглаживаются друг с другом.
+            bool[] m = SmoothMatchNeighbors(smoothInfo, x, y);
+
+            int[] fills = ComputeCornerFills(m); // [NE,NW,SW,SE]
+            int quarter = 0; // стены SnapgridCenter, поворот не применяем
+            int[] layerFills = RotateLayerFills(fills, quarter); // [SE,NE,NW,SW]
+
+            var rect = ToRect(x, y, tileSize, viewOffset, gridOffset); // стена-тайл рисуется от угла клетки
+
+            bool anyLoaded = false;
+            Image?[] imgs = new Image?[4];
+            string[] cacheKeys = new string[4];
+            for (int li = 0; li < 4; li++)
+            {
+                int state = layerFills[li];
+                imgs[li] = GetOrLoadIconSmoothState(protoId, smoothInfo, state);
+                cacheKeys[li] = $"{protoId}||{smoothInfo.Base}{state}";
+                if (imgs[li] != null) anyLoaded = true;
+            }
+            if (!anyLoaded)
+            {
+                // Падаем в обычный рендер тайла
+                DrawSingleTile(g, x, y, protoId, tileSize, viewOffset, gridOffset, false, opacity);
+                return;
+            }
+
+            for (int li = 0; li < 4; li++)
+            {
+                Image? stateImg = imgs[li];
+                if (stateImg == null) continue;
+                float layerAngle = (float)IconSmoothLayerBaseAngle[li];
+                Rectangle src = GetSourceRect(cacheKeys[li], stateImg, layerAngle);
+                if (src.Width == 0 || src.Height == 0) continue;
+                g.DrawImage(stateImg, rect, src, GraphicsUnit.Pixel);
+            }
+            return;
+        }
+
+        DrawSingleTile(g, x, y, protoId, tileSize, viewOffset, gridOffset, false, opacity);
+    }
+
     private void DrawSingleTile(Graphics g, float worldX, float worldY, string protoId, int tileSize, PointF viewOffset, PointF gridOffset, bool isFloor, float opacity)
     {
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset);
@@ -1921,9 +1984,297 @@ public class Renderer
         });
     }
 
+    // ===== IconSmooth (сглаживание иконок по соседям) =====
+    // См. старый SS14 SharedIconSmoothSystem/IconSmoothSystem (режим Corners).
+    // Каждый такой объект (например стол) склеивается с такими же соседями: клетка рисуется
+    // как 4 наложенных угловых слоя (NE/NW/SW/SE), каждый берёт стейт "{base}{fill}" (fill 0–7),
+    // где fill складывается из занятости 3 прилегающих к углу тайлов (1=кардинал против часовой,
+    // 2=диагональ, 4=кардинал по часовой). directions:4 в meta.json = 4 кадра каждого state_N.png
+    // (по одному на угол), выбор кадра для каждого слоя делает GetSourceRect по углу слоя.
+
+    /// <summary>Порядок угловых слоёв в RSI, соответствующий DirectionOffset None/CCW/Flip/CW
+    /// (как LayerSetDirOffset в игре). Индекс в массиве — номер слоя: 0=SE,1=NE,2=NW,3=SW.</summary>
+    private static readonly string[] IconSmoothLayerNames = { "SE", "NE", "NW", "SW" };
+
+    /// <summary>Базовый угол каждого углового слоя (в радианах), который переводит «нативного»
+    /// в RSI-направление кадра (SE→0, NE→π/2, NW→π, SW→−π/2). По сути DirectionOffset из игры.</summary>
+    private static readonly double[] IconSmoothLayerBaseAngle =
+    {
+        0.0,          // SE: None
+        Math.PI / 2,  // NE: CounterClockwise (+90°)
+        Math.PI,      // NW: Flip (180°)
+        -Math.PI / 2  // SW: Clockwise (−90°)
+    };
+
+    /// <summary>
+    /// Превращает список сущностей грида в словарь "тайл → смус-соседи", где для каждого такого
+    /// тайла собраны прототипы стоящих на нём сглаживаемых сущностей с их разрешёнными настройками.
+    /// Множество ключей — все smooth-ключи и additionalKeys карты, чтобы быстро проверять совпадение.
+    /// </summary>
+    // Единый индекс сглаживания: "тайл (x,y) → множество smooth-ключей, представленных на этом тайле".
+    // Источники ключей — И тайлы-стены (tileGrid TileContent.Wall), И сущности (MapEntity). Благодаря
+    // этому стены, созданные генератором комнат (тайлы), сглаживаются со стенами, поставленными
+    // через панель репозитория (сущности), и наоборот.
+    private Dictionary<(int x, int y), HashSet<string>> _smoothKeysByTile = new();
+
+    // Кэш: protoId -> список smooth-ключей (Key + AdditionalKeys), чтобы не пересчитывать GetIconSmoothInfo
+    // для каждого прототипа на каждый кадр.
+    private readonly Dictionary<string, HashSet<string>?> _smoothProtoKeyCache = new();
+
+    /// <summary>Возвращает список смус-ключей прототипа (Key + AdditionalKeys), либо null если смуса нет.</summary>
+    private HashSet<string>? GetSmoothKeysForProto(string? protoId)
+    {
+        if (string.IsNullOrEmpty(protoId) || _indexer == null) return null;
+        lock (_smoothProtoKeyCache)
+        {
+            if (_smoothProtoKeyCache.TryGetValue(protoId, out var cached))
+                return cached;
+        }
+        var settings = _indexer.GetIconSmoothInfo(protoId);
+        HashSet<string>? result = null;
+        if (settings != null && settings.Enabled)
+        {
+            result = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(settings.Key)) result.Add(settings.Key);
+            foreach (var k in settings.AdditionalKeys)
+                if (!string.IsNullOrEmpty(k)) result.Add(k);
+            if (result.Count == 0) result = null;
+        }
+        lock (_smoothProtoKeyCache)
+        {
+            _smoothProtoKeyCache[protoId] = result;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Построение единого индекса сглаживания: для каждого тайла собираем множество smooth-ключей,
+    /// которые на нём представлены — из тайлов-стен (tileGrid) и из сущностей (grid). 
+    /// </summary>
+    private void BuildIconSmoothIndex(Grid grid, TileGrid tileGrid, RectangleF visibleRect)
+    {
+        _smoothKeysByTile = new Dictionary<(int, int), HashSet<string>>();
+
+        if (_indexer == null) return;
+
+        void AddKey(int x, int y, string key)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            if (_smoothKeysByTile.TryGetValue((x, y), out var set))
+                set.Add(key);
+            else
+                _smoothKeysByTile[(x, y)] = new HashSet<string>(StringComparer.Ordinal) { key };
+        }
+
+        // 1) Тайлы-стены (генератор комнат): ключ из прототипа стены на тайле.
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
+        {
+            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
+            var keys = GetSmoothKeysForProto(tile.ProtoId);
+            if (keys == null) continue;
+            foreach (var k in keys) AddKey(tile.X, tile.Y, k);
+        }
+
+        // 2) Сущности (панель репозитория).
+        foreach (var entity in grid.Entities.OfType<Models.MapEntity>())
+        {
+            if (string.IsNullOrEmpty(entity.Proto)) continue;
+            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
+            var keys = GetSmoothKeysForProto(entity.Proto);
+            if (keys == null) continue;
+            int tx = (int)Math.Floor(entity.X);
+            int ty = (int)Math.Floor(entity.Y);
+            foreach (var k in keys) AddKey(tx, ty, k);
+        }
+    }
+
+    // Смещения 8 соседей в тайловых координатах: North,NorthEast,East,SouthEast,South,SouthWest,West,NorthWest
+    // (screen-мир, North = −Y, East = +X — как в Renderer/GetTilePosition).
+    private static readonly (int dx, int dy)[] SmoothNeighborOffsets =
+    {
+        (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)
+    };
+
+    /// <summary>
+    /// Совпадёт ли сосед на указанном тайле с нашим smooth-компонентом: у соседа должен быть
+    /// IconSmooth с enabled, и его smooth-ключ присутствует в любом из наших смус-ключей
+    /// (наш Key ИЛИ наш AdditionalKeys). Это ровно MatchingEntity из игры (older IconSmoothSystem).
+    /// Источники соседа — единый индекс (_smoothKeysByTile), куда входят и тайлы-стены, и сущности.
+    /// </summary>
+    private static bool KeysOverlap(HashSet<string> oursKeys, HashSet<string> otherKeys)
+    {
+        foreach (var k in otherKeys)
+            if (oursKeys.Contains(k))
+                return true;
+        return false;
+    }
+
+    // Массив из 8 результатов MatchingEntity для 8 соседей (индекс = SmoothNeighborOffsets).
+    private bool[] SmoothMatchNeighbors(IconSmoothSettings settings, int tx, int ty)
+    {
+        bool[] m = new bool[8];
+        HashSet<string> ours = new(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(settings.Key)) ours.Add(settings.Key);
+        foreach (var k in settings.AdditionalKeys) ours.Add(k);
+        if (ours.Count == 0) return m;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var (dx, dy) = SmoothNeighborOffsets[i];
+            if (_smoothKeysByTile.TryGetValue((tx + dx, ty + dy), out var otherKeys))
+            {
+                if (KeysOverlap(ours, otherKeys)) m[i] = true;
+            }
+        }
+        return m;
+    }
+
+    /// <summary>
+    /// Считает CornerFill (0–7) для углов (корнер индексы: 0=SE,1=NE,2=NW,3=SW) по занятости
+    /// 8 соседей — точно как CalculateCornerFill в игре (стартовый проход без поворота).
+    /// neighbors[i] — результат MatchingEntity для i-го смещения из SmoothNeighborOffsets.
+    /// Возвращает массив fills[4] = [fillNE, fillNW, fillSW, fillSE] (в именах функции игры).
+    /// </summary>
+    private int[] ComputeCornerFills(bool[] m)
+    {
+        bool n = m[0], ne = m[1], e = m[2], se = m[3],
+             s = m[4], sw = m[5], w = m[6], nw = m[7];
+
+        int cornerNE = 0, cornerNW = 0, cornerSW = 0, cornerSE = 0;
+        if (n)  { cornerNE |= 1; cornerNW |= 4; }
+        if (ne) { cornerNE |= 2; }
+        if (e)  { cornerNE |= 4; cornerSE |= 1; }
+        if (se) { cornerSE |= 2; }
+        if (s)  { cornerSE |= 4; cornerSW |= 1; }
+        if (sw) { cornerSW |= 2; }
+        if (w)  { cornerSW |= 4; cornerNW |= 1; }
+        if (nw) { cornerNW |= 2; }
+        return new[] { cornerNE, cornerNW, cornerSW, cornerSE }; // [NE,NW,SW,SE]
+    }
+
+    /// <summary>
+    /// По направлению объекта возвращает, какое значение CornerFill (0–7) из массива fills
+    /// [NE,NW,SW,SE] должен получить КАЖДЫЙ из 4 угловых ЛОКАЛЬНЫХ слоёв (0=SE,1=NE,2=NW,3=SW).
+    /// Точное соответствие возврату CalculateCornerFill + LayerSetRsiState в игре (слой SE всегда
+    /// получает cornerSE и т.д., поэтому даже у южной ориентации нужна перестановка из массива).
+    /// quarter: 0=South,1=East,2=North,3=West (см. GetQuarter).
+    /// </summary>
+    private int[] RotateLayerFills(int[] fills, int quarter)
+    {
+        int NE = fills[0], NW = fills[1], SW = fills[2], SE = fills[3];
+        switch (quarter)
+        {
+            case 1: // East: локальные NE,NW,SW,SE = мировые SE,NE,NW,SW
+                return new[] { NE, NW, SW, SE };
+            case 2: // North: локальные = SW,SE,NE,NW
+                return new[] { NW, SW, SE, NE };
+            case 3: // West: локальные = SE,NE,NW,SW
+                return new[] { SW, SE, NE, NW };
+            default: // South: локальные = NE,NW,SW,SE
+                return new[] { SE, NE, NW, SW };
+        }
+    }
+
+    /// <summary>Квартализация угла (радианы) в 0..3 как GetCardinalDir: 0=S,1=E,2=N,3=W.</summary>
+    private static int GetQuarter(float rotation)
+    {
+        float norm = rotation % (float)(2 * Math.PI);
+        if (norm < 0) norm += (float)(2 * Math.PI);
+        return (int)Math.Round(norm / (Math.PI / 2)) % 4;
+    }
+
+    /// <summary>
+    /// Загружает и кэширует один state_{base}{n}.png прототипа сглаживания. key = "прото|state".
+    /// Заполняет _protoTextureDirCache/_protoStateNameCache для повторного использования GetSourceRect.
+    /// </summary>
+    private Image? GetOrLoadIconSmoothState(string protoId, IconSmoothSettings settings, int state)
+    {
+        if (settings.Base == null) return null;
+        string cacheKey = $"{protoId}||{settings.Base}{state}";
+        if (_iconSmoothStateCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        Image? img = null;
+        if (_indexer != null)
+        {
+            string? dir = _indexer.GetRsiDirectory(protoId);
+            string? path = _indexer.GetIconSmoothStatePath(dir, settings.Base, state);
+            if (path != null && File.Exists(path))
+            {
+                try
+                {
+                    img = Image.FromFile(path);
+                    string stateName = $"{settings.Base}{state}";
+                    _protoTextureDirCache[cacheKey] = Path.GetDirectoryName(path) ?? "";
+                    _protoStateNameCache[cacheKey] = stateName;
+                }
+                catch { img = null; }
+            }
+        }
+        _iconSmoothStateCache[cacheKey] = img!;
+        return img;
+    }
+
+    /// <summary>
+    /// Рисует сглаживаемую сущность: грузит 4 угловых state-кадра (state_{base}{fill}) и накладывает
+    /// их на клетку rect, каким-либо углом слоя беря нужный из 4 направленных кадров внутри PNG.
+    /// </summary>
+    private void DrawSingleSmoothEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, IconSmoothSettings settings)
+    {
+        if (_indexer == null) return;
+        int tx = (int)Math.Floor(worldX);
+        int ty = (int)Math.Floor(worldY);
+
+        bool[] neigh = SmoothMatchNeighbors(settings, tx, ty);
+        int[] fills = ComputeCornerFills(neigh);
+        int quarter = GetQuarter(rotation);
+        int[] layerFills = RotateLayerFills(fills, quarter); // [SE,NE,NW,SW]
+
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Сначала пробуем предзагрузить все 4 стейта. Если ни один не загрузился
+        // (нет RSI-папки/кадров у прототипа) — НЕ рисуем пустую клетку, а даём
+        // вызывающему коду уйти в обычный DrawTexturedRect.
+        bool anyLoaded = false;
+        Image?[] imgs = new Image?[4];
+        string[] cacheKeys = new string[4];
+        for (int li = 0; li < 4; li++)
+        {
+            int state = layerFills[li];
+            imgs[li] = GetOrLoadIconSmoothState(protoId, settings, state);
+            cacheKeys[li] = $"{protoId}||{settings.Base}{state}";
+            if (imgs[li] != null) anyLoaded = true;
+        }
+        // Если ни один стейт-кадр не загрузился — выходим, вызывающий код уйдёт в обычный спрайт.
+        if (!anyLoaded) return;
+        for (int li = 0; li < 4; li++)
+        {
+            Image? stateImg = imgs[li];
+            if (stateImg == null) continue;
+
+            // Угол слоя: собственный поворот объекта + базовый угол слоя (какой угол нужно передать
+            // в GetSourceRect, чтобы он выбрал кадр этого угла). 
+            float layerAngle = rotation + (float)IconSmoothLayerBaseAngle[li];
+            Rectangle src = GetSourceRect(cacheKeys[li], stateImg, layerAngle);
+            if (src.Width == 0 || src.Height == 0) continue;
+            g.DrawImage(stateImg, rect, src, GraphicsUnit.Pixel);
+        }
+    }
+
     private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // IconSmooth: если у прототипа (или его предков) есть компонент IconSmooth —
+        // рисуем сглаженным способом (4 угловых слоя), а не обычной текстурой.
+        if (_indexer != null && _indexer.GetIconSmoothInfo(protoId) is { } smoothInfo)
+        {
+            if (smoothInfo.Enabled && smoothInfo.Base != null)
+            {
+                DrawSingleSmoothEntity(g, protoId, worldX, worldY, rotation, tileSize, viewOffset, gridOffset, smoothInfo);
+                return;
+            }
+        }
 
         if (_indexer != null)
         {

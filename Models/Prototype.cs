@@ -75,6 +75,45 @@ public class Prototype
     public string? StorageStateBaseClosed { get; set; }
     public string? StorageStateDoorOpen { get; set; }
     public string? StorageStateDoorClosed { get; set; }
+
+    /// <summary>
+    /// Настройки сглаживания иконок из компонента IconSmooth (Corners-режим игры):
+    /// объект «склеивается» с такими же соседями, а спрайт каждой клетки выбирается
+    /// из стейтов "{base}0"…"{base}7" в зависимости от занятости 3 соседних тайлов
+    /// вокруг каждого из 4 углов. Null — прототип не сглаживается (и у него, и у всех
+    /// родителей нет компонента IconSmooth).
+    /// Значения хранятся СЫРЫМИ из YAML и резолвятся по цепочке parent: через
+    /// PrototypeIndexer, аналогично Sprite/State/DrawDepth — см. GetIconSmoothInfo.
+    /// </summary>
+    public IconSmoothSettings? IconSmooth { get; set; }
+}
+
+/// <summary>
+/// Настройки одного компонента IconSmooth (режим Corners) из YAML. Может быть задан
+/// у самого прототипа ИЛИ унаследован от предка через parent: — резолвинг в
+/// PrototypeIndexer.GetIconSmoothInfo (который при наследовании НЕ подмешивает ключи
+/// предков к дочерним, а выбирает ближайший заданный компонент целиком).
+/// </summary>
+public class IconSmoothSettings
+{
+    /// <summary>YAML-поле "key:" — SmoothKey. Объекты с одинаковым ключом сглаживаются друг с другом.</summary>
+    public string? Key { get; set; }
+
+    /// <summary>
+    /// YAML-поле "base:" — префикс стейтов сглаживания. Итоговые стейты: "{base}0"…
+    /// "{base}7", где число 0–7 = CornerFill (sum флагов трёх соседей угла).
+    /// </summary>
+    public string? Base { get; set; }
+
+    /// <summary>
+    /// YAML-поле "additionalKeys:" — объект сглаживается с такими же ключами, но сам
+    /// НЕ является таковым для них (односторонняя связь — как MatchingEntity в игре:
+    /// other.SmoothKey == наш Key ИЛИ наш AdditionalKeys содержит other.SmoothKey).
+    /// </summary>
+    public List<string> AdditionalKeys { get; set; } = new();
+
+    /// <summary>YAML-поле "enabled:" — если явно false, сглаживание выключено. По умолчанию true.</summary>
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>

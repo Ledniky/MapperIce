@@ -247,7 +247,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 27;
+    private const int CacheFormatVersion = 28;
 
     private class CacheEnvelope
     {
@@ -607,6 +607,48 @@ public class PrototypeIndexer
             if (mOpen.Success) proto.StorageStateDoorOpen = mOpen.Groups[1].Value;
             var mClosed = Regex.Match(esvBlock, @"stateDoorClosed:\s*([^\s#]+)");
             if (mClosed.Success) proto.StorageStateDoorClosed = mClosed.Groups[1].Value;
+        }
+
+        // IconSmooth (сглаживание иконок по соседям, режим Corners) — как EntityStorageVisuals,
+        // вычленяем подблок компонента по отступам, чтобы не зацепить чужие поля key:/base:.
+        // Пример реального прототипа (столы):
+        //   - type: IconSmooth
+        //     key: state
+        //     base: state_
+        var iconSmoothBlock = ExtractComponentBlock(block, "IconSmooth");
+        if (!string.IsNullOrWhiteSpace(iconSmoothBlock))
+        {
+            var mKey = Regex.Match(iconSmoothBlock, @"(?m)^\s*key:\s*([^\s#]+)");
+            var mBase = Regex.Match(iconSmoothBlock, @"(?m)^\s*base:\s*([^\s#]+)");
+            var mEnabled = Regex.Match(iconSmoothBlock, @"(?m)^\s*enabled:\s*(true|false)", RegexOptions.IgnoreCase);
+
+            var settings = new IconSmoothSettings();
+            if (mKey.Success) settings.Key = mKey.Groups[1].Value;
+            if (mBase.Success) settings.Base = mBase.Groups[1].Value; // сохраняем как есть (напр. "state_") — итоговый стейт = Base + индекс
+            if (mEnabled.Success) settings.Enabled = !mEnabled.Groups[1].Value.Equals("false", StringComparison.OrdinalIgnoreCase);
+
+            // additionalKeys — список строк под полем: "additionalKeys:\n  - A\n  - B"
+            // ИЛИ однострочный массив: "additionalKeys: [A, B]"
+            var addInline = Regex.Match(iconSmoothBlock, @"additionalKeys:\s*\[([^\]]*)\]");
+            if (addInline.Success)
+            {
+                foreach (var p in addInline.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    if (!string.IsNullOrEmpty(p)) settings.AdditionalKeys.Add(p);
+            }
+            else
+            {
+                var addSection = Regex.Match(iconSmoothBlock, @"additionalKeys:\s*\r?\n((?:\s+-\s+[^\s#]+\r?\n?)*)");
+                if (addSection.Success)
+                {
+                    foreach (Match m in Regex.Matches(addSection.Groups[1].Value, @"-\s+([^\s#]+)"))
+                        if (!string.IsNullOrEmpty(m.Groups[1].Value)) settings.AdditionalKeys.Add(m.Groups[1].Value);
+                }
+            }
+
+            // Компонент присутствует в прототипе даже без заданных key/base — тогда он
+            // наследуется от родителя/играет роль просто "маркера". Сохраняем настройки
+            // (даже если поля пустые), чтобы GetIconSmoothInfo знал о наличии компонента.
+            proto.IconSmooth = settings;
         }
 
         return proto;
@@ -1214,6 +1256,102 @@ public class PrototypeIndexer
     public float? GetMaxSupply(string protoId)
     {
         return FindMaxSupplyRecursive(protoId, 0);
+    }
+
+    /// <summary>
+    /// Абсолютный путь к RSI-папке прототипа (каталог, где лежат meta.json и png-кадры,
+    /// напр. ".../Textures/Structures/Furniture/Tables/wood.rsi"). Резолвится по цепочке
+    /// parent: через FindPathRecursive (как GetFullTexturePath). Возвращает null, если
+    /// пути нет или папки не существует/не является .rsi-каталогом.
+    /// </summary>
+    public string? GetRsiDirectory(string id)
+    {
+        if (string.IsNullOrEmpty(_rootPath)) return null;
+        if (FindPrototype(id) == null) return null;
+
+        string? path = FindPathRecursive(id, 0);
+        if (string.IsNullOrEmpty(path)) return null;
+
+        path = path.Replace("/", "\\").TrimStart('\\');
+        if (path.StartsWith("Textures\\", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(9);
+
+        string fullPath = Path.Combine(_rootPath, "Resources", "Textures", path);
+        if (!path.EndsWith(".rsi", StringComparison.OrdinalIgnoreCase))
+            fullPath += ".rsi";
+
+        return Directory.Exists(fullPath) ? fullPath : null;
+    }
+
+    /// <summary>
+    /// Абсолютный путь к PNG-файлу стейта сглаживания "{base}{n}.png" (например
+    /// "state_3.png") в RSI-каталоге прототипа. path — уже разрешённый RSI-каталог
+    /// (из GetRsiDirectory), чтобы избежать повторного поиска пути. Возвращает путь
+    /// только если файл реально существует.
+    /// </summary>
+    public string? GetIconSmoothStatePath(string rsiDirectory, string baseName, int state)
+    {
+        if (string.IsNullOrEmpty(rsiDirectory)) return null;
+        var p = Path.Combine(rsiDirectory, $"{baseName}{state}.png");
+        return File.Exists(p) ? p : null;
+    }
+
+    /// <summary>
+    /// Настройки IconSmooth (сглаживание иконок) для прототипа с учётом наследования.
+    /// Аналогично FindDrawDepthRecursive/FindOffsetRecursive: ищем ближайшего из предков
+    /// (включая сам прототип), у которого ЗАДАН компонент IconSmooth (proto.IconSmooth !=
+    /// null), и возвращаем ЕГО целиком. Если у конкретного прототипа нет своего компонента,
+    /// но есть у родителя — наследуется компонент родителя (так столы Table* наследуют
+    /// key: state / base: state_ от TableBase).
+    /// Возвращает null, если ни у самого прототипа, ни у одного из предков компонента нет.
+    /// </summary>
+    public IconSmoothSettings? GetIconSmoothInfo(string id)
+    {
+        // Ищем по цепочке parent: ближайший компонент IconSmooth. В реальных прототипах
+        // конкретный стол задаёт свой key (напр. "woodtable") и может НЕ задавать base:
+        // (либо base задаёт родитель TableBase: "state_", либо он вообще не задан).
+        // Поэтому НЕ возвращаем первый найденный as-is, а сливаем: берём ближайший
+        // компонент как основу, недостающие поля (base, additionalKeys) добираем из предков.
+        // См. таблицы в Goob: TableWood IconSmooth={key:woodtable, base:null},
+        // TableBase IconSmooth={key:state, base:state_} — итог для TableWood должен быть
+        // {key:woodtable, base:state_}.
+        var chain = new List<(string id, IconSmoothSettings? s)>();
+        var visited = new HashSet<string>();
+        var stack = new List<string> { id };
+        while (stack.Count > 0)
+        {
+            var cur = stack[^1];
+            stack.RemoveAt(stack.Count - 1);
+            if (!visited.Add(cur)) continue;
+
+            var p = FindPrototype(cur);
+            if (p != null)
+            {
+                chain.Add((cur, p.IconSmooth));
+                foreach (var par in p.Parents) stack.Add(par);
+            }
+        }
+
+        if (chain.Count == 0) return null;
+        IconSmoothSettings? result = null;
+        // Сначала ищем первый ненулевой компонент по цепочке (ближайший к прототипу)
+        int firstIdx = chain.FindIndex(c => c.s != null);
+        if (firstIdx < 0) return null;
+        result = chain[firstIdx].s ?? new IconSmoothSettings();
+
+        // Затем идём от первого найденного ДАЛЬШЕ по цепочке (предки) и добираем недостающее
+        for (int i = firstIdx + 1; i < chain.Count; i++)
+        {
+            var pa = chain[i].s;
+            if (pa == null) continue;
+            if (string.IsNullOrEmpty(result.Base) && !string.IsNullOrEmpty(pa.Base))
+                result.Base = pa.Base;
+            if (string.IsNullOrEmpty(result.Key) && !string.IsNullOrEmpty(pa.Key))
+                result.Key = pa.Key;
+            if (result.AdditionalKeys.Count == 0 && pa.AdditionalKeys.Count > 0)
+                result.AdditionalKeys = pa.AdditionalKeys;
+        }
+        return result;
     }
     public string? GetFullTexturePath(string id, string? stateOverride = null)
     {

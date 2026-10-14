@@ -239,3 +239,8 @@ C:\Users\Администратор\AppData\Local\Temp\MapperIceBuildCheck7\Mapp
 C:\Users\Администратор\AppData\Local\Temp\MapperIceBuildCheck7\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\MapperIceBuildCheck7\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\MapperIceBuildCheck7\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\build_check\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\build_check\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\build_check\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\build_check\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\build_check\MapperIce.pdb

@@ -1,0 +1,7 @@
+C:\Users\Администратор\AppData\Local\Temp\publish_check\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\publish_check\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\publish_check\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\publish_check\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\publish_check\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\publish_check\Newtonsoft.Json.dll
+C:\Users\Администратор\AppData\Local\Temp\publish_check\YamlDotNet.dll
