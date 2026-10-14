@@ -43,6 +43,7 @@ public partial class MainForm : Form
     private Bitmap? _lastFrame;
     private bool _reuseLastFrame = false;
     private Panel _toolPanel = null!;
+    private Panel _repoPanel = null!;
     private ComboBox _roomTypeCombo = null!;
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
@@ -51,7 +52,7 @@ public partial class MainForm : Form
     // или последний путь «Сохранить как». Используется Ctrl+S для быстрого
     // сохранения в тот же файл. null — файл ещё ни разу не открывался/не сохранялся.
     private string? _currentProjectPath;
-private ComboBox _doorToolCombo = null!;
+    private ComboBox _doorToolCombo = null!;
     private ComboBox _windowToolCombo = null!;
     // Ключ — подпись пункта в списке, значение — инструмент (как _utilToolMap)
     private readonly Dictionary<string, ToolManager.Tool> _doorToolMap = new()
@@ -85,7 +86,7 @@ private ComboBox _doorToolCombo = null!;
     // напр. "🪟 Reinforced") — грузится синхронно в UpdateWindowCombo,
     // как и остальные комбо-иконки, чтобы не зависеть от ленивой подгрузки
     private readonly Dictionary<string, Image?> _windowIconCache = new();
-        // Готовые иконки для _wireTypeCombo — CableHV, CableMV, CableApcExtension
+    // Готовые иконки для _wireTypeCombo — CableHV, CableMV, CableApcExtension
     private Image? _wireIconHV;
     private Image? _wireIconMV;
     private Image? _wireIconLV;
@@ -214,6 +215,71 @@ private ComboBox _doorToolCombo = null!;
     private Form? _networkConfiguratorForm;
     // Режим выбора объекта на канвасе (кнопка «Выделить» в конфигураторе сетей)
     private bool _networkPickMode = false;
+    // ===== Настройки внешнего вида =====
+    private bool _darkTheme = false;
+    // Цвета фона/сетки рендера раздельно для светлой и тёмной темы. Активные
+    // (_renderBackground/_gridColor) подменяются на набор текущей темы при переключении.
+    private Color _renderBgLight = Color.FromArgb(245, 245, 245);
+    private Color _renderBgDark = Color.FromArgb(30, 30, 33);
+    private Color _gridColorLight = Color.FromArgb(180, 200, 200, 200);
+    private Color _gridColorDark = Color.FromArgb(150, 150, 150, 155);
+    private Color _renderBackground = Color.White;                 // активный фон рендера
+    private Form? _settingsForm;
+    // Окна, которым уже применена текущая тема — чтобы не перекрашивать повторно
+    // и при этом автоматически темизировать диалоги, открытые ПОСЛЕ переключения.
+    private readonly HashSet<Form> _themedForms = new();
+    // Цвет линий сетки на канвасе (может задаваться пользователем) 
+    private Color _gridColor = Color.FromArgb(180, 200, 200, 200);
+    // === Регулировка ширины боковых панелей ===
+    // true — ширины панелей зафиксированы (по умолчанию); false — их можно менять
+    // перетаскиванием за правый/левый край. Флажок и ширины кешируются между запусками.
+    private bool _panelsLocked = true;
+    private const int _repoPanelDefaultWidth = 240;
+    private const int _toolPanelDefaultWidth = 200;
+    private const int _panelMinWidth = 270; // минимальная ширина левой и правой панели
+    private const int _toolPanelMinWidth = 200; // минимальная ширина правой панели (инструменты)
+    private int _repoPanelCurrentWidth;
+    private int _toolPanelCurrentWidth;
+    private bool _resizingLeftPanel = false;  // тащим правый край левой (репозиторий) панели
+    private bool _resizingRightPanel = false; // тащим левый край правой (инструменты) панели
+    private const int _resizeHandleWidth = 4;
+    private Panel? _resizeHandleLeft;   // узкая полоска на правом краю левой панели
+    private Panel? _resizeHandleRight;  // узкая полоска на левом краю правой панели
+    private int _resizeStartX;
+    private int _resizeStartLeftWidth;
+    private int _resizeStartRightWidth;
+
+
+    private int _resizeNewWidth;                 // ширина, которая будет применена при отпускании мыши
+    private ResizeGhostForm? _resizeGhost;       // полоска-призрак, пока идёт перетаскивание
+
+    // Безрамочное окно без активации: двигается силами ОС и не вызывает перерисовку холста
+    private sealed class ResizeGhostForm : Form
+    {
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+        public ResizeGhostForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            BackColor = Color.DodgerBlue;
+            Opacity = 0.5;
+        }
+
+        protected override bool ShowWithoutActivation => true;
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+                return cp;
+            }
+        }
+    }
     // Позиции клеток (тайлов), участвующих в связях выбранного устройства —
     // для подсветки линий сети на канвасе
     private readonly HashSet<(int x, int y)> _networkHighlightPositions = new();
@@ -305,6 +371,9 @@ private ComboBox _doorToolCombo = null!;
         _tileGrid = new TileGrid();
         _renderer = new Renderer(Width, Height, _indexer, _drawDepthManager, _tileBuilder, _pipeBuilder, _wireBuilder, _wireTypeManager);
 
+        LoadPanelSettings();
+        LoadAppearanceSettings();
+
         CreateRepositoryPanel();
         CreateToolPanel();
         CreateLinkedEntitiesPanel();
@@ -312,6 +381,11 @@ private ComboBox _doorToolCombo = null!;
         CreateCanvas();
         CreateMagnifierPanel();
         CreateMenu();
+        CreateResizeHandles();
+
+        // Авто-темизация окон: любой диалог, открытый после переключения темы,
+        // подхватит её из Application.Idle (уже оформленные окна пропускаются).
+        Application.Idle += OnApplicationIdle;
 
         _toolManager.ToolChanged += OnToolChanged;
 
@@ -340,7 +414,7 @@ private ComboBox _doorToolCombo = null!;
         UpdateRepoSelector();
         LoadDoorComboIcons();
         LoadWireTypeIcons();
-        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };        UpdateBuffer();
+        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke }; UpdateBuffer();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -356,6 +430,10 @@ private ComboBox _doorToolCombo = null!;
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        // Применяем сохранённую тему в момент показа окна (после создания всех панелей):
+        // ApplyTheme подменяет цвета фона/сетки на набор нужной темы и перекрашивает окна.
+        ApplyTheme();
+        Render();
         // Приветственное уведомление при запуске — плавно появляется и исчезает
         ToastNotification.Show(this, "Добро пожаловать в MapperIce!", "MapperIce", 4000);
     }
@@ -427,6 +505,11 @@ private ComboBox _doorToolCombo = null!;
 
         UpdateTileGrid();
         Render();
+
+        // Undo/redo пересоздала сущности грида — пере-привязать выбранные сущности
+        // в окне «Конфигуратор сетей», чтобы оранжевая подсветка «привязок» не пропала.
+        if (_networkConfiguratorForm is NetworkConfiguratorDialog netDlg && !netDlg.IsDisposed)
+            netDlg.ResyncAfterUndo();
     }
 
 
@@ -598,7 +681,7 @@ private ComboBox _doorToolCombo = null!;
             e.Effect = DragDropEffects.Copy;
     }
 
-    
+
     // === МЕНЮ ===
     private void CreateMenu()
     {
@@ -614,6 +697,9 @@ private ComboBox _doorToolCombo = null!;
         fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
         menu.Items.Add(fileMenu);
 
+        var settingsBtn = new ToolStripMenuItem("⚙ Настройки", null, (s, e) => ShowSettingsMenu());
+        menu.Items.Add(settingsBtn);
+
         var resetBtn = new ToolStripMenuItem("↺ Сбросить вид", null, (s, e) =>
         {
             _scale = 1.0f;
@@ -626,6 +712,505 @@ private ComboBox _doorToolCombo = null!;
         MainMenuStrip = menu;
     }
 
+
+    // === НАСТРОЙКИ ===
+    // Окно настроек (немодальное — не блокирует основное окно): выбор цвета фона
+    // рендера, цвета сетки, чекбокс тёмной темы и фиксации ширины панелей.
+    private void ShowSettingsMenu()
+    {
+        // Если окно уже открыто — просто вывести его на передний план
+        if (_settingsForm != null && !_settingsForm.IsDisposed)
+        {
+            _settingsForm.BringToFront();
+            _settingsForm.Focus();
+            return;
+        }
+
+        var dlg = new Form
+        {
+            Text = "Настройки",
+            StartPosition = FormStartPosition.CenterParent,
+            Font = new Font("Arial", 9),
+            Size = new Size(400, 300),
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            ShowIcon = false
+        };
+        dlg.Owner = this;
+        _settingsForm = dlg;
+        AppTheme.ApplyToForm(dlg);
+
+        // --- Цвет фона рендера ---
+        var bgLabel = new Label
+        {
+            Text = "Цвет фона рендера:",
+            Location = new Point(20, 20),
+            Size = new Size(160, 20),
+            BackColor = Color.Transparent
+        };
+        dlg.Controls.Add(bgLabel);
+
+        var bgColorPreview = new Panel
+        {
+            Location = new Point(190, 18),
+            Size = new Size(24, 24),
+            BackColor = _renderBackground,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        dlg.Controls.Add(bgColorPreview);
+
+        var bgColorBtn = new Button
+        {
+            Text = "Выбрать...",
+            Location = new Point(220, 16),
+            Size = new Size(120, 28)
+        };
+        bgColorBtn.Click += (s, e) =>
+        {
+            using var picker = new ColorDialog
+            {
+                Color = _renderBackground,
+                FullOpen = true
+            };
+            if (picker.ShowDialog(dlg) == DialogResult.OK)
+            {
+                SetRenderBackground(picker.Color);
+                bgColorPreview.BackColor = _renderBackground;
+                SaveAppearanceSettings();
+                Render();
+            }
+        };
+        dlg.Controls.Add(bgColorBtn);
+
+        // --- Цвет сетки ---
+        var gridLabel = new Label
+        {
+            Text = "Цвет сетки:",
+            Location = new Point(20, 60),
+            Size = new Size(160, 20),
+            BackColor = Color.Transparent
+        };
+        dlg.Controls.Add(gridLabel);
+
+        var gridColorPreview = new Panel
+        {
+            Location = new Point(190, 58),
+            Size = new Size(24, 24),
+            BackColor = _gridColor,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        dlg.Controls.Add(gridColorPreview);
+
+        var gridColorBtn = new Button
+        {
+            Text = "Выбрать...",
+            Location = new Point(220, 56),
+            Size = new Size(120, 28)
+        };
+        gridColorBtn.Click += (s, e) =>
+        {
+            using var picker = new ColorDialog
+            {
+                Color = _gridColor,
+                FullOpen = true
+            };
+            if (picker.ShowDialog(dlg) == DialogResult.OK)
+            {
+                SetGridColor(picker.Color);
+                gridColorPreview.BackColor = _gridColor;
+                SaveAppearanceSettings();
+                Render();
+            }
+        };
+        dlg.Controls.Add(gridColorBtn);
+
+        // --- Тёмная тема (меняет не только сетку: весь интерфейс во всех окнах) ---
+        var darkTheme = new CheckBox
+        {
+            Text = "Тёмная тема",
+            Location = new Point(20, 100),
+            Size = new Size(320, 24),
+            Checked = _darkTheme,
+            BackColor = Color.Transparent
+        };
+        darkTheme.CheckedChanged += (s, e) =>
+        {
+            _darkTheme = darkTheme.Checked;
+            // ApplyTheme подменяет цвета фона/сетки на набор новой темы;
+            // превью в этом окне показываем уже новые значения
+            ApplyTheme();
+            bgColorPreview.BackColor = _renderBackground;
+            gridColorPreview.BackColor = _gridColor;
+            SaveAppearanceSettings();
+            Render();
+        };
+        dlg.Controls.Add(darkTheme);
+
+        // --- Фиксировать ширину панелей ---
+        var lockPanels = new CheckBox
+        {
+            Text = "Фиксировать ширину панелей",
+            Location = new Point(20, 130),
+            Size = new Size(320, 24),
+            Checked = _panelsLocked,
+            BackColor = Color.Transparent
+        };
+        lockPanels.CheckedChanged += (s, e) =>
+        {
+            _panelsLocked = lockPanels.Checked;
+            SavePanelSettings();
+            RefreshResizeHandles();
+        };
+        dlg.Controls.Add(lockPanels);
+
+        var closeBtn = new Button
+        {
+            Text = "Закрыть",
+            DialogResult = DialogResult.OK,
+            Location = new Point(dlg.ClientSize.Width - 110, dlg.ClientSize.Height - 55),
+            Size = new Size(90, 28)
+        };
+        dlg.Controls.Add(closeBtn);
+
+        // Немодальный показ: основное окно продолжает работать, пока открыты настройки
+        dlg.FormClosed += (s, e) => _settingsForm = null;
+        dlg.Show(this);
+    }
+
+
+    // === ТЁМНАЯ ТЕМА ===
+    // Переключает тему приложения и перекрашивает главное окно + все открытые
+    // дочерние окна. Цвета берутся из AppTheme (в тёмной теме — серовато-белый текст,
+    // тёмные поля всех интерактивных контролов).
+    private void ApplyTheme()
+    {
+        AppTheme.Dark = _darkTheme;
+
+        // Подменяем цвета фона и сетки рендера на набор текущей темы
+        ApplyActiveRenderColors();
+
+        // Тема сменилась — перекрашиваем все открытые окна заново
+        _themedForms.Clear();
+        ThemeOpenForms();
+
+        Invalidate();
+    }
+
+    // Подставляет цвета фона/сетки активной темы в рандерер и канвас.
+    private void ApplyActiveRenderColors()
+    {
+        _renderBackground = _darkTheme ? _renderBgDark : _renderBgLight;
+        _gridColor = _darkTheme ? _gridColorDark : _gridColorLight;
+        _renderer.BackgroundColor = _renderBackground;
+        _renderer.GridColor = _gridColor;
+        if (_canvas != null) _canvas.BackColor = _renderBackground;
+    }
+
+    // Меняет цвет фона рендера для ТЕКУЩЕЙ темы (светлой или тёмной — по флагу)
+    // и сразу применяет его.
+    private void SetRenderBackground(Color color)
+    {
+        if (_darkTheme) _renderBgDark = color; else _renderBgLight = color;
+        _renderBackground = color;
+        _renderer.BackgroundColor = color;
+        if (_canvas != null) _canvas.BackColor = color;
+    }
+
+    // Меняет цвет сетки для ТЕКУЩЕЙ темы и сразу применяет его.
+    private void SetGridColor(Color color)
+    {
+        if (_darkTheme) _gridColorDark = color; else _gridColorLight = color;
+        _gridColor = color;
+        _renderer.GridColor = color;
+    }
+
+    // Темизирует все открытые окна приложения (главное, диалоги — модальные и нет).
+    // Вызывается постоянно из Application.Idle, поэтому уже оформленные окна
+    // пропускаются, а новые (открытые после переключения темы) подхватываются
+    // автоматически. Заголовки окон красятся отдельно — см. AppTheme.ApplyTitleBar.
+    private void ThemeOpenForms()
+    {
+        // Убираем ссылки на уже закрытые окна, чтобы не держать их в памяти
+        _themedForms.RemoveWhere(f => f.IsDisposed);
+
+        foreach (Form f in Application.OpenForms)
+        {
+            if (f == null || f.IsDisposed) continue;
+            if (_themedForms.Contains(f)) continue;
+
+            AppTheme.ApplyToForm(f);
+            _themedForms.Add(f);
+        }
+    }
+
+    private void OnApplicationIdle(object? sender, EventArgs e)
+    {
+        ThemeOpenForms();
+    }
+
+
+    // === НАСТРОЙКИ ШИРИНЫ ПАНЕЛЕЙ ===
+    [System.Serializable]
+    private class PanelSettings
+    {
+        public bool PanelsLocked { get; set; } = true;
+        public int RepoPanelWidth { get; set; } = 240;
+        public int ToolPanelWidth { get; set; } = 200;
+    }
+
+    private static string GetPanelSettingsPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MapperIce");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "panel_settings.json");
+    }
+
+    // Загружает закешированные из прошлого запуска настройки ширины панелей.
+    private void LoadPanelSettings()
+    {
+        try
+        {
+            var path = GetPanelSettingsPath();
+            if (!File.Exists(path)) return;
+            var json = File.ReadAllText(path);
+            var s = JsonSerializer.Deserialize<PanelSettings>(json);
+            if (s == null) return;
+            _panelsLocked = s.PanelsLocked;
+            _repoPanelCurrentWidth = ClampPanelWidth(s.RepoPanelWidth, _panelMinWidth);
+            _toolPanelCurrentWidth = ClampPanelWidth(s.ToolPanelWidth, _toolPanelMinWidth);
+        }
+        catch
+        {
+            // Не критично: повреждённый файл настроек — берём значения по умолчанию
+        }
+    }
+
+    // Пишет настройки ширины панелей для сохранения между запусками (атомарно).
+    private void SavePanelSettings()
+    {
+        try
+        {
+            var s = new PanelSettings
+            {
+                PanelsLocked = _panelsLocked,
+                RepoPanelWidth = _repoPanel.Width,
+                ToolPanelWidth = _toolPanel.Width
+            };
+            var path = GetPanelSettingsPath();
+            var json = JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true });
+            var tmpPath = path + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch
+        {
+            // Игнорируем ошибки записи — настройки не критичны
+        }
+    }
+
+    // === Персистентность настроек внешнего вида (тема/цвета) ===
+    [System.Serializable]
+    private class AppearanceSettings
+    {
+        public bool DarkTheme { get; set; }
+        // Цвета фона/сетки рендера для СВЕТЛОЙ темы
+        public int RenderBgArgb { get; set; } = Color.White.ToArgb();
+        public int GridColorArgb { get; set; } = Color.FromArgb(180, 200, 200, 200).ToArgb();
+        // Цвета фона/сетки рендера для ТЁМНОЙ темы
+        public int RenderBgDarkArgb { get; set; } = Color.FromArgb(30, 30, 33).ToArgb();
+        public int GridColorDarkArgb { get; set; } = Color.FromArgb(150, 150, 150, 155).ToArgb();
+    }
+
+    private static string GetAppearanceSettingsPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MapperIce");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "appearance_settings.json");
+    }
+
+    private void LoadAppearanceSettings()
+    {
+        try
+        {
+            var path = GetAppearanceSettingsPath();
+            if (!File.Exists(path)) return;
+            var json = File.ReadAllText(path);
+            var s = JsonSerializer.Deserialize<AppearanceSettings>(json);
+            if (s == null) return;
+            _darkTheme = s.DarkTheme;
+            _renderBgLight = Color.FromArgb(s.RenderBgArgb);
+            _gridColorLight = Color.FromArgb(s.GridColorArgb);
+            _renderBgDark = Color.FromArgb(s.RenderBgDarkArgb);
+            _gridColorDark = Color.FromArgb(s.GridColorDarkArgb);
+        }
+        catch
+        {
+            // Не критично — берём значения по умолчанию
+        }
+    }
+
+    private void SaveAppearanceSettings()
+    {
+        try
+        {
+            var s = new AppearanceSettings
+            {
+                DarkTheme = _darkTheme,
+                RenderBgArgb = _renderBgLight.ToArgb(),
+                GridColorArgb = _gridColorLight.ToArgb(),
+                RenderBgDarkArgb = _renderBgDark.ToArgb(),
+                GridColorDarkArgb = _gridColorDark.ToArgb()
+            };
+            var path = GetAppearanceSettingsPath();
+            var json = JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true });
+            var tmpPath = path + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch
+        {
+            // Игнорируем ошибки записи
+        }
+    }
+
+    private static int ClampPanelWidth(int value, int min)
+    {
+        if (value < min) return min;
+        return value;
+    }
+
+    // Создаёт тонкие невидимые полоски-захваты на границах боковых панелей,
+    // которыми можно перетаскивать их ширину, пока фиксация выключена.
+    private void CreateResizeHandles()
+    {
+        // Захват левой панели: внутри неё, у правого края, левее серой линии (1px)
+        _resizeHandleLeft = new Panel
+        {
+            Bounds = new Rectangle(_repoPanel.Width - _resizeHandleWidth - 1, 0,
+                _resizeHandleWidth, _repoPanel.Height),
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right,
+            BackColor = _repoPanel.BackColor,
+            TabStop = false,
+            Cursor = Cursors.SizeWE
+        };
+        _resizeHandleLeft.MouseDown += ResizeHandleLeft_MouseDown;
+        _resizeHandleLeft.MouseMove += ResizeHandleLeft_MouseMove;
+        _resizeHandleLeft.MouseUp += ResizeHandleLeft_MouseUp;
+        _repoPanel.Controls.Add(_resizeHandleLeft);
+
+        // Захват правой панели: внутри неё, у левого края, правее серой линии (1px)
+        _resizeHandleRight = new Panel
+        {
+            Bounds = new Rectangle(1, 0, _resizeHandleWidth, _toolPanel.Height),
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+            BackColor = _toolPanel.BackColor,
+            TabStop = false,
+            Cursor = Cursors.SizeWE
+        };
+        _resizeHandleRight.MouseDown += ResizeHandleRight_MouseDown;
+        _resizeHandleRight.MouseMove += ResizeHandleRight_MouseMove;
+        _resizeHandleRight.MouseUp += ResizeHandleRight_MouseUp;
+        _toolPanel.Controls.Add(_resizeHandleRight);
+
+        RefreshResizeHandles();
+    }
+    // Позиционирует полоски-захваты на краях панелей и показывает их только
+    // когда ширина панелей не зафиксирована (кнопка в меню снята).
+    private void RefreshResizeHandles()
+    {
+        if (_resizeHandleLeft == null || _resizeHandleRight == null) return;
+
+        bool show = !_panelsLocked;
+        _resizeHandleLeft.Visible = show;
+        _resizeHandleRight.Visible = show;
+
+        if (show)
+        {
+            _resizeHandleLeft.BringToFront();
+            _resizeHandleRight.BringToFront();
+        }
+    }
+
+
+    private void ResizeHandleLeft_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (_panelsLocked) return;
+        _resizingLeftPanel = true;
+        _resizeStartX = Control.MousePosition.X;
+        _resizeStartLeftWidth = _repoPanel.Width;
+        _resizeNewWidth = _repoPanel.Width;
+    }
+
+    private void ResizeHandleLeft_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (!_resizingLeftPanel || _panelsLocked) return;
+        int delta = Control.MousePosition.X - _resizeStartX;
+        _resizeNewWidth = Math.Max(_panelMinWidth, Math.Min(600, _resizeStartLeftWidth + delta));
+        UpdateResizeGhost(_repoPanel, _repoPanel.PointToScreen(new Point(_resizeNewWidth, 0)).X);
+    }
+
+    private void ResizeHandleLeft_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (!_resizingLeftPanel) return;
+        _resizingLeftPanel = false;
+        CloseResizeGhost();
+        _repoPanel.Width = _resizeNewWidth;
+        RefreshResizeHandles();
+        _repoPanelCurrentWidth = _repoPanel.Width;
+        SavePanelSettings();
+    }
+
+    private void ResizeHandleRight_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (_panelsLocked) return;
+        _resizingRightPanel = true;
+        // экранные координаты: сам захват теперь сдвигается вместе с краем панели
+        _resizeStartX = Control.MousePosition.X;
+                _resizeStartRightWidth = _toolPanel.Width;
+        _resizeNewWidth = _toolPanel.Width;
+    }
+
+    private void ResizeHandleRight_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (!_resizingRightPanel || _panelsLocked) return;
+        int delta = _resizeStartX - Control.MousePosition.X;
+        _resizeNewWidth = Math.Max(_panelMinWidth, Math.Min(600, _resizeStartRightWidth + delta));
+        UpdateResizeGhost(_toolPanel, _toolPanel.PointToScreen(new Point(_toolPanel.Width - _resizeNewWidth, 0)).X);
+    
+    }
+
+    private void ResizeHandleRight_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (!_resizingRightPanel) return;
+        _resizingRightPanel = false;
+        CloseResizeGhost();
+        _toolPanel.Width = _resizeNewWidth;
+        _toolPanelCurrentWidth = _toolPanel.Width;
+        SavePanelSettings();    
+    }
+
+    // Показывает/двигает полоску-призрак на заданной экранной координате X по высоте панели
+    private void UpdateResizeGhost(Control panel, int screenX)
+    {
+        var bounds = new Rectangle(screenX - 1, panel.PointToScreen(Point.Empty).Y, 3, panel.Height);
+        if (_resizeGhost == null)
+        {
+            _resizeGhost = new ResizeGhostForm { Bounds = bounds };
+            _resizeGhost.Show(this);
+        }
+        else
+        {
+            _resizeGhost.Bounds = bounds;
+        }
+    }
+
+    private void CloseResizeGhost()
+    {
+        _resizeGhost?.Close();
+        _resizeGhost = null;
+    }
 
     // === ОТРИСОВКА ===
     private void OnToolChanged(ToolManager.Tool tool)
@@ -806,7 +1391,7 @@ private ComboBox _doorToolCombo = null!;
             case ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc:
                 if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = Color.LightBlue;
                 break;
-        
+
         }
 
         Cursor = tool switch
@@ -863,6 +1448,7 @@ private ComboBox _doorToolCombo = null!;
     {
         _renderer.Resize(_canvas.Width, _canvas.Height);
         RepositionMagnifierPanel();
+        RefreshResizeHandles();
         Render();
     }
 
@@ -892,6 +1478,8 @@ private ComboBox _doorToolCombo = null!;
         _renderer.ShowWires = _showWires;
         _renderer.ShowNetworkLinks = _showNetworkLinks;
         _renderer.NetworkHighlightPositions = _networkHighlightPositions;
+        _renderer.BackgroundColor = _renderBackground;
+        _renderer.GridColor = _gridColor;
 
         if (_map.ActiveGrid != null)
         {

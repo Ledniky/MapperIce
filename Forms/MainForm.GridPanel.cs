@@ -180,7 +180,7 @@ public partial class MainForm
             Location = new Point(x, y),
             Width = 40,
             Height = 40,
-            BackColor = initialState ? Color.LightGreen : Color.LightGray,
+            BackColor = initialState ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 14),
             Anchor = AnchorStyles.Top
@@ -191,7 +191,7 @@ public partial class MainForm
         btn.Click += (s, e) =>
         {
             currentState = !currentState;
-            btn.BackColor = currentState ? Color.LightGreen : Color.LightGray;
+            btn.BackColor = currentState ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack;
             btn.Text = currentState ? onIcon : offIcon;
             onToggle(currentState);
         };

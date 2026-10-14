@@ -20,7 +20,7 @@ public partial class MainForm
         _toolPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 200,
+            Width = _toolPanelCurrentWidth,
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.None,
             Padding = new Padding(0)
@@ -35,10 +35,10 @@ public partial class MainForm
         };
         _toolPanel.Controls.Add(leftLine);
 
-        int leftMargin = 2;
+                int leftMargin = 6; // больше ширины полоски-захвата (1 + _resizeHandleWidth), чтобы она не перекрывала кнопки
         int rightMargin = 2;
-        int y = leftMargin;
-        int contentWidth = 200 - leftMargin - rightMargin;
+        int y = 2;
+        int contentWidth = _toolPanelCurrentWidth - leftMargin - rightMargin;
 
         var title = new Label
         {
@@ -88,12 +88,12 @@ public partial class MainForm
 _roomTypeCombo.DrawItem += (s, e) =>
 {
     if (e.Index < 0) return;
-    e.DrawBackground();
+    bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+    AppTheme.DrawItemBackground(e.Graphics, e.Bounds, selected);
 
     if (_roomTypeCombo.Items[e.Index] is RoomType rt)
     {
-        bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-        var textColor = selected ? SystemColors.HighlightText : NormalizeForText(rt.LineColor);
+        var textColor = selected ? AppTheme.HighlightFore : NormalizeForText(rt.LineColor);
         using (var textBrush = new SolidBrush(textColor))
         {
             var font = e.Font ?? _roomTypeCombo.Font;
@@ -170,7 +170,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Width = contentWidth - 50,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
+            BackColor = AppTheme.ToggleOnBack,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Arial", 12)
         };
@@ -187,7 +187,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Width = 40,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
+            BackColor = AppTheme.ToggleOnBack,
             Font = new Font("Arial", 14),
             TextAlign = ContentAlignment.MiddleCenter
         };
@@ -288,7 +288,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Width = contentWidth - 4,
             Height = 40,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
+            BackColor = AppTheme.ToggleOnBack,
             Font = new Font("Arial", 10),
             TextAlign = ContentAlignment.MiddleCenter
         };
@@ -349,7 +349,8 @@ _roomTypeCombo.DrawItem += (s, e) =>
         };
         _wireTypeCombo.DrawItem += (s, e) =>
         {
-            e.DrawBackground();
+            AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+                (e.State & DrawItemState.Selected) == DrawItemState.Selected);
             if (e.Index >= 0)
             {
                 string text = _wireTypeCombo.Items[e.Index].ToString() ?? "";
@@ -422,7 +423,8 @@ _roomTypeCombo.DrawItem += (s, e) =>
             DropDownStyle = ComboBoxStyle.DropDownList,
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 28,
-            Font = new Font("Arial", 10)
+            Font = new Font("Arial", 10),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         var powerJunctionTip = new ToolTip();
         powerJunctionTip.SetToolTip(_powerJunctionCombo, "Электротехнический переходник (ЛКП/Подстанция)");
@@ -437,7 +439,8 @@ _roomTypeCombo.DrawItem += (s, e) =>
         };
         _powerJunctionCombo.DrawItem += (s, e) =>
         {
-            e.DrawBackground();
+            AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+                (e.State & DrawItemState.Selected) == DrawItemState.Selected);
             if (e.Index >= 0)
             {
                 var item = _powerJunctionCombo.Items[e.Index] as ProtoDisplayItem;
@@ -541,7 +544,8 @@ _roomTypeCombo.DrawItem += (s, e) =>
         // зато именно благодаря OwnerDraw высота поля перестаёт зависеть от размера шрифта
         _utilToolCombo.DrawItem += (s, e) =>
         {
-            e.DrawBackground();
+            AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+                (e.State & DrawItemState.Selected) == DrawItemState.Selected);
             if (e.Index >= 0)
             {
                 string text = _utilToolCombo.Items[e.Index].ToString() ?? "";
@@ -1004,6 +1008,15 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Font = new Font("Arial", 9),
             BackColor = Color.FromArgb(230, 230, 230)
         });
+
+
+        // Все элементы правой панели (кроме докнутой серой линии) растягиваются
+        // по ширине вместе с ней; внутри строк пропорции держат их Resize-обработчики
+        foreach (Control c in _toolPanel.Controls)
+        {
+            if (c.Dock == DockStyle.None)
+                c.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        }
 
         Controls.Add(_toolPanel);
     }

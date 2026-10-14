@@ -308,7 +308,8 @@ public partial class MainForm
         };
         combo.DrawItem += (s, e) =>
         {
-            e.DrawBackground();
+            AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+                (e.State & DrawItemState.Selected) == DrawItemState.Selected);
             if (e.Index >= 0)
             {
                 string label = combo.Items[e.Index].ToString() ?? "";

@@ -66,6 +66,11 @@ public class Renderer
     private string _previewEntityProto = "";
     private string? _previewDecalColor = null; // не null только когда превью — это декаль
 
+    /// <summary>Цвет фона канваса в рендере. Задаётся из настроек, используется при очистке кадра.</summary>
+    public Color BackgroundColor { get; set; } = Color.White;
+    /// <summary>Цвет линий сетки канваса. Задаётся из настроек.</summary>
+    public Color GridColor { get; set; } = Color.FromArgb(180, 200, 200, 200);
+
     // Подсветка инструмента "Расширить комнату" при наведении — какая комната,
     // от какой клетки и в какую сторону (dx, dy) будет расширяться при клике
     private Room? _expandPreviewRoom = null;
@@ -232,7 +237,7 @@ public class Renderer
             g.SmoothingMode = SmoothingMode.None;
             g.PixelOffsetMode = PixelOffsetMode.Half;
 
-            g.Clear(Color.White);
+            g.Clear(BackgroundColor);
 
             int tileSize = (int)(Constants.TILE_SIZE * scale);
 
@@ -2804,8 +2809,10 @@ public class Renderer
 
     private void DrawGrid(Graphics g, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
-        int alpha = (int)(180 * opacity);
-        using var pen = new Pen(Color.FromArgb(alpha, 200, 200, 200), 1);
+        int alpha = (int)(GridColor.A * opacity);
+        if (alpha < 0) alpha = 0;
+        if (alpha > 255) alpha = 255;
+        using var pen = new Pen(Color.FromArgb(alpha, GridColor.R, GridColor.G, GridColor.B), 1);
 
         float offsetX = viewOffset.X - (gridOffset.X * tileSize);
         float offsetY = viewOffset.Y - (gridOffset.Y * tileSize);

@@ -424,16 +424,50 @@ public class NetworkConfiguratorDialog : Form
         _setHighlight(positions);
     }
 
+    /// <summary>
+    /// Вызывается из MainForm после undo/redo: GridSnapshot.RestoreTo пересоздала
+    /// сущности грида (новые экземпляры), поэтому выбранные ссылки указывают на
+    /// осиротевшие объекты и оранжевая подсветка «привязок» на канвасе пропадает.
+    /// Пере-резолвим выбранные пункты по прототипу/координатам в актуальные
+    /// сущности и заново применяем подсветку.
+    /// </summary>
+    public void ResyncAfterUndo()
+    {
+        foreach (EntityItem it in _txList.Items.Cast<EntityItem>())
+            it.Rebind(_grid);
+        foreach (EntityItem it in _rxList.Items.Cast<EntityItem>())
+            it.Rebind(_grid);
+
+        _selectedTx = _txList.SelectedItem is EntityItem sit ? sit.Entity : null;
+        _selectedRx = _rxList.SelectedItems.Count > 0
+            ? ((EntityItem)_rxList.SelectedItems[_rxList.SelectedItems.Count - 1]).Entity
+            : null;
+
+        ReloadLinksList();
+        UpdateHighlight();
+    }
+
     /// <summary>Обёртка для отображения сущности в списке (имя + id + координаты).</summary>
     private class EntityItem
     {
-        public MapEntity Entity { get; }
+        public MapEntity Entity { get; set; }
         private readonly PrototypeIndexer _indexer;
 
         public EntityItem(MapEntity entity, PrototypeIndexer indexer)
         {
             Entity = entity;
             _indexer = indexer;
+        }
+
+        /// <summary>После undo грид пересоздаёт сущности — находим живой экземпляр по прототипу и координатам.</summary>
+        public void Rebind(Grid grid)
+        {
+            var live = grid.Entities.OfType<MapEntity>()
+                .FirstOrDefault(e => e.Proto == Entity.Proto &&
+                    Math.Abs(e.X - Entity.X) < 0.01f &&
+                    Math.Abs(e.Y - Entity.Y) < 0.01f);
+            if (live != null)
+                Entity = live;
         }
 
         public static string LabelFor(MapEntity entity, PrototypeIndexer indexer)

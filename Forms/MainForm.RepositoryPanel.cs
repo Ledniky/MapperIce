@@ -18,12 +18,13 @@ public partial class MainForm
         var panel = new Panel
         {
             Dock = DockStyle.Left,
-            Width = 240,
+            Width = _repoPanelCurrentWidth,
             BackColor = Color.FromArgb(245, 245, 245),
             Padding = new Padding(5),
             BorderStyle = BorderStyle.None
         };
         DragDropCursorHelper.SuppressForbiddenCursor(panel);
+        _repoPanel = panel;
 
         var rightLine = new Panel
         {
@@ -172,13 +173,14 @@ listContainer.Controls.Add(_protoList);
             if (_btnPlaceProto.Enabled)
             {
                 _btnPlaceProto.Text = "➕";
-                _btnPlaceProto.BackColor = Color.FromArgb(255, 245, 200);
+                // Зелёный, как у остальных кнопок-переключателей (в тёмной теме — тёмнее)
+                _btnPlaceProto.BackColor = AppTheme.ToggleOnBack;
                 _btnPlaceProto.Font = new Font("Segoe UI", 8, FontStyle.Bold);
             }
             else
             {
                 _btnPlaceProto.Text = "🔒";
-                _btnPlaceProto.BackColor = Color.FromArgb(220, 220, 220);
+                _btnPlaceProto.BackColor = AppTheme.ToggleOffBack;
                 _btnPlaceProto.Font = new Font("Segoe UI", 8);
             }
         };
@@ -192,14 +194,14 @@ listContainer.Controls.Add(_protoList);
             Location = new Point(68, 35),
             Width = 60,
             Height = 25,
-            BackColor = _snapEntityToCenter ? Color.LightGreen : Color.White,
+            BackColor = _snapEntityToCenter ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8)
         };
         _btnSnapEntityCenter.Click += (s, e) =>
         {
             _snapEntityToCenter = !_snapEntityToCenter;
-            _btnSnapEntityCenter.BackColor = _snapEntityToCenter ? Color.LightGreen : Color.White;
+            _btnSnapEntityCenter.BackColor = _snapEntityToCenter ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack;
         };
         btnPanel.Controls.Add(_btnSnapEntityCenter);
 
@@ -230,13 +232,13 @@ listContainer.Controls.Add(_protoList);
             Location = new Point(198, 35),
             Width = 30,
             Height = 25,
-            BackColor = _snapEntityRotation ? Color.LightGreen : Color.White,
+            BackColor = _snapEntityRotation ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack,
             FlatStyle = FlatStyle.Flat
         };
         _btnEntityRotationSnap.Click += (s, e) =>
         {
             _snapEntityRotation = !_snapEntityRotation;
-            _btnEntityRotationSnap.BackColor = _snapEntityRotation ? Color.LightGreen : Color.White;
+            _btnEntityRotationSnap.BackColor = _snapEntityRotation ? AppTheme.ToggleOnBack : AppTheme.ToggleOffBack;
 
             if (_snapEntityRotation)
             {
@@ -885,7 +887,8 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
     {
         if (e.Index < 0) return;
 
-        e.DrawBackground();
+        AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+            (e.State & DrawItemState.Selected) == DrawItemState.Selected);
 
         string? id = _protoList.Items[e.Index]?.ToString();
         const int iconSize = 32;
