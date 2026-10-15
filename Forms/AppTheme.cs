@@ -1,5 +1,6 @@
 // Forms/AppTheme.cs
 using System.Drawing;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -39,10 +40,80 @@ public static class AppTheme
     public static Color MenuEdge => Dark ? Color.FromArgb(95, 95, 100) : Color.FromArgb(160, 160, 160);
     public static Color MenuSeparator => Dark ? Color.FromArgb(85, 85, 90) : Color.FromArgb(200, 200, 200);
 
-    // Кнопки-переключатели (вкл/выкл). В тёмной теме — приглушённые, тёмные,
-    // чтобы «зелёные» кнопки не слепили и не выбивались из тёмного интерфейса.
-    public static Color ToggleOnBack => Dark ? Color.FromArgb(45, 95, 55) : Color.LightGreen;
-    public static Color ToggleOffBack => Dark ? BackGroup : Color.LightGray;
+    // Кнопки: в светлой теме — плоские, белые, с чёрным текстом (такой вид у кнопок
+    // правой панели, см. MainForm.ToolPanel), в тёмной — приглушённые тёмные.
+    public static Color ButtonBack => Dark ? BackGroup : Color.White;
+
+    // Подсветка кнопки под курсором и при нажатии — та же семья оттенков, что у
+    // пунктов меню, чтобы наведение на кнопки и на меню выглядело одинаково.
+    // Читать их нужно в момент события: тогда после смены темы на кнопке не
+    // остаётся оттенков прежней палитры.
+    public static Color ButtonHoverBack => MenuHoverBack;
+    public static Color ButtonPressedBack => MenuPressedBack;
+
+    // Наведение на «опасную» кнопку (закрыть/удалить) — красный, узнаваемый в обеих темах
+    public static Color DangerHoverBack => Dark ? Color.FromArgb(150, 60, 60) : Color.FromArgb(220, 80, 80);
+    public static Color DangerHoverFore => Color.White;
+
+    // Кнопки-переключатели (вкл/выкл). «Включённое» состояние — единственный
+    // цветной акцент, который тема не перекрашивает; в тёмной теме зелёный
+    // приглушён, но достаточно ярок, чтобы кнопка читалась на тёмном фоне.
+    // Выключенный переключатель выглядит как обычная кнопка темы.
+    private static readonly Color ToggleOnLight = Color.LightGreen;
+    private static readonly Color ToggleOnDark = Color.FromArgb(34, 135, 37);
+    public static Color ToggleOnBack => Dark ? ToggleOnDark : ToggleOnLight;
+    public static Color ToggleOffBack => ButtonBack;
+
+    // Подсветка выбранного (активный инструмент, активная область и т.п.)
+    public static Color SelectedBack => Dark ? Color.FromArgb(38, 79, 120) : Color.LightBlue;
+
+    // Разделительная линия панели (тонкая полоска по краю панелей)
+    public static Color PanelEdge => Dark ? Color.FromArgb(95, 95, 100) : Color.Gray;
+
+    // Вкладки слоёв: активная светлее неактивной. Значения берутся из палитры, потому
+    // что тема красит все нейтральные панели в один цвет и вкладки перестали бы различаться.
+    public static Color TabActiveBack => Dark ? Color.FromArgb(58, 58, 64) : Color.FromArgb(255, 255, 255);
+    public static Color TabInactiveBack => Dark ? Color.FromArgb(36, 36, 39) : Color.FromArgb(225, 225, 225);
+
+    // Смысловые (акцентные) фоны кнопок: в светлой теме — прежние пастельные, в тёмной —
+    // такие же приглушённые, чтобы акцент читался, но не светился на тёмном фоне.
+    // Пары «светлый/тёмный» заданы явно (см. _accentPairs), поэтому ApplyToControl
+    // узнаёт и светлый, и тёмный вариант и переключение темы работает в обе стороны.
+    private static readonly Color AccentGreenLight = Color.FromArgb(220, 245, 220);
+    private static readonly Color AccentGreenDark = Color.FromArgb(36, 80, 46);
+    private static readonly Color AccentRedLight = Color.FromArgb(250, 235, 235);
+    private static readonly Color AccentRedDark = Color.FromArgb(84, 44, 46);
+    private static readonly Color AccentBlueLight = Color.FromArgb(225, 235, 250);
+    private static readonly Color AccentBlueDark = Color.FromArgb(36, 62, 96);
+    private static readonly Color AccentYellowLight = Color.FromArgb(255, 235, 180);
+    private static readonly Color AccentYellowDark = Color.FromArgb(100, 80, 32);
+
+    // Подсветка активных режимов в панели «Узор по периметру» (кнопки строк областей)
+    private static readonly Color AccentSubtractLight = Color.FromArgb(230, 220, 220);
+    private static readonly Color AccentSubtractDark = Color.FromArgb(74, 52, 52);
+    private static readonly Color AccentCutLight = Color.FromArgb(255, 200, 200);
+    private static readonly Color AccentCutDark = Color.FromArgb(112, 48, 48);
+    private static readonly Color AccentAreaLight = Color.FromArgb(200, 235, 255);
+    private static readonly Color AccentAreaDark = Color.FromArgb(32, 70, 104);
+
+    public static Color AccentGreenBack => Dark ? AccentGreenDark : AccentGreenLight;
+    public static Color AccentRedBack => Dark ? AccentRedDark : AccentRedLight;
+    public static Color AccentBlueBack => Dark ? AccentBlueDark : AccentBlueLight;
+    public static Color AccentYellowBack => Dark ? AccentYellowDark : AccentYellowLight;
+    public static Color AccentSubtractBack => Dark ? AccentSubtractDark : AccentSubtractLight;
+    public static Color AccentCutBack => Dark ? AccentCutDark : AccentCutLight;
+    public static Color AccentAreaBack => Dark ? AccentAreaDark : AccentAreaLight;
+
+    private static readonly (Color Light, Color Dark)[] _accentPairs =
+    {
+        (AccentGreenLight, AccentGreenDark),
+        (AccentRedLight, AccentRedDark),
+        (AccentBlueLight, AccentBlueDark),
+        (AccentYellowLight, AccentYellowDark),
+        (AccentSubtractLight, AccentSubtractDark),
+        (AccentCutLight, AccentCutDark),
+        (AccentAreaLight, AccentAreaDark),
+    };
 
     // --- Win32 ---
     [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -212,27 +283,59 @@ public static class AppTheme
         }
     }
 
+    // Контролы, у которых фон — данные, а не оформление: образцы палитры, превью цвета.
+    // Тема их фон не трогает (см. MarkDataBack), иначе палитра «серела»: светлые образцы
+    // заменялись цветом кнопок темы. Таблица слабая (ConditionalWeakTable) — контролы
+    // можно создавать и удалять свободно.
+    private static readonly ConditionalWeakTable<Control, object> _dataBackControls = new();
+    private static readonly object _dataBackMarker = new();
+
+    /// <summary>Помечает контрол как «фон — это данные» (образец цвета палитры, превью
+    /// цвета): ApplyToControl не меняет такому контролу BackColor — ни на палитру темы,
+    /// ни на акцентный вариант, только цвет текста.</summary>
+    public static void MarkDataBack(Control c)
+    {
+        if (c != null) _dataBackControls.AddOrUpdate(c, _dataBackMarker);
+    }
+
+    private static bool IsDataBack(Control c) => _dataBackControls.TryGetValue(c, out _);
+
     /// <summary>Окрашивает один контрол по типу, не трогая пользовательские цвета.</summary>
     public static void ApplyToControl(Control c)
     {
+        // Фон-данные (образец цвета, превью) не перекрашиваем вовсе
+        if (IsDataBack(c))
+        {
+            c.ForeColor = Fore;
+            return;
+        }
+
+        // Акцентные (пастельные) фоны — пары «светлый/тёмный» из палитры: переносим
+        // контрол на вариант текущей темы. Без этого такие кнопки (напр. в конфигураторе
+        // сетей) в тёмной теме оставались светлыми.
+        MapAccentBack(c);
+
         switch (c)
         {
             case ComboBox cb:
                 ApplyComboBox(cb);
                 break;
             case Button btn:
-                btn.ForeColor = Fore;
-                if (IsToggleOnBack(btn.BackColor)) btn.BackColor = ToggleOnBack;
-                else if (ShouldThemeBack(btn.BackColor)) btn.BackColor = BackGroup;
+                ApplyButtonStyle(btn);
                 break;
             case CheckedListBox:
             case ListBox:
-            case ListView:
             case DataGridView:
             case TreeView:
                 c.BackColor = BackField;
                 c.ForeColor = Fore;
                 DarkScrollBars(c);
+                break;
+            case ListView lv:
+                // ListView окно-тему Explorer'а не принимает: с ней область элементов
+                // рисуется темой (белым) и BackColor игнорируется — поэтому только цвета
+                lv.BackColor = BackField;
+                lv.ForeColor = Fore;
                 break;
             case TextBox:
             case RichTextBox:
@@ -290,10 +393,34 @@ public static class AppTheme
         }
     }
 
+    /// <summary>Оформляет кнопку в стиле темы. Все кнопки плоские; фон получают
+    /// только «нейтральные» (белые/светло-серые/уже окрашенные темой) — иначе
+    /// сохраняется собственный смысловой цвет (синяя «ОК», пастельные кнопки
+    /// действий в диалогах). Исключение — включённый переключатель: он остаётся
+    /// зелёным, это единственный цветной акцент кнопок.</summary>
+    private static void ApplyButtonStyle(Button btn)
+    {
+        btn.ForeColor = Fore;
+        btn.FlatStyle = FlatStyle.Flat;
+
+        if (IsToggleOnBack(btn.BackColor))
+        {
+            btn.BackColor = ToggleOnBack;
+            return;
+        }
+
+        if (ShouldThemeBack(btn.BackColor))
+            btn.BackColor = ButtonBack;
+    }
+
     private static void ApplyComboBox(ComboBox cb)
     {
         cb.BackColor = BackField;
         cb.ForeColor = Fore;
+
+        // Рамка выпадающего списка рисуется системной темой — без этого она остаётся
+        // светлой и «светится» на тёмном фоне (как и полоса прокрутки списка).
+        DarkScrollBars(cb);
 
         // У "обычных" (не owner-draw) ComboBox выпадающий список рисует сама система —
         // он остаётся белым. Переводим на owner-draw с общим обработчиком, который
@@ -333,20 +460,57 @@ public static class AppTheme
         g.FillRectangle(brush, bounds);
     }
 
-    /// <summary>Делает скроллбары контрола тёмными (Win10 1809+).</summary>
+    /// <summary>Делает рамку/скроллбары контрола тёмными (Win10 1809+).</summary>
     private static void DarkScrollBars(Control c)
+    {
+        // Хэндл может быть ещё не создан (окно темизируется до показа) — тогда применим
+        // окно-тему сразу после его создания, иначе рамка навсегда осталась бы светлой
+        if (!c.IsHandleCreated)
+        {
+            c.HandleCreated += OnControlHandleCreated;
+            return;
+        }
+
+        ApplyWindowTheme(c);
+    }
+
+    private static void OnControlHandleCreated(object? sender, EventArgs e)
+    {
+        if (sender is not Control c) return;
+        c.HandleCreated -= OnControlHandleCreated;
+        ApplyWindowTheme(c);
+    }
+
+    private static void ApplyWindowTheme(Control c)
     {
         try
         {
-            if (!c.IsHandleCreated) return;
-            if (Dark)
-                SetWindowTheme(c.Handle, "DarkMode_Explorer", null);
-            else
-                SetWindowTheme(c.Handle, "Explorer", null);
+            SetWindowTheme(c.Handle, Dark ? "DarkMode_Explorer" : "Explorer", null);
         }
         catch
         {
             // uxtheme недоступен — не критично
+        }
+    }
+
+    /// <summary>Переносит акцентный фон контрола на вариант текущей темы. Пары
+    /// «светлый/тёмный» заданы явно (см. _accentPairs), поэтому узнаётся и светлый,
+    /// и тёмный вариант — переключение темы работает в обе стороны и контролам,
+    /// созданным раньше, цвет тоже обновляется.</summary>
+    private static void MapAccentBack(Control c)
+    {
+        Color cur = c.BackColor;
+        if (cur.IsEmpty || cur.A < 255) return; // прозрачные/полупрозрачные не трогаем
+
+        foreach (var (light, dark) in _accentPairs)
+        {
+            Color target = Dark ? dark : light;
+            if (cur == target) return;          // уже вариант текущей темы
+            if (cur == light || cur == dark)
+            {
+                c.BackColor = target;
+                return;
+            }
         }
     }
 
@@ -381,12 +545,12 @@ public static class AppTheme
         return Array.IndexOf(_themeBackArgb, color.ToArgb()) >= 0;
     }
 
-    // Цвета «зелёной» кнопки-переключателя (светлый LightGreen и наш тёмный) —
-    // чтобы при переключении темы узнавать её и подменять на нужный вариант.
+    // Цвета «зелёной» кнопки-переключателя (светлый и наш тёмный) — чтобы при
+    // переключении темы узнавать её и подменять на нужный вариант.
     private static readonly int[] _toggleOnArgb =
     {
-        Color.LightGreen.ToArgb(),
-        Color.FromArgb(45, 95, 55).ToArgb(),
+        ToggleOnLight.ToArgb(),
+        ToggleOnDark.ToArgb(),
     };
 
     private static bool IsToggleOnBack(Color color)

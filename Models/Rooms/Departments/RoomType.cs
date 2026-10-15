@@ -30,6 +30,35 @@ public abstract class RoomType
     public virtual string? BedProto => null;
     /// <summary>Прототип одеяла (id из bedsheets.yml), привязанный к этому типу комнаты в свойствах.</summary>
     public virtual string? BedsheetProto => null;
+    /// <summary>
+    /// Прототип камеры (id из surveillance_camera.yml), привязанный к этому типу комнаты.
+    /// Отдел камеры совпадает с отделом комнаты, поэтому по умолчанию прототип
+    /// подбирается автоматически по Category (см. CameraProtoForCategory); тип комнаты
+    /// может переопределить его вручную.
+    /// </summary>
+    public virtual string? CameraProto => CameraProtoForCategory(Category);
+
+    /// <summary>
+    /// Камера по отделу комнаты: у каждого отдела СС14 своя подсеть камер
+    /// (SurveillanceCamera{Отдел} в surveillance_camera.yml, частоты 1931-1938).
+    /// Supply в прототипах — это Cargo, Common/General — общая сеть. Комнатам без
+    /// отдела (Antags) камера не привязывается.
+    /// </summary>
+    public static string? CameraProtoForCategory(string category)
+    {
+        return category.TrimEnd('+') switch
+        {
+            "Engineering" => "SurveillanceCameraEngineering",
+            "Security" => "SurveillanceCameraSecurity",
+            "Science" => "SurveillanceCameraScience",
+            "Cargo" => "SurveillanceCameraSupply",
+            "Command" => "SurveillanceCameraCommand",
+            "Service" => "SurveillanceCameraService",
+            "Medical" => "SurveillanceCameraMedical",
+            "Antags" => null,
+            _ => "SurveillanceCameraGeneral"
+        };
+    }
     public virtual Color FillColor => Color.FromArgb(100, 230, 230, 230);
     public virtual Color LineColor => Color.FromArgb(255, 180, 180, 180);
     public virtual bool IsCustom => false;
@@ -187,6 +216,11 @@ public class CustomRoomType : RoomType
     public override string? SuitStorageProto => string.IsNullOrEmpty(Data.SuitStorageProto) ? null : Data.SuitStorageProto;
     public override string? BedProto => string.IsNullOrEmpty(Data.BedProto) ? null : Data.BedProto;
     public override string? BedsheetProto => string.IsNullOrEmpty(Data.BedsheetProto) ? null : Data.BedsheetProto;
+    /// <summary>
+    /// Камера кастомного типа: если в свойствах типа прототип не задан, он берётся
+    /// автоматически по отделу (Category) — как у ванильных типов.
+    /// </summary>
+    public override string? CameraProto => string.IsNullOrEmpty(Data.CameraProto) ? base.CameraProto : Data.CameraProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -225,6 +259,7 @@ public class CustomRoomTypeData
     public string? SuitStorageProto { get; set; } = null;
     public string? BedProto { get; set; } = null;
     public string? BedsheetProto { get; set; } = null;
+    public string? CameraProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -247,6 +282,7 @@ public class ExportData
     public string? SuitStorageProto { get; set; }
     public string? BedProto { get; set; }
     public string? BedsheetProto { get; set; }
+    public string? CameraProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

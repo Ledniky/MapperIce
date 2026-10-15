@@ -311,6 +311,9 @@ public static class YAMLGenerator
         // 11. Кровати (привязки) — кровать + привязанное одеяло
         GenerateBedsGrouped(sb, grid, ref uid);
 
+        // 12. Камеры (привязки)
+        GenerateCamerasGrouped(sb, grid, tileGrid, ref uid);
+
         return sb.ToString();
     }
 
@@ -1595,6 +1598,7 @@ public static class YAMLGenerator
             .Where(e => e is not PipeEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity && e is not WireEntity &&
                         e is not HolopadEntity && e is not LockerEntity && e is not SuitStorageEntity && e is not BedEntity &&
+                        e is not CameraEntity &&
                         e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
@@ -1854,6 +1858,60 @@ public static class YAMLGenerator
                 sb.AppendLine($"  - uid: {thisUid}");
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация камер как авто-устанавливаемых объектов. Каждая камера выводится
+    /// отдельным "- proto:" блоком со своим прототипом (CameraProto): прототип
+    /// соответствует отделу комнаты (SurveillanceCamera{Отдел}). Поворот камеры
+    /// (rot) определяется автоматически по ближайшей стене — 0 = стена с юга от тайла,
+    /// восток = 90°, север = 180°, запад = -90°.
+    /// </summary>
+    private static void GenerateCamerasGrouped(StringBuilder sb, Grid grid, TileGrid tileGrid, ref int uid)
+    {
+        var cameras = grid.Entities.OfType<CameraEntity>()
+            .Where(c => !string.IsNullOrEmpty(c.CameraProto))
+            .ToList();
+
+        if (cameras.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var c in cameras)
+        {
+            posToUid[((int)Math.Round(c.X), (int)Math.Round(c.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in cameras.GroupBy(c => c.CameraProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var camera in group)
+            {
+                var cell = ((int)Math.Round(camera.X), (int)Math.Round(camera.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = camera.X;
+                float posY = -camera.Y + 1.0f;
+                float rotation = CameraOrientation.ResolveRotation(grid, tileGrid, camera.X, camera.Y, camera.Rotation);
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (rotation != 0)
+                {
+                    string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
                 sb.AppendLine($"      parent: 2");
                 sb.AppendLine($"    - type: Fixtures");

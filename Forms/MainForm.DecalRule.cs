@@ -166,8 +166,8 @@ public partial class MainForm
                         Height = 24,
                         FlatStyle = FlatStyle.Flat,
                         BackColor = (_isSubtractingDecalCells && _subtractingDecalArea == area)
-                            ? Color.FromArgb(230, 220, 220)
-                            : Color.White
+                            ? AppTheme.AccentSubtractBack
+                            : AppTheme.ButtonBack
                     };
                     var subtractTip = new ToolTip();
                     subtractTip.SetToolTip(btnSubtract,
@@ -208,8 +208,8 @@ public partial class MainForm
                         Height = 24,
                         FlatStyle = FlatStyle.Flat,
                         BackColor = (_isCuttingDecalCells && _cuttingDecalArea == area)
-                            ? Color.FromArgb(255, 200, 200)
-                            : Color.White
+                            ? AppTheme.AccentCutBack
+                            : AppTheme.ButtonBack
                     };
                     var cutCellTip = new ToolTip();
                     cutCellTip.SetToolTip(btnCutCell,
@@ -267,7 +267,7 @@ public partial class MainForm
             void SetDecalAddButtonActive(bool active)
             {
                 btnAddArea.Text = active ? "выделите область…" : "➕ Добавить область";
-                btnAddArea.BackColor = active ? Color.FromArgb(200, 235, 255) : Color.Empty;
+                btnAddArea.BackColor = active ? AppTheme.AccentAreaBack : Color.Empty;
             }
 
             btnAddArea.Click += (s, e) =>
@@ -424,6 +424,8 @@ public partial class MainForm
                         RebuildList();
                     }
                 };
+                // Кнопка показывает цвет декали комнаты — это данные, тема её фон не меняет
+                AppTheme.MarkDataBack(btnColor);
                 row.Controls.Add(btnColor);
 
                 // Выбор цвета из палитры репозитория ("- type: palette") прямо тут
@@ -684,6 +686,8 @@ public partial class MainForm
                     Cursor = Cursors.Hand,
                     Tag = kvp.Value
                 };
+                // Образец цвета — это данные палитры, а не оформление: тема фон не трогает
+                AppTheme.MarkDataBack(swatch);
                 var tooltip = new ToolTip();
                 tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
 

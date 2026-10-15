@@ -47,6 +47,8 @@ public class ArgbColorPickerDialog : Form
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = _current
         };
+        // Превью показывает сам выбранный цвет — это данные, тема его фон не меняет
+        AppTheme.MarkDataBack(_preview);
         Controls.Add(_preview);
 
         var btnPickRgb = new Button

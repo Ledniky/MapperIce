@@ -618,6 +618,8 @@ public partial class DecalInheritanceDialog : Form
                     Cursor = Cursors.Hand,
                     Tag = kvp.Value
                 };
+                // Образец цвета — это данные палитры, а не оформление: тема фон не трогает
+                AppTheme.MarkDataBack(swatch);
                 var tooltip = new ToolTip();
                 tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
 

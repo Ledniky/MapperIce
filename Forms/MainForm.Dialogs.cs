@@ -151,6 +151,8 @@ public partial class MainForm
                     Render();
                 }
             };
+            // Кнопка показывает выбранный цвет слоя — это данные, тема её фон не меняет
+            AppTheme.MarkDataBack(btnColor);
             panel.Controls.Add(btnColor, 1, row);
             colorButtons[layer] = btnColor;
 
@@ -300,6 +302,8 @@ public partial class MainForm
                     Render();
                 }
             };
+            // Кнопка показывает выбранный цвет типа кабеля — это данные, тема её фон не меняет
+            AppTheme.MarkDataBack(btnColor);
             panel.Controls.Add(btnColor, 1, row);
 
             row++;
@@ -509,6 +513,8 @@ public partial class MainForm
                 Render();
             }
         };
+        // Кнопка показывает выбранный цвет утилизации — это данные, тема её фон не меняет
+        AppTheme.MarkDataBack(btnColor);
         panel.Controls.Add(new Label { Text = "Цвет", AutoSize = true, Font = new Font("Arial", 9) }, 0, 1);
         panel.Controls.Add(btnColor, 1, 1);
 
@@ -558,17 +564,17 @@ public partial class MainForm
     {
         if (_btnPipeDistra != null)
         {
-            _btnPipeDistra.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeDistra ? Color.LightBlue : Color.White;
+            _btnPipeDistra.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeDistra ? AppTheme.SelectedBack : AppTheme.ButtonBack;
         }
 
         if (_btnPipeNormal != null)
         {
-            _btnPipeNormal.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ? Color.LightBlue : Color.White;
+            _btnPipeNormal.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeNormal ? AppTheme.SelectedBack : AppTheme.ButtonBack;
         }
 
         if (_btnPipeWaste != null)
         {
-            _btnPipeWaste.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ? Color.LightBlue : Color.White;
+            _btnPipeWaste.BackColor = _toolManager.CurrentTool == ToolManager.Tool.PipeWaste ? AppTheme.SelectedBack : AppTheme.ButtonBack;
         }
     }
 
@@ -1143,6 +1149,8 @@ public partial class MainForm
                 _decalColor = btnDecalColor.Text;
             }
         };
+        // Кнопка показывает выбранный цвет декали — это данные, тема её фон не меняет
+        AppTheme.MarkDataBack(btnDecalColor);
         panel.Controls.Add(btnDecalColor, 0, row);
         panel.SetColumnSpan(btnDecalColor, 2);
         row++;
@@ -1194,6 +1202,8 @@ public partial class MainForm
                     Cursor = Cursors.Hand,
                     Tag = kvp.Value
                 };
+                // Образец цвета — это данные палитры, а не оформление: тема фон не трогает
+                AppTheme.MarkDataBack(swatch);
                 var tooltip = new ToolTip();
                 tooltip.SetToolTip(swatch, $"{kvp.Key} ({kvp.Value})");
 

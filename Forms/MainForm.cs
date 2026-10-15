@@ -156,6 +156,8 @@ public partial class MainForm : Form
     private Image? _suitStorageIcon;
     private Button _btnPlaceBed = null!;
     private Image? _bedIcon;
+    private Button _btnPlaceCamera = null!;
+    private Image? _cameraIcon;
     private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
@@ -236,7 +238,7 @@ public partial class MainForm : Form
     private bool _panelsLocked = true;
     private const int _repoPanelDefaultWidth = 240;
     private const int _toolPanelDefaultWidth = 200;
-    private const int _panelMinWidth = 270; // минимальная ширина левой и правой панели
+    private const int _panelMinWidth = 270; // минимальная ширина левой панели (репозиторий)
     private const int _toolPanelMinWidth = 200; // минимальная ширина правой панели (инструменты)
     private int _repoPanelCurrentWidth;
     private int _toolPanelCurrentWidth;
@@ -759,6 +761,8 @@ public partial class MainForm : Form
             BackColor = _renderBackground,
             BorderStyle = BorderStyle.FixedSingle
         };
+        // Превью показывает цвет настройки — это данные, тема его фон не меняет
+        AppTheme.MarkDataBack(bgColorPreview);
         dlg.Controls.Add(bgColorPreview);
 
         var bgColorBtn = new Button
@@ -801,6 +805,8 @@ public partial class MainForm : Form
             BackColor = _gridColor,
             BorderStyle = BorderStyle.FixedSingle
         };
+        // Превью показывает цвет настройки — это данные, тема его фон не меняет
+        AppTheme.MarkDataBack(gridColorPreview);
         dlg.Controls.Add(gridColorPreview);
 
         var gridColorBtn = new Button
@@ -894,6 +900,11 @@ public partial class MainForm : Form
         // Тема сменилась — перекрашиваем все открытые окна заново
         _themedForms.Clear();
         ThemeOpenForms();
+
+        // Вкладки слоёв берут цвета из палитры (AppTheme.TabActiveBack/TabInactiveBack)
+        // и темой намеренно не перекрашиваются — иначе активная и неактивная вкладки
+        // стали бы одного цвета. Поэтому пересобираем их уже под новую тему.
+        RefreshTabStrip();
 
         Invalidate();
     }
@@ -1176,7 +1187,7 @@ public partial class MainForm : Form
     {
         if (!_resizingRightPanel || _panelsLocked) return;
         int delta = _resizeStartX - Control.MousePosition.X;
-        _resizeNewWidth = Math.Max(_panelMinWidth, Math.Min(600, _resizeStartRightWidth + delta));
+        _resizeNewWidth = Math.Max(_toolPanelMinWidth, Math.Min(600, _resizeStartRightWidth + delta));
         UpdateResizeGhost(_toolPanel, _toolPanel.PointToScreen(new Point(_toolPanel.Width - _resizeNewWidth, 0)).X);
     
     }
@@ -1215,37 +1226,38 @@ public partial class MainForm : Form
     // === ОТРИСОВКА ===
     private void OnToolChanged(ToolManager.Tool tool)
     {
-        _btnCreateRoom.BackColor = Color.White;
-        _btnSubtractRoom.BackColor = Color.White;
-        _btnRestoreRoom.BackColor = Color.White;
-        _btnAddAll.BackColor = Color.White;
-        _btnDelete.BackColor = Color.White;
-        _btnDeleteArea.BackColor = Color.White;
-        _btnDeleteSettings.BackColor = Color.White;
-        if (_doorToolCombo != null) _doorToolCombo.BackColor = Color.White;
-        if (_windowToolCombo != null) _windowToolCombo.BackColor = Color.White;
-        if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.White;
-        if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.White;
-        if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.White;
-        if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.White;
-        if (_utilToolCombo != null) _utilToolCombo.BackColor = Color.White;
-        if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.White;
-        if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = Color.White;
-        if (_btnMove != null) _btnMove.BackColor = Color.White;
+        _btnCreateRoom.BackColor = AppTheme.ButtonBack;
+        _btnSubtractRoom.BackColor = AppTheme.ButtonBack;
+        _btnRestoreRoom.BackColor = AppTheme.ButtonBack;
+        _btnAddAll.BackColor = AppTheme.ButtonBack;
+        _btnDelete.BackColor = AppTheme.ButtonBack;
+        _btnDeleteArea.BackColor = AppTheme.ButtonBack;
+        _btnDeleteSettings.BackColor = AppTheme.ButtonBack;
+        if (_doorToolCombo != null) _doorToolCombo.BackColor = AppTheme.BackField;
+        if (_windowToolCombo != null) _windowToolCombo.BackColor = AppTheme.BackField;
+        if (_btnPipeDistra != null) _btnPipeDistra.BackColor = AppTheme.ButtonBack;
+        if (_btnPipeWaste != null) _btnPipeWaste.BackColor = AppTheme.ButtonBack;
+        if (_btnPipeNormal != null) _btnPipeNormal.BackColor = AppTheme.ButtonBack;
+        if (_btnPipeUtil != null) _btnPipeUtil.BackColor = AppTheme.ButtonBack;
+        if (_utilToolCombo != null) _utilToolCombo.BackColor = AppTheme.BackField;
+        if (_wireTypeCombo != null) _wireTypeCombo.BackColor = AppTheme.BackField;
+        if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = AppTheme.BackField;
+        if (_btnMove != null) _btnMove.BackColor = AppTheme.ButtonBack;
 
         // Наследование декалей — не инструмент канвы, но переключение НА любой
         // инструмент (включая "Узор по периметру") должно закрывать это окно,
         // чтобы два режима не путались и не оставались активными одновременно
         if (_decalInheritanceForm != null && !_decalInheritanceForm.IsDisposed)
             _decalInheritanceForm.Close();
-        if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.White;
-        if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.White;
-        if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.White;
-        if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = Color.White;
-        if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = Color.White;
-        if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.White;
-        if (_btnPlaceBed != null) _btnPlaceBed.BackColor = Color.White;
-        if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.White;
+        if (_btnDecalRule != null) _btnDecalRule.BackColor = AppTheme.ButtonBack;
+        if (_btnAirAlarm != null) _btnAirAlarm.BackColor = AppTheme.ButtonBack;
+        if (_btnFireAlarm != null) _btnFireAlarm.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceBed != null) _btnPlaceBed.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceCamera != null) _btnPlaceCamera.BackColor = AppTheme.ButtonBack;
+        if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.ButtonBack;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
 
         if (tool != ToolManager.Tool.Move)
@@ -1267,129 +1279,132 @@ public partial class MainForm : Form
         switch (tool)
         {
             case ToolManager.Tool.CreateRoom:
-                _btnCreateRoom.BackColor = Color.LightBlue;
+                _btnCreateRoom.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.SubtractRoom:
-                _btnSubtractRoom.BackColor = Color.LightBlue;
+                _btnSubtractRoom.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.RestoreRoom:
-                _btnRestoreRoom.BackColor = Color.LightBlue;
+                _btnRestoreRoom.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.ExpandRoom:
-                _btnAddAll.BackColor = Color.LightBlue;
+                _btnAddAll.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.Delete:
-                _btnDelete.BackColor = Color.LightBlue;
+                _btnDelete.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.DeleteArea:
-                _btnDeleteArea.BackColor = Color.LightBlue;
+                _btnDeleteArea.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.DeleteSettings:
-                _btnDeleteSettings.BackColor = Color.LightBlue;
+                _btnDeleteSettings.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.Door:
                 if (_doorToolCombo != null)
                 {
-                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.BackColor = AppTheme.SelectedBack;
                     _doorToolCombo.SelectedItem = "Дверь";
                 }
                 break;
             case ToolManager.Tool.DoorGlass:
                 if (_doorToolCombo != null)
                 {
-                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.BackColor = AppTheme.SelectedBack;
                     _doorToolCombo.SelectedItem = "Дверь (стекло)";
                 }
                 break;
             case ToolManager.Tool.Passage:
                 if (_doorToolCombo != null)
                 {
-                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.BackColor = AppTheme.SelectedBack;
                     _doorToolCombo.SelectedItem = "Проход";
                 }
                 break;
             case ToolManager.Tool.RestoreWall:
                 if (_doorToolCombo != null)
                 {
-                    _doorToolCombo.BackColor = Color.LightBlue;
+                    _doorToolCombo.BackColor = AppTheme.SelectedBack;
                     _doorToolCombo.SelectedItem = "Восстановить стену";
                 }
                 break;
             case ToolManager.Tool.ReplaceWallWithWindow:
                 if (_windowToolCombo != null)
                 {
-                    _windowToolCombo.BackColor = Color.LightBlue;
+                    _windowToolCombo.BackColor = AppTheme.SelectedBack;
                 }
                 break;
             case ToolManager.Tool.PipeDistra:
-                if (_btnPipeDistra != null) _btnPipeDistra.BackColor = Color.LightBlue;
+                if (_btnPipeDistra != null) _btnPipeDistra.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PipeWaste:
-                if (_btnPipeWaste != null) _btnPipeWaste.BackColor = Color.LightBlue;
+                if (_btnPipeWaste != null) _btnPipeWaste.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PipeNormal:
-                if (_btnPipeNormal != null) _btnPipeNormal.BackColor = Color.LightBlue;
+                if (_btnPipeNormal != null) _btnPipeNormal.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PipeUtil:
-                if (_btnPipeUtil != null) _btnPipeUtil.BackColor = Color.LightBlue;
+                if (_btnPipeUtil != null) _btnPipeUtil.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PipeUtilSettings:
                 if (_utilToolCombo != null)
                 {
-                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.BackColor = AppTheme.SelectedBack;
                     _utilToolCombo.SelectedItem = "🔧 Направление";
                 }
                 break;
             case ToolManager.Tool.UtilWrenches:
                 if (_utilToolCombo != null)
                 {
-                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.BackColor = AppTheme.SelectedBack;
                     _utilToolCombo.SelectedItem = "🔧🔧 Фильтр";
                 }
                 break;
             case ToolManager.Tool.UtilNodeLabel:
                 if (_utilToolCombo != null)
                 {
-                    _utilToolCombo.BackColor = Color.LightBlue;
+                    _utilToolCombo.BackColor = AppTheme.SelectedBack;
                     _utilToolCombo.SelectedItem = "⚙ Настройки";
                 }
                 break;
             case ToolManager.Tool.AirAlarm:
-                if (_btnAirAlarm != null) _btnAirAlarm.BackColor = Color.LightBlue;
+                if (_btnAirAlarm != null) _btnAirAlarm.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.FireAlarm:
-                if (_btnFireAlarm != null) _btnFireAlarm.BackColor = Color.LightBlue;
+                if (_btnFireAlarm != null) _btnFireAlarm.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlaceHolopad:
-                if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = Color.LightBlue;
+                if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlaceLocker:
-                if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = Color.LightBlue;
+                if (_btnPlaceLocker != null) _btnPlaceLocker.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlaceSuitStorage:
-                if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = Color.LightBlue;
+                if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlaceBed:
-                if (_btnPlaceBed != null) _btnPlaceBed.BackColor = Color.LightBlue;
+                if (_btnPlaceBed != null) _btnPlaceBed.BackColor = AppTheme.SelectedBack;
+                break;
+            case ToolManager.Tool.PlaceCamera:
+                if (_btnPlaceCamera != null) _btnPlaceCamera.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
-                if (_btnMove != null) _btnMove.BackColor = Color.LightBlue;
+                if (_btnMove != null) _btnMove.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.DecalRule:
-                if (_btnDecalRule != null) _btnDecalRule.BackColor = Color.LightBlue;
+                if (_btnDecalRule != null) _btnDecalRule.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.Magnifier:
-                if (_btnMagnifier != null) _btnMagnifier.BackColor = Color.LightBlue;
+                if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.WireHV:
             case ToolManager.Tool.WireMV:
             case ToolManager.Tool.WireLV:
-                if (_wireTypeCombo != null) _wireTypeCombo.BackColor = Color.LightBlue;
+                if (_wireTypeCombo != null) _wireTypeCombo.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc:
-                if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = Color.LightBlue;
+                if (_powerJunctionCombo != null) _powerJunctionCombo.BackColor = AppTheme.SelectedBack;
                 break;
 
         }
@@ -1410,6 +1425,7 @@ public partial class MainForm : Form
             ToolManager.Tool.PlaceLocker => Cursors.Help,
             ToolManager.Tool.PlaceSuitStorage => Cursors.Help,
             ToolManager.Tool.PlaceBed => Cursors.Help,
+            ToolManager.Tool.PlaceCamera => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

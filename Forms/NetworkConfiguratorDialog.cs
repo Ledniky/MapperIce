@@ -90,7 +90,7 @@ public class NetworkConfiguratorDialog : Form
         _btnLink.Location = new Point(281, 96);
         _btnLink.Size = new Size(92, 50);
         _btnLink.FlatStyle = FlatStyle.Flat;
-        _btnLink.BackColor = Color.FromArgb(220, 245, 220);
+        _btnLink.BackColor = AppTheme.AccentGreenBack;
         _btnLink.Click += (s, e) => CreateLink();
         Controls.Add(_btnLink);
 
@@ -119,6 +119,12 @@ public class NetworkConfiguratorDialog : Form
         _linksList.View = View.Details;
         _linksList.FullRowSelect = true;
         _linksList.GridLines = true;
+        // Своя отрисовка строк и заголовка: системная таблица в тёмной теме остаётся
+        // белой с чёрным текстом, поэтому цвета берём из палитры (см. обработчики ниже)
+        _linksList.OwnerDraw = true;
+        _linksList.DrawColumnHeader += LinksList_DrawColumnHeader;
+        _linksList.DrawItem += LinksList_DrawItem;
+        _linksList.DrawSubItem += LinksList_DrawSubItem;
         _linksList.Location = new Point(12, 256);
         _linksList.Size = new Size(634, 170);
         _linksList.Columns.Add("Цель", 300);
@@ -129,7 +135,7 @@ public class NetworkConfiguratorDialog : Form
         _btnUnlink.Location = new Point(12, 432);
         _btnUnlink.Size = new Size(100, 40);
         _btnUnlink.FlatStyle = FlatStyle.Flat;
-        _btnUnlink.BackColor = Color.FromArgb(250, 235, 235);
+        _btnUnlink.BackColor = AppTheme.AccentRedBack;
         _btnUnlink.Click += (s, e) => RemoveSelectedLink();
         Controls.Add(_btnUnlink);
 
@@ -138,7 +144,7 @@ public class NetworkConfiguratorDialog : Form
         _btnPick.Location = new Point(122, 432);
         _btnPick.Size = new Size(100, 40);
         _btnPick.FlatStyle = FlatStyle.Flat;
-        _btnPick.BackColor = Color.FromArgb(225, 235, 250);
+        _btnPick.BackColor = AppTheme.AccentBlueBack;
         _btnPick.Click += (s, e) => TogglePickMode();
         Controls.Add(_btnPick);
 
@@ -153,7 +159,7 @@ public class NetworkConfiguratorDialog : Form
     {
         _pickMode = !_pickMode;
         _btnPick.Text = _pickMode ? "Отмена" : "🔍 Выделить";
-        _btnPick.BackColor = _pickMode ? Color.FromArgb(255, 235, 180) : Color.FromArgb(225, 235, 250);
+        _btnPick.BackColor = _pickMode ? AppTheme.AccentYellowBack : AppTheme.AccentBlueBack;
         _setCanvasPickMode(_pickMode);
     }
 
@@ -386,6 +392,43 @@ public class NetworkConfiguratorDialog : Form
             lv.Tag = link;
             _linksList.Items.Add(lv);
         }
+    }
+
+    // --- Своя отрисовка таблицы связей (цвета берутся из палитры темы) ---
+
+    private void LinksList_DrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
+    {
+        using (var back = new SolidBrush(AppTheme.BackGroup))
+            e.Graphics.FillRectangle(back, e.Bounds);
+
+        using (var edge = new Pen(AppTheme.PanelEdge))
+            e.Graphics.DrawLine(edge, e.Bounds.Right - 1, e.Bounds.Top, e.Bounds.Right - 1, e.Bounds.Bottom - 1);
+
+        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", e.Font,
+            new Rectangle(e.Bounds.X + 4, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 6), e.Bounds.Height),
+            AppTheme.Fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+    }
+
+    // Фон строки рисует DrawSubItem — иначе выбранная строка закрашивалась бы дважды
+    private void LinksList_DrawItem(object? sender, DrawListViewItemEventArgs e)
+    {
+        e.DrawDefault = false;
+    }
+
+    private void LinksList_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
+    {
+        bool selected = e.Item != null && e.Item.Selected;
+
+        using (var back = new SolidBrush(selected ? AppTheme.HighlightBack : AppTheme.BackField))
+            e.Graphics.FillRectangle(back, e.Bounds);
+
+        using (var grid = new Pen(AppTheme.MenuSeparator))
+            e.Graphics.DrawLine(grid, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
+        var fore = selected ? AppTheme.HighlightFore : AppTheme.Fore;
+        TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", e.SubItem?.Font ?? _linksList.Font,
+            new Rectangle(e.Bounds.X + 4, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 6), e.Bounds.Height),
+            fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
     }
 
     private void UpdateHighlight()

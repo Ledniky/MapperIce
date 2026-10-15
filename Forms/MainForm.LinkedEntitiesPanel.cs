@@ -30,11 +30,17 @@ public partial class MainForm
         };
         DragDropCursorHelper.SuppressForbiddenCursor(_linkedEntitiesPanel);
 
+        // Панель подключаем к форме сразу, хотя показывается она позже (Visible = false):
+        // тема применяется к уже подключённым контролам, а окно запоминается как
+        // оформленное (см. MainForm.ThemeOpenForms) — добавленная по клику панель
+        // иначе оставалась бы светлой при тёмной теме.
+        Controls.Add(_linkedEntitiesPanel);
+
         var leftLine = new Panel
         {
             Dock = DockStyle.Left,
             Width = 1,
-            BackColor = Color.Gray
+            BackColor = AppTheme.PanelEdge
         };
         _linkedEntitiesPanel.Controls.Add(leftLine);
 
@@ -291,6 +297,25 @@ public partial class MainForm
         };
         _btnPlaceBed.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceBed);
         _linkedEntitiesPanel.Controls.Add(_btnPlaceBed);
+        y += 40 + 2;
+
+        // === КНОПКА УСТАНОВКИ КАМЕРЫ ===
+        _btnPlaceCamera = new Button
+        {
+            Text = "  Камера",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _cameraIcon
+        };
+        _btnPlaceCamera.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceCamera);
+        _linkedEntitiesPanel.Controls.Add(_btnPlaceCamera);
         y += 40 + 2;
     }
 

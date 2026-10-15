@@ -207,6 +207,7 @@ public partial class MainForm
                     SuitStorageProto = room.SuitStorageProto,
                     BedProto = room.BedProto,
                     BedsheetProto = room.BedsheetProto,
+                    CameraProto = room.CameraProto,
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
                     DecalMode = room.DecalMode,
@@ -388,6 +389,7 @@ public partial class MainForm
                         SuitStorageProto = roomData.SuitStorageProto,
                         BedProto = roomData.BedProto,
                         BedsheetProto = roomData.BedsheetProto,
+                        CameraProto = roomData.CameraProto,
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor),
                         DecalMode = roomData.DecalMode,
@@ -422,6 +424,8 @@ public partial class MainForm
                                 room.BedProto = rt.BedProto;
                             if (string.IsNullOrEmpty(room.BedsheetProto) && !string.IsNullOrEmpty(rt.BedsheetProto))
                                 room.BedsheetProto = rt.BedsheetProto;
+                            if (string.IsNullOrEmpty(room.CameraProto) && !string.IsNullOrEmpty(rt.CameraProto))
+                                room.CameraProto = rt.CameraProto;
                         }
                     }
 

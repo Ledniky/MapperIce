@@ -32,6 +32,7 @@ public class ToolManager
         PlaceLocker,
         PlaceSuitStorage,
         PlaceBed,
+        PlaceCamera,
         PlacePrototype,
         Move,
         DecalRule,

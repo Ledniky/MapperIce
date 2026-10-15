@@ -28,11 +28,9 @@ public partial class MainForm
 
         var rightLine = new Panel
         {
-            Location = new Point(panel.Width - 1, 0),
+            Dock = DockStyle.Right,
             Width = 1,
-            Height = panel.Height,
-            BackColor = Color.Gray,
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right
+            BackColor = AppTheme.PanelEdge
         };
         panel.Controls.Add(rightLine);
 
@@ -838,11 +836,19 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
         if (_btnPlaceBed != null && !_btnPlaceBed.IsDisposed)
         {
             _bedIcon?.Dispose();
-            // Иконка кнопки — кровать комнаты General (дефолтный прототип кровати)
             var generalBed = _roomTypeManager?.GetRoomType("General")?.BedProto;
             _bedIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalBed) ? generalBed : "Bed");
             _btnPlaceBed.Image = _bedIcon;
             _btnPlaceBed.Invalidate();
+        }
+        if (_btnPlaceCamera != null && !_btnPlaceCamera.IsDisposed)
+        {
+            _cameraIcon?.Dispose();
+            // Иконка — камера того отдела, что привязана к комнате General (общая сеть).
+            var generalCamera = _roomTypeManager?.GetRoomType("General")?.CameraProto;
+            _cameraIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalCamera) ? generalCamera : "SurveillanceCameraGeneral");
+            _btnPlaceCamera.Image = _cameraIcon;
+            _btnPlaceCamera.Invalidate();
         }
     }
     

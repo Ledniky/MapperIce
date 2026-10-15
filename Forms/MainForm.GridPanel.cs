@@ -51,12 +51,10 @@ public partial class MainForm
             Location = new Point(8, 12),
             Width = 28,
             Height = 30,
-            FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            ForeColor = Color.FromArgb(80, 80, 80),
-            BackColor = Color.Transparent
+            Font = new Font("Segoe UI", 10, FontStyle.Bold)
         };
         _btnAddGrid.Click += (s, e) => AddGridTab(_map.Grids.Count);
+        MakeThemedIconButton(_btnAddGrid);
         _tabStrip.Controls.Add(_btnAddGrid);
 
         _tabToolTip.SetToolTip(_btnAddGrid, "Добавить новый слой");
@@ -202,6 +200,33 @@ public partial class MainForm
         return btn;
     }
 
+    /// <summary>
+    /// Оформляет кнопку-иконку полосы слоёв («+» и ◀ ▶ ⚙ × на вкладке) по палитре
+    /// темы: обычный фон, подсветка под курсором и при нажатии. Цвета читаются в
+    /// момент события, поэтому после смены темы на кнопке не остаётся оттенков
+    /// прежней палитры (жёсткие цвета и прозрачный фон здесь больше не нужны).
+    /// hoverBack/hoverFore переопределяют подсветку — так у «×» она красная.
+    /// </summary>
+    private static void MakeThemedIconButton(Button btn, Color? hoverBack = null, Color? hoverFore = null)
+    {
+        btn.FlatStyle = FlatStyle.Flat;
+        PaintIconButton(btn, false, false, hoverBack, hoverFore);
+
+        btn.MouseEnter += (s, e) => PaintIconButton(btn, true, false, hoverBack, hoverFore);
+        btn.MouseDown += (s, e) => PaintIconButton(btn, true, true, hoverBack, hoverFore);
+        btn.MouseUp += (s, e) => PaintIconButton(btn, true, false, hoverBack, hoverFore);
+        btn.MouseLeave += (s, e) => PaintIconButton(btn, false, false, hoverBack, hoverFore);
+    }
+
+    /// <summary>Раскраска кнопки-иконки: обычное состояние, под курсором, нажатое.</summary>
+    private static void PaintIconButton(Button btn, bool hovered, bool pressed, Color? hoverBack, Color? hoverFore)
+    {
+        btn.BackColor = !hovered ? AppTheme.ButtonBack
+            : pressed ? hoverBack ?? AppTheme.ButtonPressedBack
+                      : hoverBack ?? AppTheme.ButtonHoverBack;
+        btn.ForeColor = hovered ? hoverFore ?? AppTheme.Fore : AppTheme.Fore;
+    }
+
     // --- Tab Management ---
 
     private void RefreshTabStrip()
@@ -235,12 +260,10 @@ public partial class MainForm
         {
             Tag = grid,
             Size = new Size(tabWidth, tabHeight),
-            BackColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(255, 255, 255) : Color.FromArgb(225, 225, 225),
+            BackColor = grid.Uid == _map.ActiveGridUid ? AppTheme.TabActiveBack : AppTheme.TabInactiveBack,
             Margin = new Padding(0, 0, 2, 0),
             BorderStyle = BorderStyle.None
         };
-
-        Color defaultBtnColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160);
 
         // Tab name label (top)
         var label = new Label
@@ -251,7 +274,7 @@ public partial class MainForm
             Font = new Font("Segoe UI", 9),
             AutoSize = false,
             BackColor = Color.Transparent,
-            ForeColor = grid.Uid == _map.ActiveGridUid ? Color.Black : Color.FromArgb(60, 60, 60),
+            ForeColor = grid.Uid == _map.ActiveGridUid ? AppTheme.Fore : AppTheme.ForeMuted,
             TextAlign = ContentAlignment.MiddleCenter
         };
         tabPanel.Click += (s, e) =>
@@ -282,14 +305,10 @@ public partial class MainForm
             Text = "◀",
             Location = new Point(startX, bottomY),
             Size = new Size(btnSize, btnSize),
-            FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 7, FontStyle.Bold),
-            BackColor = Color.Transparent,
-            ForeColor = defaultBtnColor,
             Margin = Padding.Empty
         };
-        btnLeft.MouseEnter += (s, e) => { btnLeft.BackColor = Color.FromArgb(200, 200, 200); };
-        btnLeft.MouseLeave += (s, e) => { btnLeft.BackColor = Color.Transparent; };
+        MakeThemedIconButton(btnLeft);
         btnLeft.Click += (s, e) => MoveGridLeft(grid);
         tabPanel.Controls.Add(btnLeft);
 
@@ -299,14 +318,10 @@ public partial class MainForm
             Text = "▶",
             Location = new Point(startX + btnSize + 2, bottomY),
             Size = new Size(btnSize, btnSize),
-            FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 7, FontStyle.Bold),
-            BackColor = Color.Transparent,
-            ForeColor = defaultBtnColor,
             Margin = Padding.Empty
         };
-        btnRight.MouseEnter += (s, e) => { btnRight.BackColor = Color.FromArgb(200, 200, 200); };
-        btnRight.MouseLeave += (s, e) => { btnRight.BackColor = Color.Transparent; };
+        MakeThemedIconButton(btnRight);
         btnRight.Click += (s, e) => MoveGridRight(grid);
         tabPanel.Controls.Add(btnRight);
 
@@ -316,35 +331,23 @@ public partial class MainForm
             Text = "⚙",
             Location = new Point(startX + (btnSize + 2) * 2, bottomY),
             Size = new Size(btnSize, btnSize),
-            FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 9),
-            BackColor = Color.Transparent,
-            ForeColor = defaultBtnColor,
             Margin = Padding.Empty
         };
-        btnSettings.MouseEnter += (s, e) => { btnSettings.BackColor = Color.FromArgb(200, 200, 200); };
-        btnSettings.MouseLeave += (s, e) => { btnSettings.BackColor = Color.Transparent; };
+        MakeThemedIconButton(btnSettings);
         btnSettings.Click += (s, e) => ShowLayerSettingsDialog(grid);
         tabPanel.Controls.Add(btnSettings);
 
-        // Close button (×)
+        // Close button (×) — опасное действие, поэтому подсветка красная
         var closeBtn = new Button
         {
             Text = "×",
             Location = new Point(startX + (btnSize + 2) * 3, bottomY),
             Size = new Size(btnSize, btnSize),
-            FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
-            BackColor = Color.Transparent,
-            ForeColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160),
             Margin = Padding.Empty
         };
-        closeBtn.MouseEnter += (s, e) => { closeBtn.BackColor = Color.FromArgb(220, 80, 80); closeBtn.ForeColor = Color.White; };
-        closeBtn.MouseLeave += (s, e) =>
-        {
-            closeBtn.BackColor = Color.Transparent;
-            closeBtn.ForeColor = grid.Uid == _map.ActiveGridUid ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160);
-        };
+        MakeThemedIconButton(closeBtn, AppTheme.DangerHoverBack, AppTheme.DangerHoverFore);
         closeBtn.Click += (s, e) => RemoveGridTab(grid.Uid);
         tabPanel.Controls.Add(closeBtn);
 
@@ -373,14 +376,14 @@ public partial class MainForm
         {
             if (grid.Uid != _map.ActiveGridUid)
             {
-                tabPanel.BackColor = Color.FromArgb(240, 240, 240);
+                tabPanel.BackColor = AppTheme.BackPanel;
             }
         };
         tabPanel.MouseLeave += (s, e) =>
         {
             if (grid.Uid != _map.ActiveGridUid)
             {
-                tabPanel.BackColor = Color.FromArgb(225, 225, 225);
+                tabPanel.BackColor = AppTheme.TabInactiveBack;
             }
         };
 
@@ -397,18 +400,18 @@ public partial class MainForm
         var tabPanel = tabControl as Panel;
         if (tabPanel == null || tabPanel.Tag is not Grid grid) return;
 
-        tabPanel.BackColor = active ? Color.FromArgb(255, 255, 255) : Color.FromArgb(225, 225, 225);
+        tabPanel.BackColor = active ? AppTheme.TabActiveBack : AppTheme.TabInactiveBack;
 
         var label = tabPanel.Controls.OfType<Label>().FirstOrDefault();
         if (label != null)
         {
-            label.ForeColor = active ? Color.Black : Color.FromArgb(60, 60, 60);
+            label.ForeColor = active ? AppTheme.Fore : AppTheme.ForeMuted;
         }
 
         var closeBtn = tabPanel.Controls.OfType<Button>().FirstOrDefault(b => b.Text == "×");
         if (closeBtn != null)
         {
-            closeBtn.ForeColor = active ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160);
+            closeBtn.ForeColor = active ? AppTheme.Fore : AppTheme.ForeMuted;
         }
     }
 

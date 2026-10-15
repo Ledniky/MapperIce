@@ -977,6 +977,33 @@ public partial class MainForm
                 UpdateTileGrid();
                 Render();
             }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceCamera)
+            {
+                var grid = _map.ActiveGrid;
+                if (grid == null) return;
+
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room == null || string.IsNullOrEmpty(room.CameraProto)) return;
+
+                if (grid.Entities.OfType<CameraEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
+
+                // Камера ставится по центру клетки, как остальные привязки, но
+                // разворачивается в сторону ближайшей стены (поворот 0 = стена с юга).
+                var wallSide = CameraOrientation.FindNearestWall(grid, _tileGrid, tileX + 0.5f, tileY + 0.5f);
+
+                var cameraEntity = new CameraEntity
+                {
+                    X = tileX + 0.5f,
+                    Y = tileY + 0.5f,
+                    Rotation = CameraOrientation.RotationForSide(wallSide),
+                    Proto = room.CameraProto,
+                    CameraProto = room.CameraProto
+                };
+                grid.Entities.Add(cameraEntity);
+                SaveState();
+                UpdateTileGrid();
+                Render();
+            }
             else if (_toolManager.CurrentTool == ToolManager.Tool.DecalRule)
             {
                 var grid = _map.ActiveGrid;

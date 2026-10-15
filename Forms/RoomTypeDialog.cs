@@ -591,6 +591,11 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Камера" (пусто — прототип подставляется автоматически по отделу комнаты)
+        var txtCamera = CreateTextBox(type.CameraProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblCamera = CreateLabel("Камера:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки
         var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -688,7 +693,8 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
                         suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                         bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
-                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
+                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
+                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
                     );
                 }
 
@@ -709,7 +715,8 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
                         suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                         bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
-                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
+                        bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
+                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
                     );
                 }
                 UpdateTreeView();
@@ -727,7 +734,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         _editorPanel.Controls.AddRange(new Control[] {
         lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
         lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor, lblHolopad, txtHolopad, lblLocker, txtLocker, lblSuit, txtSuit,
-        lblBed, txtBed, lblBedsheet, txtBedsheet,
+        lblBed, txtBed, lblBedsheet, txtBedsheet, lblCamera, txtCamera,
         lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
     });
     }
@@ -927,6 +934,11 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Камера" (пусто — прототип подставляется автоматически по отделу комнаты)
+        var txtCamera = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblCamera = CreateLabel("Камера:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки комнаты
         var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -1037,7 +1049,8 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                     lockerProto: string.IsNullOrWhiteSpace(txtLocker.Text) ? null : txtLocker.Text,
                     suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                     bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
-                    bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text
+                    bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
+                    cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
                 );
 
                 // Добавляем цвет категории ТОЛЬКО если категория новая
@@ -1107,6 +1120,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblSuit, txtSuit,
         lblBed, txtBed,
         lblBedsheet, txtBedsheet,
+        lblCamera, txtCamera,
         lblFill, txtFill,
         lblLine, txtLine,
         lblPriority, txtPriority
@@ -1274,7 +1288,8 @@ private void ImportType()
                             lockerProto: type.LockerProto,
                             suitStorageProto: type.SuitStorageProto,
                             bedProto: type.BedProto,
-                            bedsheetProto: type.BedsheetProto
+                            bedsheetProto: type.BedsheetProto,
+                            cameraProto: type.CameraProto
                         );
                     }
                 }

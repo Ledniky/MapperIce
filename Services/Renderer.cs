@@ -1750,7 +1750,7 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity) continue;
             if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
@@ -1798,6 +1798,17 @@ public class Renderer
             int dd = _drawDepthManager.GetOffset("Objects") + 1;
             var b = bed;
             renderQueue.Add((b.Y, dd, 0, _insertCounter++, () => DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Камеры — отдельный слой «привязок» поверх остальных объектов. Поворот
+        // определяется автоматически по ближайшей стене (0 = стена с юга от тайла).
+        foreach (var camera in grid.Entities.OfType<CameraEntity>())
+        {
+            if (!IsPointVisible(camera.X, camera.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var c = camera;
+            float rotation = CameraOrientation.ResolveRotation(grid, tileGrid, c.X, c.Y, c.Rotation);
+            renderQueue.Add((c.Y, dd, 0, _insertCounter++, () => DrawSingleCamera(g, c.CameraProto, rotation, c.X, c.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
@@ -2354,33 +2365,50 @@ public class Renderer
     }
 
     /// <summary>
+    /// Отрисовка камеры как отдельной «привязки»: обычный маркер на всю клетку,
+    /// спрайт в повороте направления (кадр направления RSI выбирает сам
+    /// DrawTexturedRect по rotation).
+    /// </summary>
+    private void DrawSingleCamera(Graphics g, string protoId, float rotation, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 90, 90, 200),
+            fallbackPen: Color.FromArgb(180, 60, 60, 160),
+            protoLabel: "camera",
+            rotation: rotation);
+    }
+
+    /// <summary>
     /// Общая отрисовка «привязки» (авто-объекта из свойств комнаты): почти прозрачный
     /// оранжевый прямоугольник-маркер + рамка, поверх — текстура прототипа (если есть),
     /// а при достаточном зуме — подпись "auto" справа сверху и короткое имя прототипа снизу.
     /// Голопад рисуется тем же методом, что и остальные привязки (шкафчик/скафандр/кровать).
+    /// rotation — поворот сущности (у камеры выбирает кадр направления спрайта).
     /// </summary>
     private void DrawAutoObject(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset,
-        Color fallbackBrush, Color fallbackPen, string protoLabel)
+        Color fallbackBrush, Color fallbackPen, string protoLabel, float rotation = 0f)
     {
-        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+        var cellRect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
         // Почти прозрачный жёлто-оранжевый фон — привязка / авто-объект (единый для всех)
         using (var fillBrush = new SolidBrush(Color.FromArgb(40, 255, 170, 0)))
-            g.FillRectangle(fillBrush, rect);
+            g.FillRectangle(fillBrush, cellRect);
         using (var pen = new Pen(Color.FromArgb(255, 180, 90, 0), 1.5f))
-            g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+            g.DrawRectangle(pen, cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
 
         var texture = !string.IsNullOrEmpty(protoId) ? GetOrLoadTexture(protoId) : null;
         if (texture != null)
         {
-            DrawTexturedRect(g, protoId, rect, null, null);
+            // Текстура — во всю клетку (как в игре); у направленных спрайтов
+            // DrawTexturedRect сам выберет кадр нужной стороны по rotation.
+            DrawTexturedRect(g, protoId, cellRect, null, null, rotation);
         }
         else
         {
             using var fill = new SolidBrush(fallbackBrush);
-            g.FillRectangle(fill, rect);
+            g.FillRectangle(fill, cellRect);
             using var p = new Pen(fallbackPen, 1f);
-            g.DrawRectangle(p, rect.X, rect.Y, rect.Width, rect.Height);
+            g.DrawRectangle(p, cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
         }
 
         if (tileSize > 14)
@@ -2389,19 +2417,19 @@ public class Renderer
             using var autoFont = new Font("Segoe UI", 7, FontStyle.Bold);
             using var autoBrush = new SolidBrush(Color.Black);
             var autoSize = g.MeasureString("auto", autoFont);
-            g.DrawString("auto", autoFont, autoBrush, rect.Right - autoSize.Width, rect.Y);
+            g.DrawString("auto", autoFont, autoBrush, cellRect.Right - autoSize.Width, cellRect.Y);
 
             // Подпись прототипа снизу
             using var smallFont = new Font("Segoe UI", 6);
             using var labelBrush = new SolidBrush(Color.FromArgb(220, 90, 50, 0));
             string label = string.IsNullOrEmpty(protoId) ? protoLabel : ShortenProtoLabel(protoId);
-            g.DrawString(label, smallFont, labelBrush, rect.X + 1, rect.Bottom - 10);
+            g.DrawString(label, smallFont, labelBrush, cellRect.X + 1, cellRect.Bottom - 10);
         }
     }
 
     /// <summary>Короткое имя прототипа для подписи снизу у привязок.</summary>
     private static string ShortenProtoLabel(string protoId) =>
-        protoId.Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
+        protoId.Replace("SurveillanceCamera", "cam ").Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
                .Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
                .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
                .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");

@@ -31,7 +31,7 @@ public partial class MainForm
         {
             Dock = DockStyle.Left,
             Width = 1,
-            BackColor = Color.Gray
+            BackColor = AppTheme.PanelEdge
         };
         _toolPanel.Controls.Add(leftLine);
 
@@ -170,7 +170,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Width = contentWidth - 50,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
-            BackColor = AppTheme.ToggleOnBack,
+            BackColor = Color.White,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Arial", 12)
         };
@@ -187,7 +187,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Width = 40,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
-            BackColor = AppTheme.ToggleOnBack,
+            BackColor = Color.White,
             Font = new Font("Arial", 14),
             TextAlign = ContentAlignment.MiddleCenter
         };
@@ -286,15 +286,15 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Text = "Привязанные сущности",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
-            Height = 40,
+            Height = 34,
             FlatStyle = FlatStyle.Flat,
-            BackColor = AppTheme.ToggleOnBack,
+            BackColor = Color.White,
             Font = new Font("Arial", 10),
             TextAlign = ContentAlignment.MiddleCenter
         };
         _btnLinkedEntities.Click += (s, e) => ShowLinkedEntitiesPanel();
         _toolPanel.Controls.Add(_btnLinkedEntities);
-        y += 40 + 2;
+        y += 34 + 2;
 
         // ЭЛЕКТРОСЕТЬ
         var wireLabel = new Label
@@ -895,11 +895,11 @@ _roomTypeCombo.DrawItem += (s, e) =>
                     _toolManager.ResetTool();
 
                     _decalInheritanceForm = new DecalInheritanceDialog(_decalInheritanceManager, _decalPackManager, _indexer);
-                    _btnDecalInheritance.BackColor = Color.LightBlue;
+                    _btnDecalInheritance.BackColor = AppTheme.SelectedBack;
                     _decalInheritanceForm.FormClosed += (fs, fe) =>
                     {
                         _decalInheritanceForm = null;
-                        _btnDecalInheritance.BackColor = Color.White;
+                        _btnDecalInheritance.BackColor = AppTheme.ButtonBack;
                     };
                     _decalInheritanceForm.Show(this);
                 };
