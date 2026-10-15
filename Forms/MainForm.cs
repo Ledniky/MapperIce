@@ -132,6 +132,7 @@ public partial class MainForm : Form
     private bool _hideRoomOverlay = false;
     private bool _showPipeOverlay = true;
     private bool _showWires = true;
+    private bool _showCameraAreas = true;
     private bool _showNetworkLinks = false;
     private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
     private Form? _pipeSettingsForm = null;
@@ -1492,6 +1493,7 @@ public partial class MainForm : Form
         _renderer.ShowPipeOverlay = _showPipeOverlay;
         _renderer.ShowAlarmConnections = _showAlarmConnections;
         _renderer.ShowWires = _showWires;
+        _renderer.ShowCameraAreas = _showCameraAreas;
         _renderer.ShowNetworkLinks = _showNetworkLinks;
         _renderer.NetworkHighlightPositions = _networkHighlightPositions;
         _renderer.BackgroundColor = _renderBackground;

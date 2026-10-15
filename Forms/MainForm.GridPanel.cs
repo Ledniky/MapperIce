@@ -64,7 +64,7 @@ public partial class MainForm
         _flagsPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 290, // 10 + 6×40 (кнопки) + 5×6 (зазоры) + 10
+            Width = 336, // 10 + 7×40 (кнопки) + 6×6 (зазоры) + 10
             Height = 55,
             BackColor = Color.FromArgb(220, 220, 220),
             Margin = new Padding(4, 0, 14, 0)
@@ -107,7 +107,7 @@ public partial class MainForm
         // Поэтому значение инвертируем и при загрузке, и при клике, а в настройки
         // сохраняем именно "показан" (как у остальных кнопок).
         if (_uiToggleSettings.RoomOverlayOn.HasValue) _hideRoomOverlay = !_uiToggleSettings.RoomOverlayOn.Value;
-        var btnRoom = CreateToggleBtn("🗺️", "❌", "Оверлей комнат", xPos, yPos, _uiToggleSettings.RoomOverlayOn ?? true, v =>
+        var btnRoom = CreateToggleBtn("🗺️", "❌", "регионы комнат", xPos, yPos, _uiToggleSettings.RoomOverlayOn ?? true, v =>
         {
             _hideRoomOverlay = !v;
             SaveUiToggleSettings(s => s.RoomOverlayOn = v);
@@ -118,7 +118,7 @@ public partial class MainForm
 
         // 🔧 Pipe overlay
         if (_uiToggleSettings.PipeOverlayOn.HasValue) _showPipeOverlay = _uiToggleSettings.PipeOverlayOn.Value;
-        var btnPipe = CreateToggleBtn("🔧", "❌", "Оверлей труб", xPos, yPos, _uiToggleSettings.PipeOverlayOn ?? true, v =>
+        var btnPipe = CreateToggleBtn("🔧", "❌", "Трубы", xPos, yPos, _uiToggleSettings.PipeOverlayOn ?? true, v =>
         {
             _showPipeOverlay = v;
             SaveUiToggleSettings(s => s.PipeOverlayOn = v);
@@ -129,7 +129,7 @@ public partial class MainForm
 
         // 🔗 Alarm connections
         if (_uiToggleSettings.AlarmConnectionsOn.HasValue) _showAlarmConnections = _uiToggleSettings.AlarmConnectionsOn.Value;
-        var btnAlarm = CreateToggleBtn("🔗", "❌", "Сети сигнализаций", xPos, yPos, _uiToggleSettings.AlarmConnectionsOn ?? true, v =>
+        var btnAlarm = CreateToggleBtn("🔗", "❌", "Сети атмо-сигнализаций", xPos, yPos, _uiToggleSettings.AlarmConnectionsOn ?? true, v =>
         {
             _showAlarmConnections = v;
             SaveUiToggleSettings(s => s.AlarmConnectionsOn = v);
@@ -151,7 +151,7 @@ public partial class MainForm
 
         // ⚡ Wires overlay
         if (_uiToggleSettings.WiresOn.HasValue) _showWires = _uiToggleSettings.WiresOn.Value;
-        var btnWire = CreateToggleBtn("⚡", "❌", "Кабели", xPos, yPos, _uiToggleSettings.WiresOn ?? true, v =>
+        var btnWire = CreateToggleBtn("⚡", "❌", "Эл. проводка", xPos, yPos, _uiToggleSettings.WiresOn ?? true, v =>
         {
             _showWires = v;
             SaveUiToggleSettings(s => s.WiresOn = v);
@@ -162,13 +162,24 @@ public partial class MainForm
 
         // 📡 Связи сетей (кнопки/рычаги → устройства)
         if (_uiToggleSettings.NetworkLinksOn.HasValue) _showNetworkLinks = _uiToggleSettings.NetworkLinksOn.Value;
-        var btnNetwork = CreateToggleBtn("📡", "❌", "Связи сетей (кнопки/рычаги → устройства)", xPos, yPos, _uiToggleSettings.NetworkLinksOn ?? false, v =>
+        var btnNetwork = CreateToggleBtn("📡", "❌", "сети управления (нажато → открыто)", xPos, yPos, _uiToggleSettings.NetworkLinksOn ?? false, v =>
         {
             _showNetworkLinks = v;
             SaveUiToggleSettings(s => s.NetworkLinksOn = v);
             Render();
         });
         parentPanel.Controls.Add(btnNetwork);
+        xPos += 46;
+
+        // 📹 Область обзора камер (квадрат 13×13 тайлов)
+        if (_uiToggleSettings.CameraAreasOn.HasValue) _showCameraAreas = _uiToggleSettings.CameraAreasOn.Value;
+        var btnCameraAreas = CreateToggleBtn("📹", "❌", "обзор камер (оверлей ии)", xPos, yPos, _uiToggleSettings.CameraAreasOn ?? true, v =>
+        {
+            _showCameraAreas = v;
+            SaveUiToggleSettings(s => s.CameraAreasOn = v);
+            Render();
+        });
+        parentPanel.Controls.Add(btnCameraAreas);
     }
     private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, bool initialState, Action<bool> onToggle)
     {
@@ -680,6 +691,7 @@ public partial class MainForm
         public bool? SnapToGridOn { get; set; }
         public bool? WiresOn { get; set; }
         public bool? NetworkLinksOn { get; set; }
+        public bool? CameraAreasOn { get; set; }
     }
 
     private static string GetUiSettingsPath()

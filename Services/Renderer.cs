@@ -20,6 +20,8 @@ public class Renderer
     private MapData? _currentMap;
     public bool ShowPipeOverlay { get; set; } = true;
     public bool ShowWires { get; set; } = true;
+    /// <summary>Показывать область обзора камер (как зона покрытия НВ-кабеля).</summary>
+    public bool ShowCameraAreas { get; set; } = true;
 
     // Кэш текстур для ускорения рендеринга
     // Кэш текстур для ускорения рендеринга
@@ -360,6 +362,13 @@ public class Renderer
                         DrawTempPipePath(g, path, tileSize, viewOffset, gridOffset);
                     }
                 }
+
+                // Область обзора камер — тот же приём, что и зона покрытия НВ-кабеля
+                // (см. DrawLvCoverageOverlay), только радиус больше. Рисуется и для
+                // камер-«привязок» из свойств комнаты, и для камер, поставленных
+                // обычным прототипом из панели репозитория.
+                if (ShowCameraAreas)
+                    DrawCameraCoverageOverlay(g, grid, tileSize, viewOffset, gridOffset, visibleRect);
 
                 // Электросеть — отдельный слой поверх труб, та же идея (линии между
                 // соседями одного типа + точки узлов), без специфичных для труб
@@ -1133,10 +1142,12 @@ public class Renderer
 
     /// <summary>
     /// Зелёная область покрытия НВ-кабеля радиусом 3 клетки — закрашиваются конкретные
-    /// ТАЙЛЫ, чей центр попадает в радиус от узла кабеля. Форма области — РОМБ: расстояние
-    /// считается по Манхэттену (|dx| + |dy|), диагональный шаг "стоит" как два обычных шага
-    /// (по одной оси, потом по другой), а не как один — в отличие от Чебышёва (квадрат) и
-    /// евклидовой метрики (круг). Все покрытые тайлы от всех НВ-узлов собираются в один
+    /// ТАЙЛЫ, чей центр попадает в радиус от узла кабеля. Форма области — КРУГ:
+    /// расстояние считается евклидовым (√(dx² + dy²)), поэтому диагональный шаг "стоит"
+    /// как √2, а не как два обычных шага, и углы области срезаны (в отличие от ромба
+    /// при манхэттенской метрике и квадрата при чебышёвской). Узлы кабеля хранятся
+    /// в целых координатах тайла, поэтому расстояние считается между ЦЕНТРАМИ тайлов
+    /// (обе точки — тайл + 0.5). Все покрытые тайлы от всех НВ-узлов собираются в один
     /// HashSet, поэтому пересекающиеся зоны не дают двойной альфы.
     /// </summary>
     private void DrawLvCoverageOverlay(Graphics g, List<WireEntity> wires, int tileSize, PointF viewOffset, PointF gridOffset)
@@ -1157,9 +1168,8 @@ public class Renderer
             {
                 for (int dy = -radiusTiles; dy <= radiusTiles; dy++)
                 {
-                    // Расстояние по Манхэттену: сумма шагов по X и по Y — даёт форму ромба.
-                    int stepDistance = Math.Abs(dx) + Math.Abs(dy);
-                    if (stepDistance > radiusTiles) continue;
+                    // Евклидово расстояние в клетках: даёт круг.
+                    if (dx * dx + dy * dy > radiusTiles * radiusTiles) continue;
 
                     coveredTiles.Add((wireTileX + dx, wireTileY + dy));
                 }
@@ -1175,6 +1185,87 @@ public class Renderer
             g.FillRectangle(brush, rect);
         }
     }
+
+    /// <summary>
+    /// Область обзора камер: закрашиваются тайлы в КВАДРАТЕ со стороной 6.5 клетки
+    /// от камеры (расстояние по Чебышёву — max(|dx|,|dy|), поэтому область квадратная,
+    /// а не круглая и не ромб, как у НВ-кабеля). Охвачены все камеры: и «привязки»
+    /// из свойств комнаты (CameraEntity), и камеры, поставленные обычным прототипом
+    /// из панели репозитория (MapEntity с прототипом SurveillanceCamera*).
+    /// Пересекающиеся зоны не дают двойной альфы — все покрытые тайлы собираются
+    /// в один HashSet, а за экран области не считаются вовсе (IsTileVisible).
+    /// </summary>
+    private void DrawCameraCoverageOverlay(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
+    {
+        // Половина стороны квадрата: 6.5 клетки дают 13×13 тайлов (тайлы с шагом
+        // до 6 от клетки камеры включительно).
+        const float halfSideTiles = 6.5f;
+
+        // Не один цикл по сущностям с фильтрацией по прототипу: «привязка»-камера
+        // хранит прототип в CameraProto, обычная сущность — в Proto.
+        var cameras = new List<(float X, float Y)>();
+        foreach (var entity in grid.Entities)
+        {
+            string proto = entity is CameraEntity camera ? camera.CameraProto : entity.Proto;
+            if (!IsCameraProto(proto)) continue;
+            cameras.Add((entity.X, entity.Y));
+        }
+
+        if (cameras.Count == 0) return;
+
+        int scanRadius = (int)Math.Ceiling(halfSideTiles);
+        var covered = new HashSet<(int x, int y)>();
+
+        foreach (var (camX, camY) in cameras)
+        {
+            int cx = (int)Math.Floor(camX);
+            int cy = (int)Math.Floor(camY);
+
+            for (int dx = -scanRadius; dx <= scanRadius; dx++)
+            {
+                int tx = cx + dx;
+                for (int dy = -scanRadius; dy <= scanRadius; dy++)
+                {
+                    int ty = cy + dy;
+                    if (!IsTileVisible(tx, ty, visibleRect)) continue;
+
+                    // Расстояние по Чебышёву — max(|dx|,|dy|): одинаковый шаг по любой
+                    // оси, поэтому область получается квадратом, а не кругом.
+                    float ndx = Math.Abs(tx + 0.5f - camX);
+                    float ndy = Math.Abs(ty + 0.5f - camY);
+                    if (ndx > halfSideTiles || ndy > halfSideTiles) continue;
+
+                    covered.Add((tx, ty));
+                }
+            }
+        }
+
+        if (covered.Count == 0) return;
+
+        using var brush = new SolidBrush(Color.FromArgb(45, 60, 140, 230));
+        foreach (var (tx, ty) in covered)
+        {
+            var rect = ToRect(tx, ty, tileSize, viewOffset, gridOffset);
+            g.FillRectangle(brush, rect);
+        }
+    }
+
+    /// <summary>
+    /// Прототип относится к камерам видеонаблюдения (для области обзора).
+    /// Охватываются и стационарные (SurveillanceCamera*), и беспроводные
+    /// (SurveillanceWirelessCamera*); роутеры, платы и мониторы — нет.
+    /// </summary>
+    private static bool IsCameraProto(string? proto)
+    {
+        if (string.IsNullOrEmpty(proto)) return false;
+        if (!proto.StartsWith("SurveillanceCamera") && !proto.StartsWith("SurveillanceWirelessCamera"))
+            return false;
+        return !proto.Contains("Router") &&
+               !proto.Contains("Circuitboard") &&
+               !proto.Contains("Monitor") &&
+               !proto.Contains("Assembly");
+    }
+
     private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (pipes.Count == 0) return;

@@ -91,6 +91,15 @@ public class GridSnapshot
     public List<AirAlarmEntity> AirAlarms { get; set; } = new();
     public List<FireAlarmEntity> FireAlarms { get; set; } = new();
     public List<MapEntity> GenericEntities { get; set; } = new();
+    /// <summary>
+    /// «Привязки» — авто-объекты из свойств комнаты (голопад, шкафчик, скафандр,
+    /// кровать, камера). Хранятся отдельно от GenericEntities, потому что тип
+    /// сущности здесь значим: рендер и экспорт ищут привязки проходами
+    /// OfType&lt;HolopadEntity&gt;()/OfType&lt;CameraEntity&gt;() и т.п., и после отката
+    /// привязка не должна превратиться в обычный MapEntity (иначе пропадают
+    /// оранжевые маркеры).
+    /// </summary>
+    public List<MapEntity> AutoObjects { get; set; } = new();
     public List<PlacedTile> Tiles { get; set; } = new();
     public List<PlacedDecal> Decals { get; set; } = new();
 
@@ -139,9 +148,15 @@ public class GridSnapshot
 
         GenericEntities = grid.Entities
             .Where(e => e is not PipeEntity && e is not WireEntity && e is not FirelockEntity &&
-                        e is not AirAlarmEntity && e is not FireAlarmEntity)
+                        e is not AirAlarmEntity && e is not FireAlarmEntity &&
+                        !IsAutoObject(e))
             .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation,
                                          NetworkLinks = e.NetworkLinks.Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort }).ToList() })
+            .ToList();
+
+        AutoObjects = grid.Entities
+            .Where(IsAutoObject)
+            .Select(CloneAutoObject)
             .ToList();
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
@@ -245,6 +260,11 @@ public class GridSnapshot
             });
         }
 
+        foreach (var autoObject in AutoObjects)
+        {
+            grid.Entities.Add(CloneAutoObject(autoObject));
+        }
+
         foreach (var tile in Tiles)
         {
             grid.Tiles.Add(new PlacedTile { X = tile.X, Y = tile.Y, Proto = tile.Proto });
@@ -259,4 +279,47 @@ foreach (var decal in Decals)
             });
         }
     }
+
+    /// <summary>«Привязка» — авто-объект из свойств комнаты (см. AutoObjects).</summary>
+    private static bool IsAutoObject(MapEntity e) =>
+        e is HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity;
+
+    /// <summary>
+    /// Копия сущности с сохранением КОНКРЕТНОГО типа. Общий путь через
+    /// new MapEntity {...} для привязок не годится: рендер и экспорт различают их
+    /// именно по типу (OfType&lt;CameraEntity&gt;() и т.п.), поэтому после отката
+    /// привязка обязана остаться, например, CameraEntity, а не стать MapEntity.
+    /// Новый тип привязки достаточно добавить в этот switch и в IsAutoObject.
+    /// </summary>
+    private static MapEntity CloneAutoObject(MapEntity e) => e switch
+    {
+        HolopadEntity h => new HolopadEntity
+        {
+            Proto = h.Proto, X = h.X, Y = h.Y, Rotation = h.Rotation, HolopadProto = h.HolopadProto
+        },
+        LockerEntity l => new LockerEntity
+        {
+            Proto = l.Proto, X = l.X, Y = l.Y, Rotation = l.Rotation, LockerProto = l.LockerProto
+        },
+        SuitStorageEntity s => new SuitStorageEntity
+        {
+            Proto = s.Proto, X = s.X, Y = s.Y, Rotation = s.Rotation, SuitStorageProto = s.SuitStorageProto
+        },
+        BedEntity b => new BedEntity
+        {
+            Proto = b.Proto, X = b.X, Y = b.Y, Rotation = b.Rotation,
+            BedProto = b.BedProto, BedsheetProto = b.BedsheetProto
+        },
+        CameraEntity c => new CameraEntity
+        {
+            Proto = c.Proto, X = c.X, Y = c.Y, Rotation = c.Rotation, CameraProto = c.CameraProto
+        },
+        _ => new MapEntity
+        {
+            Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation,
+            NetworkLinks = e.NetworkLinks
+                .Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort })
+                .ToList()
+        }
+    };
 }

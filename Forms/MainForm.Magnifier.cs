@@ -48,7 +48,10 @@ public partial class MainForm
             Width = 260,
             Height = 190,
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(255, 250, 250, 235),
+            // Фон нейтральный — при смене темы окно перекрашивает AppTheme.ApplyToForm
+            // (напрямую палитру темы здесь не задаём, т.к. idle-проход всё равно
+            // приведёт любой «нейтральный» фон к BackPanel/BackField текущей темы).
+            BackColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle
         };
 
@@ -56,7 +59,7 @@ public partial class MainForm
         {
             Dock = DockStyle.Top,
             Height = 22,
-            BackColor = Color.FromArgb(255, 225, 225, 190)
+            BackColor = Color.White
         };
 
         _magnifierHeaderLabel = new Label
@@ -100,7 +103,7 @@ public partial class MainForm
             WrapContents = false,
             AutoScroll = true,
             AutoSize = false,
-            BackColor = Color.FromArgb(255, 255, 255, 245),
+            BackColor = Color.White,
             Top = headerPanel.Height,
             Width = _magnifierPanel.Width,
             Height = _magnifierPanel.Height - headerPanel.Height
@@ -222,17 +225,23 @@ public partial class MainForm
                 Dock = DockStyle.Right,
                 Width = 20,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Arial", 9),
-                ForeColor = Color.DarkRed
+                Font = new Font("Arial", 9)
             };
             btnDelete.Click += (s, e) => deleteAction();
             row.Controls.Add(btnDelete);
             // Добавлять кнопку нужно ДО Label с Dock=Fill по Z-порядку контролов,
             // иначе Fill-контрол перекрывает Dock=Right — переставляем на передний план
             btnDelete.BringToFront();
+            AppTheme.ApplyToControl(btnDelete);
         }
 
         _magnifierListPanel.Controls.Add(row);
+
+        // Строки создаются уже после того, как окно один раз прошло темизацию
+        // (idle-проход повторно окно не перекрашивает), поэтому новую строку
+        // оформляем текущей темой сразу — иначе в тёмной теме она осталась бы светлой.
+        AppTheme.ApplyToControl(row);
+        AppTheme.ApplyToControl(label);
     }
 
     /// <summary>
