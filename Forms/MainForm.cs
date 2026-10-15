@@ -159,6 +159,10 @@ public partial class MainForm : Form
     private Image? _bedIcon;
     private Button _btnPlaceCamera = null!;
     private Image? _cameraIcon;
+    private Button _btnPlaceDresser = null!;
+    private Image? _dresserIcon;
+    private Button _btnPlaceIntercom = null!;
+    private Image? _intercomIcon;
     private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
@@ -180,6 +184,10 @@ public partial class MainForm : Form
     private bool _snapEntityRotation = false;
     private Button? _btnEntityRotationSnap;
     private float _currentEntityRotation = 0f;
+    // Ручной поворот размещаемого объекта (колёсико мыши): у интеркома переопределяет
+    // автоматическое направление вовнутрь комнаты, у ЛКП задаёт поворот самой сущности.
+    private float _placeRotation = 0f;
+    private bool _placeRotationManual = false;
 
     // ===== Инструмент "Перемещение" =====
     private Button? _btnMove;
@@ -1258,8 +1266,17 @@ public partial class MainForm : Form
         if (_btnPlaceSuitStorage != null) _btnPlaceSuitStorage.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceBed != null) _btnPlaceBed.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceCamera != null) _btnPlaceCamera.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceDresser != null) _btnPlaceDresser.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceIntercom != null) _btnPlaceIntercom.BackColor = AppTheme.ButtonBack;
         if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.ButtonBack;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
+
+        // Ручной поворот привязки (колёсико) сбрасывается при смене инструмента:
+        // новая привязка снова разворачивается автоматически. Превью привязки живёт
+        // только пока выбран её инструмент.
+        _placeRotationManual = false;
+        _placeRotation = 0f;
+        if (!IsPlacementPreviewTool(tool)) _renderer.ClearEntityPreview();
 
         if (tool != ToolManager.Tool.Move)
         {
@@ -1388,6 +1405,12 @@ public partial class MainForm : Form
             case ToolManager.Tool.PlaceCamera:
                 if (_btnPlaceCamera != null) _btnPlaceCamera.BackColor = AppTheme.SelectedBack;
                 break;
+            case ToolManager.Tool.PlaceDresser:
+                if (_btnPlaceDresser != null) _btnPlaceDresser.BackColor = AppTheme.SelectedBack;
+                break;
+            case ToolManager.Tool.PlaceIntercom:
+                if (_btnPlaceIntercom != null) _btnPlaceIntercom.BackColor = AppTheme.SelectedBack;
+                break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
@@ -1427,6 +1450,8 @@ public partial class MainForm : Form
             ToolManager.Tool.PlaceSuitStorage => Cursors.Help,
             ToolManager.Tool.PlaceBed => Cursors.Help,
             ToolManager.Tool.PlaceCamera => Cursors.Help,
+            ToolManager.Tool.PlaceDresser => Cursors.Help,
+            ToolManager.Tool.PlaceIntercom => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

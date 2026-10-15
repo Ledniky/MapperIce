@@ -141,7 +141,7 @@ public class RoomTypeManager
     }
 
     public void CreateCustomType(string pack, string name, string category, string wallProto, string floorProto,
-        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null)
+        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null)
     {
         if (_types.ContainsKey(name))
         {
@@ -165,6 +165,8 @@ public class RoomTypeManager
             BedProto = bedProto,
             BedsheetProto = bedsheetProto,
             CameraProto = cameraProto,
+            DresserProto = dresserProto,
+            IntercomProto = intercomProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -178,7 +180,7 @@ public class RoomTypeManager
     }
 
     public void EditCustomType(string oldName, string newName, string pack, string category, string wallProto,
-        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null)
+        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
@@ -207,6 +209,8 @@ public class RoomTypeManager
             BedProto = bedProto,
             BedsheetProto = bedsheetProto,
             CameraProto = cameraProto,
+            DresserProto = dresserProto,
+            IntercomProto = intercomProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -309,6 +313,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
     room.BedProto = type.BedProto;
     room.BedsheetProto = type.BedsheetProto;
     room.CameraProto = type.CameraProto;
+    room.DresserProto = type.DresserProto;
+    room.IntercomProto = type.IntercomProto;
     room.FillColor = type.FillColor;
     room.LineColor = type.LineColor;
     room.RoomType = type.Name;
@@ -345,6 +351,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             BedProto = type.BedProto,
             BedsheetProto = type.BedsheetProto,
             CameraProto = type.CameraProto,
+            DresserProto = type.DresserProto,
+            IntercomProto = type.IntercomProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -390,6 +398,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             BedProto = type.BedProto,
             BedsheetProto = type.BedsheetProto,
             CameraProto = type.CameraProto,
+            DresserProto = type.DresserProto,
+            IntercomProto = type.IntercomProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -436,6 +446,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 BedProto = type.BedProto,
                 BedsheetProto = type.BedsheetProto,
                 CameraProto = type.CameraProto,
+                DresserProto = type.DresserProto,
+                IntercomProto = type.IntercomProto,
                 FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
                 LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
                 Priority = type.Priority
@@ -476,6 +488,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 BedProto = data.BedProto,
                 BedsheetProto = data.BedsheetProto,
                 CameraProto = data.CameraProto,
+                DresserProto = data.DresserProto,
+                IntercomProto = data.IntercomProto,
                 FillColor = data.FillColor,
                 LineColor = data.LineColor,
                 Priority = data.Priority
@@ -518,6 +532,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 BedProto = data.BedProto,
                 BedsheetProto = data.BedsheetProto,
                 CameraProto = data.CameraProto,
+                DresserProto = data.DresserProto,
+                IntercomProto = data.IntercomProto,
             FillColor = data.FillColor,
             LineColor = data.LineColor,
             Priority = data.Priority

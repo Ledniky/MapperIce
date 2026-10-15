@@ -591,9 +591,19 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Комод"
+        var txtDresser = CreateTextBox(type.DresserProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblDresser = CreateLabel("Комод:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Поле "Камера" (пусто — прототип подставляется автоматически по отделу комнаты)
         var txtCamera = CreateTextBox(type.CameraProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblCamera = CreateLabel("Камера:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Интерком" (пусто — прототип подставляется автоматически по отделу комнаты)
+        var txtIntercom = CreateTextBox(type.IntercomProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblIntercom = CreateLabel("Интерком:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Цвет заливки
@@ -694,7 +704,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                         bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
                         bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
-                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
+                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
+                        dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
+                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
                     );
                 }
 
@@ -716,7 +728,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                         bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
                         bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
-                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
+                        cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
+                        dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
+                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
                     );
                 }
                 UpdateTreeView();
@@ -734,7 +748,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         _editorPanel.Controls.AddRange(new Control[] {
         lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
         lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor, lblHolopad, txtHolopad, lblLocker, txtLocker, lblSuit, txtSuit,
-        lblBed, txtBed, lblBedsheet, txtBedsheet, lblCamera, txtCamera,
+        lblBed, txtBed, lblBedsheet, txtBedsheet, lblDresser, txtDresser, lblCamera, txtCamera, lblIntercom, txtIntercom,
         lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
     });
     }
@@ -934,9 +948,19 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblBedsheet = CreateLabel("Одеяло:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Комод"
+        var txtDresser = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblDresser = CreateLabel("Комод:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Поле "Камера" (пусто — прототип подставляется автоматически по отделу комнаты)
         var txtCamera = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
         var lblCamera = CreateLabel("Камера:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Интерком" (пусто — прототип подставляется автоматически по отделу комнаты)
+        var txtIntercom = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblIntercom = CreateLabel("Интерком:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
         // Цвет заливки комнаты
@@ -1050,7 +1074,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                     suitStorageProto: string.IsNullOrWhiteSpace(txtSuit.Text) ? null : txtSuit.Text,
                     bedProto: string.IsNullOrWhiteSpace(txtBed.Text) ? null : txtBed.Text,
                     bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
-                    cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text
+                    cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
+                    dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
+                    intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
                 );
 
                 // Добавляем цвет категории ТОЛЬКО если категория новая
@@ -1120,7 +1146,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblSuit, txtSuit,
         lblBed, txtBed,
         lblBedsheet, txtBedsheet,
+        lblDresser, txtDresser,
         lblCamera, txtCamera,
+        lblIntercom, txtIntercom,
         lblFill, txtFill,
         lblLine, txtLine,
         lblPriority, txtPriority
@@ -1289,7 +1317,9 @@ private void ImportType()
                             suitStorageProto: type.SuitStorageProto,
                             bedProto: type.BedProto,
                             bedsheetProto: type.BedsheetProto,
-                            cameraProto: type.CameraProto
+                            cameraProto: type.CameraProto,
+                            dresserProto: type.DresserProto,
+                            intercomProto: type.IntercomProto
                         );
                     }
                 }

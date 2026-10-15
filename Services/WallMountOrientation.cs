@@ -3,20 +3,28 @@ using MapperIce.Models;
 namespace MapperIce.Services;
 
 /// <summary>
-/// Ориентация настенной камеры-привязки.
+/// Ориентация настенных привязок (камера, интерком).
 ///
-/// У камеры четыре направления, заданных поворотом сущности. Поворот 0 соответствует
-/// стене с ЮГА от тайла камеры (в СС14 Direction.South = 0), дальше по кругу:
-/// восток = 90°, север = 180°, запад = -90° — это ровно тот порядок, который даёт
-/// DirectionExtensions.ToAngle в движке и _quarterToDirOrder в рендерере, поэтому
-/// спрайт камеры сам выбирает нужный кадр направления.
+/// У таких устройств четыре направления, заданных поворотом сущности, и поворот
+/// показывает, на какой грани своего тайла «висит» устройство: спрайт ставится на
+/// границе стены и комнаты. Поворот 0 — южная грань (в СС14 Direction.South = 0),
+/// дальше по кругу: восток = 90°, север = 180°, запад = -90° — это ровно тот порядок,
+/// который даёт DirectionExtensions.ToAngle в движке и _quarterToDirOrder в рендерере,
+/// поэтому спрайт сам выбирает нужный кадр направления.
+///
+/// Отсюда два случая использования:
+///  * камера стоит в клетке комнаты и висит на соседней стене — поворот берётся по
+///    стороне, на которой эта стена (FindNearestWall/ResolveRotation);
+///  * интерком стоит прямо В тайле-стене и висит на его грани, обращённой в комнату —
+///    поворот берётся по стороне комнаты относительно самого тайла
+///    (FindNearestWallTile/ResolveIntercomRotation).
 /// </summary>
-public static class CameraOrientation
+public static class WallMountOrientation
 {
-    /// <summary>Насколько далеко (в клетках) ищем стену вокруг камеры.</summary>
+    /// <summary>Насколько далеко (в клетках) ищем стену вокруг устройства.</summary>
     private const int MaxWallSteps = 32;
 
-    /// <summary>Сторона тайла, на которой стоит стена.</summary>
+    /// <summary>Сторона тайла (стена на этой стороне у камеры; комната — у интеркома).</summary>
     public enum WallSide
     {
         None,
@@ -26,7 +34,7 @@ public static class CameraOrientation
         West
     }
 
-    /// <summary>Поворот камеры для стены на указанной стороне тайла (в радианах).</summary>
+    /// <summary>Поворот устройства для стены на указанной стороне тайла (в радианах).</summary>
     public static float RotationForSide(WallSide side)
     {
         float rotation = side switch
@@ -147,5 +155,30 @@ public static class CameraOrientation
             return tileGrid.IsWall(x, y);
 
         return grid != null && !grid.Rooms.Any(r => r.Contains(x, y));
+    }
+
+    /// <summary>
+    /// Ближайший от клетки ТАЙЛ-стена — для настенных привязок, которые висят прямо
+    /// в стене (интерком). Идём от клетки в четыре стороны и возвращаем первую стену
+    /// вместе с гранью, которая смотрит НА исходную клетку (то есть, куда устройству
+    /// нужно «повернуться»: Facing = сторона комнаты относительно самого тайла-стены).
+    /// Если стены в пределах MaxWallSteps нет — null.
+    ///
+    /// Facing берётся именно от исходной клетки, а не от сканирования соседей стены:
+    /// у внутренней стены между двумя комнатами соседей-комнат два, и поиск по
+    /// соседям мог бы развернуть интерком в чужую комнату.
+    /// </summary>
+    public static (int X, int Y, WallSide Facing)? FindNearestWallTile(Grid? grid, TileGrid? tileGrid, int cellX, int cellY)
+    {
+        for (int step = 1; step <= MaxWallSteps; step++)
+        {
+            // Стена выше клетки — комната (исходная клетка) лежит с юга от неё.
+            if (IsWallCell(grid, tileGrid, cellX, cellY - step)) return (cellX, cellY - step, WallSide.South);
+            if (IsWallCell(grid, tileGrid, cellX, cellY + step)) return (cellX, cellY + step, WallSide.North);
+            if (IsWallCell(grid, tileGrid, cellX - step, cellY)) return (cellX - step, cellY, WallSide.East);
+            if (IsWallCell(grid, tileGrid, cellX + step, cellY)) return (cellX + step, cellY, WallSide.West);
+        }
+
+        return null;
     }
 }

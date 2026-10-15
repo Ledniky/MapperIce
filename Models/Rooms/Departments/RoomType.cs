@@ -31,12 +31,49 @@ public abstract class RoomType
     /// <summary>Прототип одеяла (id из bedsheets.yml), привязанный к этому типу комнаты в свойствах.</summary>
     public virtual string? BedsheetProto => null;
     /// <summary>
+    /// Прототип комода (id из Catalog/Fills/Lockers/dressers.yml), привязанный к этому
+    /// типу комнаты в свойствах. Задан только у комнат глав отделов ("только главам"),
+    /// у остальных типов — null, и привязка комода не ставится.
+    /// </summary>
+    public virtual string? DresserProto => null;
+    /// <summary>
     /// Прототип камеры (id из surveillance_camera.yml), привязанный к этому типу комнаты.
     /// Отдел камеры совпадает с отделом комнаты, поэтому по умолчанию прототип
     /// подбирается автоматически по Category (см. CameraProtoForCategory); тип комнаты
     /// может переопределить его вручную.
     /// </summary>
     public virtual string? CameraProto => CameraProtoForCategory(Category);
+
+    /// <summary>
+    /// Прототип интеркома (id из intercom.yml), привязанный к этому типу комнаты.
+    /// Как и у камеры, отдел интеркома совпадает с отделом комнаты, поэтому прототип
+    /// по умолчанию подбирается автоматически по Category; тип комнаты может
+    /// переопределить его вручную. Интерком при этом вешается В тайл-стену рядом
+    /// с комнатой (см. WallMountOrientation).
+    /// </summary>
+    public virtual string? IntercomProto => IntercomProtoForCategory(Category);
+
+    /// <summary>
+    /// Интерком по отделу комнаты: у каждого отдела свой ключ шифрования
+    /// (Intercom{Отдел} в intercom.yml). Supply в прототипах — это Cargo,
+    /// Common — общий IntercomCommon. Комнатам без отдела (Antags) интерком
+    /// не привязывается.
+    /// </summary>
+    public static string? IntercomProtoForCategory(string category)
+    {
+        return category.TrimEnd('+') switch
+        {
+            "Engineering" => "IntercomEngineering",
+            "Security" => "IntercomSecurity",
+            "Science" => "IntercomScience",
+            "Cargo" => "IntercomSupply",
+            "Command" => "IntercomCommand",
+            "Service" => "IntercomService",
+            "Medical" => "IntercomMedical",
+            "Antags" => null,
+            _ => "IntercomCommon"
+        };
+    }
 
     /// <summary>
     /// Камера по отделу комнаты: у каждого отдела СС14 своя подсеть камер
@@ -216,11 +253,17 @@ public class CustomRoomType : RoomType
     public override string? SuitStorageProto => string.IsNullOrEmpty(Data.SuitStorageProto) ? null : Data.SuitStorageProto;
     public override string? BedProto => string.IsNullOrEmpty(Data.BedProto) ? null : Data.BedProto;
     public override string? BedsheetProto => string.IsNullOrEmpty(Data.BedsheetProto) ? null : Data.BedsheetProto;
+    public override string? DresserProto => string.IsNullOrEmpty(Data.DresserProto) ? null : Data.DresserProto;
     /// <summary>
     /// Камера кастомного типа: если в свойствах типа прототип не задан, он берётся
     /// автоматически по отделу (Category) — как у ванильных типов.
     /// </summary>
     public override string? CameraProto => string.IsNullOrEmpty(Data.CameraProto) ? base.CameraProto : Data.CameraProto;
+    /// <summary>
+    /// Интерком кастомного типа: если в свойствах прототип не задан, он берётся
+    /// автоматически по отделу (Category) — как у ванильных типов.
+    /// </summary>
+    public override string? IntercomProto => string.IsNullOrEmpty(Data.IntercomProto) ? base.IntercomProto : Data.IntercomProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -259,7 +302,9 @@ public class CustomRoomTypeData
     public string? SuitStorageProto { get; set; } = null;
     public string? BedProto { get; set; } = null;
     public string? BedsheetProto { get; set; } = null;
+    public string? DresserProto { get; set; } = null;
     public string? CameraProto { get; set; } = null;
+    public string? IntercomProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -282,7 +327,9 @@ public class ExportData
     public string? SuitStorageProto { get; set; }
     public string? BedProto { get; set; }
     public string? BedsheetProto { get; set; }
+    public string? DresserProto { get; set; }
     public string? CameraProto { get; set; }
+    public string? IntercomProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

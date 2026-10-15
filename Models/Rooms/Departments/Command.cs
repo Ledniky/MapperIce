@@ -67,6 +67,7 @@ public class Captain : CommandRoomType
     public override string? SuitStorageProto => "SuitStorageCaptain";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetCaptain";
+    public override string? DresserProto => "DresserCaptainFilled";
     public override int Priority => 300;
 }
 
@@ -81,6 +82,7 @@ public class HeadOfPersonnel : CommandRoomType
     public override string? LockerProto => "LockerHeadOfPersonnelFilled";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetHOP";
+    public override string? DresserProto => "DresserHeadOfPersonnelFilled";
     public override int Priority => 250;
 }
 

@@ -560,45 +560,45 @@ public partial class MainForm
             {
                 // Подстанция — переходник ВВ↔СВ. Ставится только там, где на клетке
                 // физически совпадают провод ВВ и провод СВ (как дверь — только
-                // там, где есть граница комнаты)
+                // там, где есть граница комнаты). Валидность и поворот считает
+                // ResolvePowerJunctionPlacement — тот же расчёт, что и в превью.
                 var grid = _map.ActiveGrid;
-                if (grid != null && !string.IsNullOrEmpty(_selectedPowerJunctionProto) &&
-                    _selectedPowerJunctionType == "Substation" &&
-                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") &&
-                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV"))
-                {
-                    bool alreadyThere = grid.Entities.Any(en =>
-                        en.GetType() == typeof(MapEntity) && (int)en.X == tileX && (int)en.Y == tileY);
+                var (proto, rotation, valid) = ResolvePowerJunctionPlacement(tileX, tileY);
 
-                    if (!alreadyThere)
+                if (grid != null && valid)
+                {
+                    grid.Entities.Add(new MapEntity
                     {
-                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedPowerJunctionProto });
-                        SaveState();
-                        UpdateTileGrid();
-                        Render();
-                    }
+                        X = tileX + 0.5f,
+                        Y = tileY + 0.5f,
+                        Proto = proto,
+                        Rotation = rotation
+                    });
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
                 }
             }
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceApc)
             {
-                // ЛКП — переходник СВ↔НВ, та же логика, что у подстанции
+                // ЛКП — переходник СВ↔НВ, та же логика, что у подстанции. Поворот
+                // задаётся колёсиком мыши (общий ручной поворот размещения).
                 var grid = _map.ActiveGrid;
-                if (grid != null && !string.IsNullOrEmpty(_selectedPowerJunctionProto) &&
-                    _selectedPowerJunctionType == "APC" &&
-                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") &&
-                    _wireBuilder.HasWireOfType(grid, tileX, tileY, "LV"))
-                {
-                    bool alreadyThere = grid.Entities.Any(en =>
-                        en.GetType() == typeof(MapEntity) && (int)en.X == tileX && (int)en.Y == tileY);
+                var (proto, rotation, valid) = ResolvePowerJunctionPlacement(tileX, tileY);
 
-                    if (!alreadyThere)
+                if (grid != null && valid)
+                {
+                    grid.Entities.Add(new MapEntity
                     {
-                        grid.Entities.Add(new MapEntity { X = tileX + 0.5f, Y = tileY + 0.5f, Proto = _selectedPowerJunctionProto });
-                        SaveState();
-                        UpdateTileGrid();
-                        Render();
-                    }
+                        X = tileX + 0.5f,
+                        Y = tileY + 0.5f,
+                        Proto = proto,
+                        Rotation = rotation
+                    });
+                    SaveState();
+                    UpdateTileGrid();
+                    Render();
                 }
             }
 
@@ -888,121 +888,9 @@ public partial class MainForm
                 UpdateTileGrid();
                 Render();
             }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceHolopad)
+            else if (IsLinkedEntityTool(_toolManager.CurrentTool))
             {
-                var grid = _map.ActiveGrid;
-                if (grid == null) return;
-
-                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
-                if (room == null || string.IsNullOrEmpty(room.HolopadProto)) return;
-
-                if (grid.Entities.OfType<HolopadEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
-
-                var holopadEntity = new HolopadEntity
-                {
-                    X = tileX + 0.5f,
-                    Y = tileY + 0.5f,
-                    Proto = room.HolopadProto,
-                    HolopadProto = room.HolopadProto
-                };
-                grid.Entities.Add(holopadEntity);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceLocker)
-            {
-                var grid = _map.ActiveGrid;
-                if (grid == null) return;
-
-                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
-                if (room == null || string.IsNullOrEmpty(room.LockerProto)) return;
-
-                if (grid.Entities.OfType<LockerEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
-
-                var lockerEntity = new LockerEntity
-                {
-                    X = tileX + 0.5f,
-                    Y = tileY + 0.5f,
-                    Proto = room.LockerProto,
-                    LockerProto = room.LockerProto
-                };
-                grid.Entities.Add(lockerEntity);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceSuitStorage)
-            {
-                var grid = _map.ActiveGrid;
-                if (grid == null) return;
-
-                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
-                if (room == null || string.IsNullOrEmpty(room.SuitStorageProto)) return;
-
-                if (grid.Entities.OfType<SuitStorageEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
-
-                var suitEntity = new SuitStorageEntity
-                {
-                    X = tileX + 0.5f,
-                    Y = tileY + 0.5f,
-                    Proto = room.SuitStorageProto,
-                    SuitStorageProto = room.SuitStorageProto
-                };
-                grid.Entities.Add(suitEntity);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceBed)
-            {
-                var grid = _map.ActiveGrid;
-                if (grid == null) return;
-
-                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
-                if (room == null || string.IsNullOrEmpty(room.BedProto)) return;
-
-                if (grid.Entities.OfType<BedEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
-
-                var bedEntity = new BedEntity
-                {
-                    X = tileX + 0.5f,
-                    Y = tileY + 0.5f,
-                    Proto = room.BedProto,
-                    BedProto = room.BedProto,
-                    BedsheetProto = room.BedsheetProto ?? ""
-                };
-                grid.Entities.Add(bedEntity);
-                SaveState();
-                UpdateTileGrid();
-                Render();
-            }
-            else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceCamera)
-            {
-                var grid = _map.ActiveGrid;
-                if (grid == null) return;
-
-                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
-                if (room == null || string.IsNullOrEmpty(room.CameraProto)) return;
-
-                if (grid.Entities.OfType<CameraEntity>().Any(h => (int)h.X == tileX && (int)h.Y == tileY)) return;
-
-                // Камера ставится по центру клетки, как остальные привязки, но
-                // разворачивается в сторону ближайшей стены (поворот 0 = стена с юга).
-                var wallSide = CameraOrientation.FindNearestWall(grid, _tileGrid, tileX + 0.5f, tileY + 0.5f);
-
-                var cameraEntity = new CameraEntity
-                {
-                    X = tileX + 0.5f,
-                    Y = tileY + 0.5f,
-                    Rotation = CameraOrientation.RotationForSide(wallSide),
-                    Proto = room.CameraProto,
-                    CameraProto = room.CameraProto
-                };
-                grid.Entities.Add(cameraEntity);
-                SaveState();
-                UpdateTileGrid();
-                Render();
+                PlaceLinkedEntity(_toolManager.CurrentTool, tileX, tileY);
             }
             else if (_toolManager.CurrentTool == ToolManager.Tool.DecalRule)
             {
@@ -1070,8 +958,342 @@ public partial class MainForm
 
 
 
+    // ===== ПРИВЯЗКИ: расчёт цели, превью и установка =====
+
+    /// <summary>Инструмент привязки (голопад, шкафчик, скафандр, кровать, камера, комод, интерком).</summary>
+    private static bool IsLinkedEntityTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.PlaceHolopad or ToolManager.Tool.PlaceLocker
+             or ToolManager.Tool.PlaceSuitStorage or ToolManager.Tool.PlaceBed
+             or ToolManager.Tool.PlaceCamera or ToolManager.Tool.PlaceDresser
+             or ToolManager.Tool.PlaceIntercom;
+
+    /// <summary>
+    /// У этой привязки направление можно задать вручную колёсиком мыши.
+    /// Пока только интерком: у остальных направление либо не нужно, либо
+    /// (как у камеры) считается по стене автоматически.
+    /// </summary>
+    private static bool LinkedEntityToolSupportsRotation(ToolManager.Tool tool) =>
+        tool == ToolManager.Tool.PlaceIntercom;
+
+    /// <summary>
+    /// Инструмент, у которого направление размещаемого объекта задаётся колёсиком мыши:
+    /// интерком-привязка и ЛКП (ставится из меню инструментов).
+    /// </summary>
+    private static bool ToolSupportsManualRotation(ToolManager.Tool tool) =>
+        LinkedEntityToolSupportsRotation(tool) || tool == ToolManager.Tool.PlaceApc;
+
+    /// <summary>Инструмент установки узла сети — ЛКП или подстанции (ставит обычную сущность).</summary>
+    private static bool IsPowerJunctionTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.PlaceApc or ToolManager.Tool.PlaceSubstation;
+
+    /// <summary>У этих инструментов под курсором показывается превью размещения.</summary>
+    private static bool IsPlacementPreviewTool(ToolManager.Tool tool) =>
+        IsLinkedEntityTool(tool) || IsPowerJunctionTool(tool);
+
+    /// <summary>В клетке уже стоит привязка этого типа.</summary>
+    private static bool LinkedEntityCellBusy<T>(Grid grid, int tileX, int tileY) where T : MapEntity =>
+        grid.Entities.OfType<T>().Any(e => (int)e.X == tileX && (int)e.Y == tileY);
+
+    /// <summary>
+    /// Грань, которой интерком смотрит в комнату, для клетки-стены (автоматический
+    /// выбор — если направление задано колёсиком мыши, оно переопределяет этот расчёт).
+    /// Сначала берутся стороны, где сосед — пол (внутренность комнаты); у угловых клеток
+    /// пола рядом нет, поэтому затем рассматриваются стороны, где сосед принадлежит
+    /// комнате. Если подходящих сторон несколько (стена между двумя комнатами),
+    /// выбирается та, к грани которой ближе курсор внутри клетки, — направление
+    /// (а с ним и комната-владелец) задаётся наведением.
+    /// </summary>
+    private WallMountOrientation.WallSide ResolveIntercomFacing(Grid grid, int cellX, int cellY, float fracX, float fracY)
+    {
+        var sides = new[]
+        {
+            (Side: WallMountOrientation.WallSide.South, Dx: 0, Dy: 1, Distance: 1f - fracY),
+            (Side: WallMountOrientation.WallSide.North, Dx: 0, Dy: -1, Distance: fracY),
+            (Side: WallMountOrientation.WallSide.East, Dx: 1, Dy: 0, Distance: 1f - fracX),
+            (Side: WallMountOrientation.WallSide.West, Dx: -1, Dy: 0, Distance: fracX),
+        };
+
+        var floorSide = sides.Where(s => _tileGrid.IsFloor(cellX + s.Dx, cellY + s.Dy))
+                             .OrderBy(s => s.Distance)
+                             .FirstOrDefault();
+        if (floorSide.Side != WallMountOrientation.WallSide.None) return floorSide.Side;
+
+        var roomSide = sides.Where(s => grid.Rooms.Any(r => r.Contains(cellX + s.Dx, cellY + s.Dy)))
+                            .OrderBy(s => s.Distance)
+                            .FirstOrDefault();
+        return roomSide.Side;
+    }
+
+    /// <summary>
+    /// Комната по ту сторону грани клетки-стены — та, которой интерком принадлежит:
+    /// «если интерком висит на стене, он принадлежит комнате, в которую направлен».
+    /// </summary>
+    private static Room? IntercomFacingRoom(Grid grid, int wallX, int wallY, WallMountOrientation.WallSide facing)
+    {
+        var (dx, dy) = facing switch
+        {
+            WallMountOrientation.WallSide.South => (0, 1),
+            WallMountOrientation.WallSide.North => (0, -1),
+            WallMountOrientation.WallSide.East => (1, 0),
+            WallMountOrientation.WallSide.West => (-1, 0),
+            _ => (0, 0)
+        };
+
+        if (dx == 0 && dy == 0) return null;
+        return grid.Rooms.FirstOrDefault(r => r.Contains(wallX + dx, wallY + dy));
+    }
+
+    /// <summary>
+    /// Что и куда поставит привязка в клетке (tileX, tileY): прототип, точная позиция
+    /// в мировых координатах и поворот. Пустой Proto = ставить нельзя (клетка вне
+    /// комнаты, у комнаты нет прототипа для этой привязки, стены рядом нет или клетка
+    /// уже занята) — превью покажет на этом месте красную рамку.
+    ///
+    /// Один и тот же расчёт используют и превью под курсором, и установка, поэтому
+    /// они не могут разойтись. Позиция интеркома — центр найденного тайла-стены,
+    /// остальных привязок — центр клетки комнаты.
+    /// </summary>
+    private (string Proto, float X, float Y, float Rotation) ResolveLinkedEntityPlacement(ToolManager.Tool tool, int tileX, int tileY)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+
+        var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+
+        switch (tool)
+        {
+            // Интерком висит В тайле-стены, поэтому логика такая:
+            //  * курсор на клетке комнаты — интерком идёт в тайл ближайшей стены ЭТОЙ
+            //    комнаты и смотрит в неё (ей же и принадлежит);
+            //  * курсор на самом тайле-стены — цель это сама клетка, а направление
+            //    задаётся колёсиком мыши; от направления зависит, какой комнате интерком
+            //    принадлежит (её ключ/прототип он и получит);
+            //  * если в клетке уже стоит интерком — превью остаётся ровно на ней.
+            case ToolManager.Tool.PlaceIntercom:
+            {
+                var existing = grid.Entities.OfType<IntercomEntity>()
+                    .FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
+                if (existing != null)
+                    return ("", existing.X, existing.Y, existing.Rotation);
+
+                int wallX, wallY;
+                WallMountOrientation.WallSide facing;
+                Room? owner;
+
+                if (_tileGrid.IsWall(tileX, tileY))
+                {
+                    wallX = tileX;
+                    wallY = tileY;
+
+                    if (_placeRotationManual)
+                    {
+                        // Направление выбрано колёсиком — комната та, в которую он смотрит
+                        facing = WallMountOrientation.SideForRotation(_placeRotation);
+                    }
+                    else
+                    {
+                        var precise = GetPrecisePosition(_lastMousePosition);
+                        facing = ResolveIntercomFacing(grid, tileX, tileY, precise.x - tileX, precise.y - tileY);
+                    }
+
+                    owner = IntercomFacingRoom(grid, wallX, wallY, facing);
+                }
+                else
+                {
+                    var wallTile = WallMountOrientation.FindNearestWallTile(grid, _tileGrid, tileX, tileY);
+                    if (wallTile == null) return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+
+                    // Грань — сторона, где лежит исходная клетка, то есть стена смотрит
+                    // обратно в комнату, по которой кликнули.
+                    (wallX, wallY, facing) = wallTile.Value;
+                    owner = room;
+                }
+
+                if (facing == WallMountOrientation.WallSide.None || owner == null ||
+                    string.IsNullOrEmpty(owner.IntercomProto) ||
+                    LinkedEntityCellBusy<IntercomEntity>(grid, wallX, wallY))
+                    return ("", wallX + 0.5f, wallY + 0.5f, 0f);
+
+                return (owner.IntercomProto, wallX + 0.5f, wallY + 0.5f, WallMountOrientation.RotationForSide(facing));
+            }
+
+            // Камера ставится по центру клетки, но разворачивается в сторону
+            // ближайшей стены (поворот 0 = стена с юга от клетки).
+            case ToolManager.Tool.PlaceCamera:
+            {
+                if (room == null || string.IsNullOrEmpty(room.CameraProto))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                if (LinkedEntityCellBusy<CameraEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+
+                var wallSide = WallMountOrientation.FindNearestWall(grid, _tileGrid, tileX + 0.5f, tileY + 0.5f);
+                return (room.CameraProto, tileX + 0.5f, tileY + 0.5f, WallMountOrientation.RotationForSide(wallSide));
+            }
+
+            case ToolManager.Tool.PlaceHolopad:
+                if (room == null || string.IsNullOrEmpty(room.HolopadProto) || LinkedEntityCellBusy<HolopadEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (room.HolopadProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
+            case ToolManager.Tool.PlaceLocker:
+                if (room == null || string.IsNullOrEmpty(room.LockerProto) || LinkedEntityCellBusy<LockerEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (room.LockerProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
+            case ToolManager.Tool.PlaceSuitStorage:
+                if (room == null || string.IsNullOrEmpty(room.SuitStorageProto) || LinkedEntityCellBusy<SuitStorageEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (room.SuitStorageProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
+            case ToolManager.Tool.PlaceBed:
+                if (room == null || string.IsNullOrEmpty(room.BedProto) || LinkedEntityCellBusy<BedEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (room.BedProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
+            case ToolManager.Tool.PlaceDresser:
+                if (room == null || string.IsNullOrEmpty(room.DresserProto) || LinkedEntityCellBusy<DresserEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (room.DresserProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
+            default:
+                return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+        }
+    }
+
+    /// <summary>
+    /// Установка привязки по клетке. Цель считает ResolveLinkedEntityPlacement —
+    /// тот же расчёт, что и превью под курсором, поэтому нарисованное и поставленное
+    /// всегда совпадают.
+    /// </summary>
+    private void PlaceLinkedEntity(ToolManager.Tool tool, int tileX, int tileY)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return;
+
+        var (proto, x, y, rotation) = ResolveLinkedEntityPlacement(tool, tileX, tileY);
+        if (string.IsNullOrEmpty(proto)) return;
+
+        var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+
+        var entity = tool switch
+        {
+            ToolManager.Tool.PlaceHolopad => new HolopadEntity { Proto = proto, HolopadProto = proto } as MapEntity,
+            ToolManager.Tool.PlaceLocker => new LockerEntity { Proto = proto, LockerProto = proto },
+            ToolManager.Tool.PlaceSuitStorage => new SuitStorageEntity { Proto = proto, SuitStorageProto = proto },
+            // Кровать ставится вместе с одеялом комнаты (или без него, если не задано)
+            ToolManager.Tool.PlaceBed => new BedEntity { Proto = proto, BedProto = proto, BedsheetProto = room?.BedsheetProto ?? "" },
+            ToolManager.Tool.PlaceCamera => new CameraEntity { Proto = proto, CameraProto = proto },
+            ToolManager.Tool.PlaceDresser => new DresserEntity { Proto = proto, DresserProto = proto },
+            ToolManager.Tool.PlaceIntercom => new IntercomEntity { Proto = proto, IntercomProto = proto },
+            _ => new MapEntity { Proto = proto }
+        };
+
+        entity.X = x;
+        entity.Y = y;
+        entity.Rotation = rotation;
+
+        grid.Entities.Add(entity);
+        SaveState();
+        UpdateTileGrid();
+        Render();
+    }
+
+    /// <summary>
+    /// Превью привязки под курсором: пока инструмент привязки выбран, постоянно
+    /// показывается тайл, в который она встанет (рамка), спрайт будущего объекта и
+    /// его поворот. Обновляется на движение мыши, поворот колёсиком и смену
+    /// инструмента.
+    /// </summary>
+    private void UpdateLinkedEntityPreview()
+    {
+        var tool = _toolManager.CurrentTool;
+        if (!IsLinkedEntityTool(tool))
+        {
+            _renderer.ClearEntityPreview();
+            return;
+        }
+
+        var tilePos = GetTilePosition(_lastMousePosition);
+        var (proto, x, y, rotation) = ResolveLinkedEntityPlacement(tool, tilePos.x, tilePos.y);
+        _renderer.SetEntityPreview(x, y, rotation, proto, null, valid: !string.IsNullOrEmpty(proto));
+    }
+
+    /// <summary>
+    /// Можно ли поставить выбранный узел сети (ЛКП или подстанцию) в клетку и с каким
+    /// поворотом. Узел ставится только там, где на клетке сходятся нужные провода:
+    /// подстанция — ВВ↔СВ, ЛКП — СВ↔НВ (та же идея, что у двери, которая ставится
+    /// только на границе комнаты). Поворот берётся из ручного (колёсико мыши);
+    /// подстанция — неориентированная структура, у неё поворот всегда 0.
+    /// </summary>
+    private (string Proto, float Rotation, bool Valid) ResolvePowerJunctionPlacement(int tileX, int tileY)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null || string.IsNullOrEmpty(_selectedPowerJunctionProto))
+            return ("", 0f, false);
+
+        bool wiresOk = _selectedPowerJunctionType switch
+        {
+            "APC" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") &&
+                     _wireBuilder.HasWireOfType(grid, tileX, tileY, "LV"),
+            "Substation" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") &&
+                            _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV"),
+            _ => false
+        };
+        if (!wiresOk) return ("", 0f, false);
+
+        // Клетка занята простой сущностью (в том числе уже поставленным узлом)
+        bool alreadyThere = grid.Entities.Any(en =>
+            en.GetType() == typeof(MapEntity) && (int)en.X == tileX && (int)en.Y == tileY);
+        if (alreadyThere) return ("", 0f, false);
+
+        float rotation = _selectedPowerJunctionType == "APC" ? _placeRotation : 0f;
+        return (_selectedPowerJunctionProto, rotation, true);
+    }
+
+    /// <summary>
+    /// Превью узла сети (ЛКП/подстанции) под курсором: рамка тайла показывает, можно ли
+    /// тут ставить (нужные провода сходятся, клетка свободна), спрайт — сам узел
+    /// с его поворотом.
+    /// </summary>
+    private void UpdatePowerJunctionPreview()
+    {
+        if (!IsPowerJunctionTool(_toolManager.CurrentTool))
+        {
+            _renderer.ClearEntityPreview();
+            return;
+        }
+
+        var tilePos = GetTilePosition(_lastMousePosition);
+        var (proto, rotation, valid) = ResolvePowerJunctionPlacement(tilePos.x, tilePos.y);
+        _renderer.SetEntityPreview(tilePos.x + 0.5f, tilePos.y + 0.5f, rotation, proto, null, valid);
+    }
+
+    /// <summary>Превью размещения для текущего инструмента (привязка или узел сети).</summary>
+    private void UpdatePlacementPreview()
+    {
+        if (IsLinkedEntityTool(_toolManager.CurrentTool))
+            UpdateLinkedEntityPreview();
+        else
+            UpdatePowerJunctionPreview();
+    }
+
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
+        // Поворот размещаемого объекта колёсиком — как поворот прототипа при спавне
+        // из левого меню: шаг 90°. Работает у интеркома (переопределяет автонаправление
+        // «вовнутрь комнаты») и у ЛКП; результат сразу видно в превью.
+        if (ToolSupportsManualRotation(_toolManager.CurrentTool) && !ModifierKeys.HasFlag(Keys.Control))
+        {
+            float placeStep = (float)(Math.PI / 2);
+            _placeRotation += e.Delta > 0 ? placeStep : -placeStep;
+            _placeRotation = (float)(Math.Round(_placeRotation / placeStep) * placeStep);
+            _placeRotationManual = true;
+
+            UpdatePlacementPreview();
+            Render();
+            return;
+        }
+
         bool isPlacingPrototype = _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype;
         bool ctrlHeld = ModifierKeys.HasFlag(Keys.Control);
 
@@ -1275,6 +1497,15 @@ public partial class MainForm
         else
         {
             _renderer.ClearAlarmPreview();
+        }
+
+        // Привязка или узел сети: пока инструмент выбран, под курсором постоянно видно,
+        // в какую клетку объект встанет (рамка тайла) и как будет повёрнут.
+        if (IsPlacementPreviewTool(_toolManager.CurrentTool))
+        {
+            UpdatePlacementPreview();
+            Render();
+            return;
         }
 
         if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))

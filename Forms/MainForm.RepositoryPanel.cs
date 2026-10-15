@@ -850,6 +850,26 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             _btnPlaceCamera.Image = _cameraIcon;
             _btnPlaceCamera.Invalidate();
         }
+        if (_btnPlaceDresser != null && !_btnPlaceDresser.IsDisposed)
+        {
+            _dresserIcon?.Dispose();
+            // Комоды привязаны только к комнатам глав, поэтому иконка — комод одного
+            // из них (капитан), а не «общий»: у General своего комода нет.
+            var captainDresser = _roomTypeManager?.GetRoomType("Captain")?.DresserProto;
+            _dresserIcon = GetPrototypeIcon(!string.IsNullOrEmpty(captainDresser) ? captainDresser : "DresserFilled");
+            _btnPlaceDresser.Image = _dresserIcon;
+            _btnPlaceDresser.Invalidate();
+        }
+        if (_btnPlaceIntercom != null && !_btnPlaceIntercom.IsDisposed)
+        {
+            _intercomIcon?.Dispose();
+            // Интерком подбирается по отделу комнаты, поэтому на иконке — общий
+            // (Common) вариант: он же достаётся комнатам без отдела.
+            var generalIntercom = _roomTypeManager?.GetRoomType("General")?.IntercomProto;
+            _intercomIcon = GetPrototypeIcon(!string.IsNullOrEmpty(generalIntercom) ? generalIntercom : "IntercomCommon");
+            _btnPlaceIntercom.Image = _intercomIcon;
+            _btnPlaceIntercom.Invalidate();
+        }
     }
     
     private Image? GetCachedProtoIcon(string protoId)

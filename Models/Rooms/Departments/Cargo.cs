@@ -70,5 +70,6 @@ public class Quartermaster : CargoRoomType
     public override string? LockerProto => "LockerQuarterMasterFilled";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetQM";
+    public override string? DresserProto => "DresserQuarterMasterFilled";
     public override int Priority => 250;
 }

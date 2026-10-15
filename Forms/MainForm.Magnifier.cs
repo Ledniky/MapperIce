@@ -429,6 +429,17 @@ public partial class MainForm
                 case FireAlarmEntity fire:
                     AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity, placeProtoId: fire.Proto);
                     break;
+                case IntercomEntity intercom:
+                    {
+                        // Интерком висит в тайле-стены и принадлежит той комнате, в которую
+                        // направлен: поворот задаёт грань, а грань — комнату.
+                        var facingSide = WallMountOrientation.SideForRotation(intercom.Rotation);
+                        var facingRoom = IntercomFacingRoom(grid, FloorToInt(intercom.X), FloorToInt(intercom.Y), facingSide);
+                        string roomLabel = facingRoom != null ? facingRoom.RoomType : "—";
+                        AddMagnifierRow($"Интерком: {intercom.IntercomProto} → комната {roomLabel}",
+                            DeleteEntity, placeProtoId: intercom.IntercomProto);
+                        break;
+                    }
                 default:
                     AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity, placeProtoId: entity.Proto);
                     break;

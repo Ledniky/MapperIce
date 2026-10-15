@@ -71,5 +71,6 @@ public class ChiefEngineer : EngineeringRoomType
     public override string? SuitStorageProto => "SuitStorageCE";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetCE";
+    public override string? DresserProto => "DresserChiefEngineerFilled";
     public override int Priority => 250;
 }

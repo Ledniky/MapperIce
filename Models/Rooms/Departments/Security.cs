@@ -103,5 +103,6 @@ public class HeadOfSecurity : SecurityRoomType
     public override string? SuitStorageProto => "SuitStorageHOS";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetHOS";
+    public override string? DresserProto => "DresserHeadOfSecurityFilled";
     public override int Priority => 250;
 }

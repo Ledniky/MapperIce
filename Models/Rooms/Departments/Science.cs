@@ -44,5 +44,6 @@ public class ResearchDirector : ScienceRoomType
     public override string? SuitStorageProto => "SuitStorageRD";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetRD";
+    public override string? DresserProto => "DresserResearchDirectorFilled";
     public override int Priority => 250;
 }

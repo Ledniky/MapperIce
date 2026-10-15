@@ -314,6 +314,12 @@ public static class YAMLGenerator
         // 12. Камеры (привязки)
         GenerateCamerasGrouped(sb, grid, tileGrid, ref uid);
 
+        // 13. Комоды (привязки) — только у комнат глав отделов
+        GenerateDressersGrouped(sb, grid, ref uid);
+
+        // 14. Интеркомы (привязки) — стоят в тайлах-стенах, с поворотом в комнату
+        GenerateIntercomsGrouped(sb, grid, ref uid);
+
         return sb.ToString();
     }
 
@@ -1599,6 +1605,8 @@ public static class YAMLGenerator
                         e is not AirAlarmEntity && e is not FireAlarmEntity && e is not WireEntity &&
                         e is not HolopadEntity && e is not LockerEntity && e is not SuitStorageEntity && e is not BedEntity &&
                         e is not CameraEntity &&
+                        e is not DresserEntity &&
+                        e is not IntercomEntity &&
                         e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
@@ -1900,7 +1908,7 @@ public static class YAMLGenerator
 
                 float posX = camera.X;
                 float posY = -camera.Y + 1.0f;
-                float rotation = CameraOrientation.ResolveRotation(grid, tileGrid, camera.X, camera.Y, camera.Rotation);
+                float rotation = WallMountOrientation.ResolveRotation(grid, tileGrid, camera.X, camera.Y, camera.Rotation);
 
                 sb.AppendLine($"  - uid: {thisUid}");
                 sb.AppendLine($"    components:");
@@ -1909,6 +1917,102 @@ public static class YAMLGenerator
                 if (rotation != 0)
                 {
                     string rotStr = rotation.ToString("0.000000000000000").Replace(',', '.');
+                    sb.AppendLine($"      rot: {rotStr} rad");
+                }
+
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация комодов как авто-устанавливаемых объектов. Комод привязан только
+    /// к комнатам глав отделов, поэтому каждый комод выводится отдельным
+    /// "- proto:" блоком со своим прототипом (DresserProto).
+    /// </summary>
+    private static void GenerateDressersGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var dressers = grid.Entities.OfType<DresserEntity>()
+            .Where(d => !string.IsNullOrEmpty(d.DresserProto))
+            .ToList();
+
+        if (dressers.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var d in dressers)
+        {
+            posToUid[((int)Math.Round(d.X), (int)Math.Round(d.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in dressers.GroupBy(d => d.DresserProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var dresser in group)
+            {
+                var cell = ((int)Math.Round(dresser.X), (int)Math.Round(dresser.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = dresser.X;
+                float posY = -dresser.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: Fixtures");
+                sb.AppendLine($"      fixtures: {{}}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Генерация интеркомов как авто-устанавливаемых объектов. Интерком, в отличие
+    /// от остальных привязок, стоит прямо В тайле-стены, поэтому важны и позиция
+    /// (центр тайла-стены), и поворот — грань, обращённая в комнату. Поворот
+    /// сохраняется в привязке при установке и выводится как rot.
+    /// </summary>
+    private static void GenerateIntercomsGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var intercoms = grid.Entities.OfType<IntercomEntity>()
+            .Where(i => !string.IsNullOrEmpty(i.IntercomProto))
+            .ToList();
+
+        if (intercoms.Count == 0) return;
+
+        var posToUid = new Dictionary<(int x, int y), int>();
+        foreach (var i in intercoms)
+        {
+            posToUid[((int)Math.Round(i.X), (int)Math.Round(i.Y))] = uid;
+            uid++;
+        }
+
+        foreach (var group in intercoms.GroupBy(i => i.IntercomProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var intercom in group)
+            {
+                var cell = ((int)Math.Round(intercom.X), (int)Math.Round(intercom.Y));
+                int thisUid = posToUid[cell];
+
+                float posX = intercom.X;
+                float posY = -intercom.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {thisUid}");
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+
+                if (intercom.Rotation != 0)
+                {
+                    string rotStr = intercom.Rotation.ToString("0.000000000000000").Replace(',', '.');
                     sb.AppendLine($"      rot: {rotStr} rad");
                 }
 

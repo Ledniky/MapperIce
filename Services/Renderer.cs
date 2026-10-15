@@ -67,6 +67,9 @@ public class Renderer
     private float _previewEntityRotation;
     private string _previewEntityProto = "";
     private string? _previewDecalColor = null; // не null только когда превью — это декаль
+    // false — в этом тайле ставить нельзя (нет комнаты/прототипа или клетка занята):
+    // рисуется только красная рамка тайла, без спрайта.
+    private bool _previewEntityValid = true;
 
     /// <summary>Цвет фона канваса в рендере. Задаётся из настроек, используется при очистке кадра.</summary>
     public Color BackgroundColor { get; set; } = Color.White;
@@ -1841,7 +1844,7 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity) continue;
             if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
@@ -1898,8 +1901,27 @@ public class Renderer
             if (!IsPointVisible(camera.X, camera.Y, visibleRect)) continue;
             int dd = _drawDepthManager.GetOffset("Objects") + 1;
             var c = camera;
-            float rotation = CameraOrientation.ResolveRotation(grid, tileGrid, c.X, c.Y, c.Rotation);
+            float rotation = WallMountOrientation.ResolveRotation(grid, tileGrid, c.X, c.Y, c.Rotation);
             renderQueue.Add((c.Y, dd, 0, _insertCounter++, () => DrawSingleCamera(g, c.CameraProto, rotation, c.X, c.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Комоды — отдельный слой «привязок» поверх остальных объектов
+        foreach (var dresser in grid.Entities.OfType<DresserEntity>())
+        {
+            if (!IsPointVisible(dresser.X, dresser.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var d = dresser;
+            renderQueue.Add((d.Y, dd, 0, _insertCounter++, () => DrawSingleDresser(g, d.DresserProto, d.X, d.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Интеркомы — отдельный слой «привязок»; лежат в тайле-стены и развёрнуты
+        // гранью в комнату (поворот сохранён при установке).
+        foreach (var intercom in grid.Entities.OfType<IntercomEntity>())
+        {
+            if (!IsPointVisible(intercom.X, intercom.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var i = intercom;
+            renderQueue.Add((i.Y, dd, 0, _insertCounter++, () => DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
@@ -2470,6 +2492,32 @@ public class Renderer
     }
 
     /// <summary>
+    /// Отрисовка комода как «привязки» — обычный маркер авто-объекта во всю клетку
+    /// с текстурой прототипа.
+    /// </summary>
+    private void DrawSingleDresser(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 170, 120, 60),
+            fallbackPen: Color.FromArgb(180, 120, 80, 40),
+            protoLabel: "dresser");
+    }
+
+    /// <summary>
+    /// Отрисовка интеркома как «привязки». Интерком стоит В тайле-стены и развёрнут
+    /// гранью в комнату, поэтому спрайт рисуется с его поворотом — кадр направления
+    /// у интеркома выбирает DrawTexturedRect (у спрайта directions: 4).
+    /// </summary>
+    private void DrawSingleIntercom(Graphics g, string protoId, float rotation, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 120, 140, 170),
+            fallbackPen: Color.FromArgb(180, 90, 100, 120),
+            protoLabel: "intercom",
+            rotation: rotation);
+    }
+
+    /// <summary>
     /// Общая отрисовка «привязки» (авто-объекта из свойств комнаты): почти прозрачный
     /// оранжевый прямоугольник-маркер + рамка, поверх — текстура прототипа (если есть),
     /// а при достаточном зуме — подпись "auto" справа сверху и короткое имя прототипа снизу.
@@ -2520,7 +2568,7 @@ public class Renderer
 
     /// <summary>Короткое имя прототипа для подписи снизу у привязок.</summary>
     private static string ShortenProtoLabel(string protoId) =>
-        protoId.Replace("SurveillanceCamera", "cam ").Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
+        protoId.Replace("SurveillanceCamera", "cam ").Replace("Dresser", "drs ").Replace("Intercom", "ic ").Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
                .Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
                .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
                .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");
@@ -3374,7 +3422,7 @@ public class Renderer
 
     private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     {
-        if (!_showEntityPreview || string.IsNullOrEmpty(_previewEntityProto)) return;
+        if (!_showEntityPreview) return;
         if (_currentMap?.ActiveGrid == null) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
@@ -3383,8 +3431,20 @@ public class Renderer
         var gridOffset = new PointF(_currentMap.ActiveGrid.Position.X, _currentMap.ActiveGrid.Position.Y + layerOffsetY);
 
         var rect = ToRect(_previewEntityX, _previewEntityY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
-        float cx = rect.X + tileSize / 2f;
-        float cy = rect.Y + tileSize / 2f;
+
+        // Рамка целевого тайла: сразу видно, в какую клетку встанет объект. Красная
+        // рамка — ставить нельзя (нет комнаты/прототипа для этой комнаты или клетка
+        // уже занята), тогда спрайт не рисуется вовсе.
+        using (var fillBrush = new SolidBrush(_previewEntityValid
+                   ? Color.FromArgb(45, 60, 230, 90)
+                   : Color.FromArgb(80, 220, 60, 60)))
+            g.FillRectangle(fillBrush, rect);
+        using (var framePen = new Pen(_previewEntityValid
+                   ? Color.FromArgb(220, 40, 170, 60)
+                   : Color.FromArgb(230, 200, 40, 40), 2f))
+            g.DrawRectangle(framePen, rect.X, rect.Y, rect.Width, rect.Height);
+
+        if (!_previewEntityValid || string.IsNullOrEmpty(_previewEntityProto)) return;
 
         // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
         // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)
@@ -3812,13 +3872,20 @@ public class Renderer
             g.DrawRectangle(pen, rect);
         }
     }
-    public void SetEntityPreview(float x, float y, float rotation, string proto, string? decalColor = null)
+    /// <summary>
+    /// Превью размещаемого объекта под курсором: спрайт прототипа с поворотом и
+    /// рамка целевого тайла (зелёная — ставить можно, красная — нельзя).
+    /// valid = false используется для привязок, у которых в этой клетке нет
+    /// подходящего прототипа (например комод вне комнаты главы).
+    /// </summary>
+    public void SetEntityPreview(float x, float y, float rotation, string proto, string? decalColor = null, bool valid = true)
     {
         _previewEntityX = x;
         _previewEntityY = y;
         _previewEntityRotation = rotation;
         _previewEntityProto = proto;
         _previewDecalColor = decalColor;
+        _previewEntityValid = valid;
         _showEntityPreview = true;
     }
 

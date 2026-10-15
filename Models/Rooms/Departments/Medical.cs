@@ -92,5 +92,6 @@ public class ChiefMedicalOfficer : MedicalRoomType
     public override string? SuitStorageProto => "SuitStorageCMO";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetCMO";
+    public override string? DresserProto => "DresserChiefMedicalOfficerFilled";
     public override int Priority => 250;
 }

@@ -208,6 +208,8 @@ public partial class MainForm
                     BedProto = room.BedProto,
                     BedsheetProto = room.BedsheetProto,
                     CameraProto = room.CameraProto,
+                    DresserProto = room.DresserProto,
+                    IntercomProto = room.IntercomProto,
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
                     DecalMode = room.DecalMode,
@@ -390,6 +392,8 @@ public partial class MainForm
                         BedProto = roomData.BedProto,
                         BedsheetProto = roomData.BedsheetProto,
                         CameraProto = roomData.CameraProto,
+                        DresserProto = roomData.DresserProto,
+                        IntercomProto = roomData.IntercomProto,
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor),
                         DecalMode = roomData.DecalMode,
@@ -426,6 +430,10 @@ public partial class MainForm
                                 room.BedsheetProto = rt.BedsheetProto;
                             if (string.IsNullOrEmpty(room.CameraProto) && !string.IsNullOrEmpty(rt.CameraProto))
                                 room.CameraProto = rt.CameraProto;
+                            if (string.IsNullOrEmpty(room.DresserProto) && !string.IsNullOrEmpty(rt.DresserProto))
+                                room.DresserProto = rt.DresserProto;
+                            if (string.IsNullOrEmpty(room.IntercomProto) && !string.IsNullOrEmpty(rt.IntercomProto))
+                                room.IntercomProto = rt.IntercomProto;
                         }
                     }
 

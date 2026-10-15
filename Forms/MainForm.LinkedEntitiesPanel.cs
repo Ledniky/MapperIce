@@ -317,6 +317,44 @@ public partial class MainForm
         _btnPlaceCamera.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceCamera);
         _linkedEntitiesPanel.Controls.Add(_btnPlaceCamera);
         y += 40 + 2;
+
+        // === КНОПКА УСТАНОВКИ КОМОДА (только у комнат глав отделов) ===
+        _btnPlaceDresser = new Button
+        {
+            Text = "  Комод",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _dresserIcon
+        };
+        _btnPlaceDresser.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceDresser);
+        _linkedEntitiesPanel.Controls.Add(_btnPlaceDresser);
+        y += 40 + 2;
+
+        // === КНОПКА УСТАНОВКИ ИНТЕРКОМА (вешается в тайл-стену рядом с комнатой) ===
+        _btnPlaceIntercom = new Button
+        {
+            Text = "  Интерком",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _intercomIcon
+        };
+        _btnPlaceIntercom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceIntercom);
+        _linkedEntitiesPanel.Controls.Add(_btnPlaceIntercom);
+        y += 40 + 2;
     }
 
     private ComboBox BuildDoorWindowCombo(bool drawDoorIcons)
