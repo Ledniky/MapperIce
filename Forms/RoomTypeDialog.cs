@@ -606,6 +606,17 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblIntercom = CreateLabel("Интерком:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Адрес факса" — пусто у комнат без факса: тогда привязка факса не ставится.
+        // Строка уходит в компонент FaxMachine полем name ("Medical", "HoP Office" и т.п.)
+        var txtFaxName = CreateTextBox(type.FaxName ?? "", leftMargin, y, labelWidth, controlWidthFull);
+        var lblFaxName = CreateLabel("Адрес факса:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Прототип факса" (пусто — обычный FaxMachineBase, у капитана FaxMachineCaptain)
+        var txtFaxProto = CreateTextBox(type.FaxProto ?? "", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblFaxProto = CreateLabel("Факс:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки
         var txtFill = CreateTextBox($"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -706,7 +717,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
                         cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
                         dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
-                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
+                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text,
+                        faxName: string.IsNullOrWhiteSpace(txtFaxName.Text) ? null : txtFaxName.Text,
+                        faxProto: string.IsNullOrWhiteSpace(txtFaxProto.Text) ? null : txtFaxProto.Text
                     );
                 }
 
@@ -730,7 +743,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                         bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
                         cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
                         dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
-                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
+                        intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text,
+                        faxName: string.IsNullOrWhiteSpace(txtFaxName.Text) ? null : txtFaxName.Text,
+                        faxProto: string.IsNullOrWhiteSpace(txtFaxProto.Text) ? null : txtFaxProto.Text
                     );
                 }
                 UpdateTreeView();
@@ -749,6 +764,7 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblName, txtName, lblCategory, txtCategory, lblWall, txtWall,
         lblFloor, txtFloor, lblDoor, txtDoor, lblGlassDoor, txtGlassDoor, lblHolopad, txtHolopad, lblLocker, txtLocker, lblSuit, txtSuit,
         lblBed, txtBed, lblBedsheet, txtBedsheet, lblDresser, txtDresser, lblCamera, txtCamera, lblIntercom, txtIntercom,
+        lblFaxName, txtFaxName, lblFaxProto, txtFaxProto,
         lblFill, txtFill, lblLine, txtLine, lblPriority, txtPriority
     });
     }
@@ -963,6 +979,16 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         var lblIntercom = CreateLabel("Интерком:", leftMargin, y + 3, labelWidth);
         y += rowHeight;
 
+        // Поле "Адрес факса" — пусто у комнат без факса: тогда привязка факса не ставится
+        var txtFaxName = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull);
+        var lblFaxName = CreateLabel("Адрес факса:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
+        // Поле "Прототип факса" (пусто — обычный FaxMachineBase)
+        var txtFaxProto = CreateTextBox("", leftMargin, y, labelWidth, controlWidthFull, allowProtoDrop: true);
+        var lblFaxProto = CreateLabel("Факс:", leftMargin, y + 3, labelWidth);
+        y += rowHeight;
+
         // Цвет заливки комнаты
         var txtFill = CreateTextBox($"{defaultColor.A},{defaultColor.R},{defaultColor.G},{defaultColor.B}",
             leftMargin, y, labelWidth, controlWidthWithButton);
@@ -1076,7 +1102,9 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
                     bedsheetProto: string.IsNullOrWhiteSpace(txtBedsheet.Text) ? null : txtBedsheet.Text,
                     cameraProto: string.IsNullOrWhiteSpace(txtCamera.Text) ? null : txtCamera.Text,
                     dresserProto: string.IsNullOrWhiteSpace(txtDresser.Text) ? null : txtDresser.Text,
-                    intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text
+                    intercomProto: string.IsNullOrWhiteSpace(txtIntercom.Text) ? null : txtIntercom.Text,
+                    faxName: string.IsNullOrWhiteSpace(txtFaxName.Text) ? null : txtFaxName.Text,
+                    faxProto: string.IsNullOrWhiteSpace(txtFaxProto.Text) ? null : txtFaxProto.Text
                 );
 
                 // Добавляем цвет категории ТОЛЬКО если категория новая
@@ -1149,6 +1177,8 @@ private void OnTreeViewSelect(object? sender, TreeViewEventArgs e)
         lblDresser, txtDresser,
         lblCamera, txtCamera,
         lblIntercom, txtIntercom,
+        lblFaxName, txtFaxName,
+        lblFaxProto, txtFaxProto,
         lblFill, txtFill,
         lblLine, txtLine,
         lblPriority, txtPriority
@@ -1319,7 +1349,9 @@ private void ImportType()
                             bedsheetProto: type.BedsheetProto,
                             cameraProto: type.CameraProto,
                             dresserProto: type.DresserProto,
-                            intercomProto: type.IntercomProto
+                            intercomProto: type.IntercomProto,
+                            faxName: type.FaxName,
+                            faxProto: type.FaxProto
                         );
                     }
                 }

@@ -54,6 +54,21 @@ public abstract class RoomType
     public virtual string? IntercomProto => IntercomProtoForCategory(Category);
 
     /// <summary>
+    /// Адрес факса, привязанного к этому типу комнаты (значение поля name компонента
+    /// FaxMachine, например "Medical" или "HoP Office"). Задан только у комнат, которым
+    /// факс реально положен (список адресов снят с эталонных карт); у остальных типов —
+    /// null, и привязка факса не ставится. Адрес запекается в FaxMachineEntity при
+    /// установке, поэтому правка строки не переписывает уже расставленные факсы.
+    /// </summary>
+    public virtual string? FaxName => null;
+
+    /// <summary>
+    /// Прототип факса (id из fax_machine.yml). По умолчанию обычный FaxMachineBase;
+    /// рубка капитана переопределяет его на FaxMachineCaptain (как на эталонных картах).
+    /// </summary>
+    public virtual string FaxProto => "FaxMachineBase";
+
+    /// <summary>
     /// Интерком по отделу комнаты: у каждого отдела свой ключ шифрования
     /// (Intercom{Отдел} в intercom.yml). Supply в прототипах — это Cargo,
     /// Common — общий IntercomCommon. Комнатам без отдела (Antags) интерком
@@ -264,6 +279,12 @@ public class CustomRoomType : RoomType
     /// автоматически по отделу (Category) — как у ванильных типов.
     /// </summary>
     public override string? IntercomProto => string.IsNullOrEmpty(Data.IntercomProto) ? base.IntercomProto : Data.IntercomProto;
+    /// <summary>
+    /// Факс кастомного типа: адрес и прототип берутся из свойств типа, если заданы;
+    /// иначе адреса нет (факс не ставится), а прототип — обычный FaxMachineBase.
+    /// </summary>
+    public override string? FaxName => string.IsNullOrEmpty(Data.FaxName) ? null : Data.FaxName;
+    public override string FaxProto => string.IsNullOrEmpty(Data.FaxProto) ? base.FaxProto : Data.FaxProto;
     public override Color FillColor => ParseColor(Data.FillColor);
     public override Color LineColor => ParseColor(Data.LineColor);
     public override bool IsCustom => true;
@@ -305,6 +326,9 @@ public class CustomRoomTypeData
     public string? DresserProto { get; set; } = null;
     public string? CameraProto { get; set; } = null;
     public string? IntercomProto { get; set; } = null;
+    /// <summary>Адрес факса (name компонента FaxMachine) и его прототип — для кастомных типов.</summary>
+    public string? FaxName { get; set; } = null;
+    public string? FaxProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -330,6 +354,8 @@ public class ExportData
     public string? DresserProto { get; set; }
     public string? CameraProto { get; set; }
     public string? IntercomProto { get; set; }
+    public string? FaxName { get; set; }
+    public string? FaxProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

@@ -163,6 +163,8 @@ public partial class MainForm : Form
     private Image? _dresserIcon;
     private Button _btnPlaceIntercom = null!;
     private Image? _intercomIcon;
+    private Button _btnPlaceFax = null!;
+    private Image? _faxIcon;
     private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
@@ -1268,6 +1270,7 @@ public partial class MainForm : Form
         if (_btnPlaceCamera != null) _btnPlaceCamera.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceDresser != null) _btnPlaceDresser.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceIntercom != null) _btnPlaceIntercom.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceFax != null) _btnPlaceFax.BackColor = AppTheme.ButtonBack;
         if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.ButtonBack;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
 
@@ -1411,6 +1414,9 @@ public partial class MainForm : Form
             case ToolManager.Tool.PlaceIntercom:
                 if (_btnPlaceIntercom != null) _btnPlaceIntercom.BackColor = AppTheme.SelectedBack;
                 break;
+            case ToolManager.Tool.PlaceFax:
+                if (_btnPlaceFax != null) _btnPlaceFax.BackColor = AppTheme.SelectedBack;
+                break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
@@ -1452,6 +1458,7 @@ public partial class MainForm : Form
             ToolManager.Tool.PlaceCamera => Cursors.Help,
             ToolManager.Tool.PlaceDresser => Cursors.Help,
             ToolManager.Tool.PlaceIntercom => Cursors.Help,
+            ToolManager.Tool.PlaceFax => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

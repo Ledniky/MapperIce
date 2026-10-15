@@ -210,6 +210,8 @@ public partial class MainForm
                     CameraProto = room.CameraProto,
                     DresserProto = room.DresserProto,
                     IntercomProto = room.IntercomProto,
+                    FaxName = room.FaxName,
+                    FaxProto = room.FaxProto,
                     FillColor = $"{room.FillColor.A},{room.FillColor.R},{room.FillColor.G},{room.FillColor.B}",
                     LineColor = $"{room.LineColor.A},{room.LineColor.R},{room.LineColor.G},{room.LineColor.B}",
                     DecalMode = room.DecalMode,
@@ -394,6 +396,8 @@ public partial class MainForm
                         CameraProto = roomData.CameraProto,
                         DresserProto = roomData.DresserProto,
                         IntercomProto = roomData.IntercomProto,
+                        FaxName = roomData.FaxName,
+                        FaxProto = roomData.FaxProto,
                         FillColor = ParseColor(roomData.FillColor),
                         LineColor = ParseColor(roomData.LineColor),
                         DecalMode = roomData.DecalMode,
@@ -434,6 +438,10 @@ public partial class MainForm
                                 room.DresserProto = rt.DresserProto;
                             if (string.IsNullOrEmpty(room.IntercomProto) && !string.IsNullOrEmpty(rt.IntercomProto))
                                 room.IntercomProto = rt.IntercomProto;
+                            if (string.IsNullOrEmpty(room.FaxName) && !string.IsNullOrEmpty(rt.FaxName))
+                                room.FaxName = rt.FaxName;
+                            if (string.IsNullOrEmpty(room.FaxProto) && !string.IsNullOrEmpty(rt.FaxProto))
+                                room.FaxProto = rt.FaxProto;
                         }
                     }
 

@@ -320,6 +320,9 @@ public static class YAMLGenerator
         // 14. Интеркомы (привязки) — стоят в тайлах-стенах, с поворотом в комнату
         GenerateIntercomsGrouped(sb, grid, ref uid);
 
+        // 15. Факсы (привязки) — с адресом из свойств комнаты в компоненте FaxMachine
+        GenerateFaxMachinesGrouped(sb, grid, ref uid);
+
         return sb.ToString();
     }
 
@@ -1607,6 +1610,7 @@ public static class YAMLGenerator
                         e is not CameraEntity &&
                         e is not DresserEntity &&
                         e is not IntercomEntity &&
+                        e is not FaxMachineEntity &&
                         e is not MapEntity or MapEntity)
             .Where(e => !string.IsNullOrEmpty(e.Proto))
             .ToList();
@@ -2022,5 +2026,55 @@ public static class YAMLGenerator
                 sb.AppendLine($"      fixtures: {{}}");
             }
         }
+    }
+
+    /// <summary>
+    /// Генерация факсов как авто-устанавливаемых объектов. Факс стоит по центру клетки
+    /// комнаты, а его «адрес» уходит в компонент FaxMachine полем name (как на эталонных
+    /// картах): proto — FaxMachineBase, у рубки капитана FaxMachineCaptain. Адрес взят из
+    /// свойств комнаты в момент установки привязки (FaxMachineEntity.FaxName).
+    /// </summary>
+    private static void GenerateFaxMachinesGrouped(StringBuilder sb, Grid grid, ref int uid)
+    {
+        var faxes = grid.Entities.OfType<FaxMachineEntity>()
+            .Where(f => !string.IsNullOrEmpty(f.FaxProto) && !string.IsNullOrEmpty(f.FaxName))
+            .ToList();
+
+        if (faxes.Count == 0) return;
+
+        foreach (var group in faxes.GroupBy(f => f.FaxProto))
+        {
+            sb.AppendLine($"- proto: {group.Key}");
+            sb.AppendLine("  entities:");
+
+            foreach (var fax in group)
+            {
+                float posX = fax.X;
+                float posY = -fax.Y + 1.0f;
+
+                sb.AppendLine($"  - uid: {uid}");
+                uid++;
+                sb.AppendLine($"    components:");
+                sb.AppendLine($"    - type: Transform");
+                sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
+                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"    - type: FaxMachine");
+                sb.AppendLine($"      name: {FormatFaxAddress(fax.FaxName)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Адрес факса в YAML. Обычные адреса ("Medical", "HoP Office") пишутся как есть,
+    /// без кавычек — так же, как в эталонных картах; кавычки добавляются только если
+    /// строка иначе сломала бы YAML (двоеточие, решётка, кавычка в начале и т.п.).
+    /// </summary>
+    private static string FormatFaxAddress(string address)
+    {
+        string value = address.Trim();
+        bool needsQuotes = value.Length == 0 ||
+                           value != address ||
+                           value.IndexOfAny(new[] { ':', '#', '{', '}', '[', ']', ',', '&', '*', '!', '|', '>', '%', '@', '`', '"', '\'' }) >= 0;
+        return needsQuotes ? "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"" : value;
     }
 }

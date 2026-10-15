@@ -355,6 +355,25 @@ public partial class MainForm
         _btnPlaceIntercom.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceIntercom);
         _linkedEntitiesPanel.Controls.Add(_btnPlaceIntercom);
         y += 40 + 2;
+
+        // === КНОПКА УСТАНОВКИ ФАКСА (адрес берётся из свойств комнаты) ===
+        _btnPlaceFax = new Button
+        {
+            Text = "  Факс",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _faxIcon
+        };
+        _btnPlaceFax.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceFax);
+        _linkedEntitiesPanel.Controls.Add(_btnPlaceFax);
+        y += 40 + 2;
     }
 
     private ComboBox BuildDoorWindowCombo(bool drawDoorIcons)

@@ -282,7 +282,7 @@ foreach (var decal in Decals)
 
     /// <summary>«Привязка» — авто-объект из свойств комнаты (см. AutoObjects).</summary>
     private static bool IsAutoObject(MapEntity e) =>
-        e is HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity;
+        e is HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity or FaxMachineEntity;
 
     /// <summary>
     /// Копия сущности с сохранением КОНКРЕТНОГО типа. Общий путь через
@@ -321,6 +321,11 @@ foreach (var decal in Decals)
         IntercomEntity i => new IntercomEntity
         {
             Proto = i.Proto, X = i.X, Y = i.Y, Rotation = i.Rotation, IntercomProto = i.IntercomProto
+        },
+        FaxMachineEntity f => new FaxMachineEntity
+        {
+            Proto = f.Proto, X = f.X, Y = f.Y, Rotation = f.Rotation,
+            FaxProto = f.FaxProto, FaxName = f.FaxName
         },
         _ => new MapEntity
         {

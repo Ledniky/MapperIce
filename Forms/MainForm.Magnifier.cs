@@ -440,6 +440,11 @@ public partial class MainForm
                             DeleteEntity, placeProtoId: intercom.IntercomProto);
                         break;
                     }
+                case FaxMachineEntity fax:
+                    // У факса важно не столько железо, сколько адрес из свойств комнаты
+                    AddMagnifierRow($"Факс: {fax.FaxProto} — адрес \"{fax.FaxName}\"",
+                        DeleteEntity, placeProtoId: fax.FaxProto);
+                    break;
                 default:
                     AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity, placeProtoId: entity.Proto);
                     break;

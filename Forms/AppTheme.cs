@@ -87,6 +87,8 @@ public static class AppTheme
     private static readonly Color AccentBlueDark = Color.FromArgb(36, 62, 96);
     private static readonly Color AccentYellowLight = Color.FromArgb(255, 235, 180);
     private static readonly Color AccentYellowDark = Color.FromArgb(100, 80, 32);
+    private static readonly Color AccentOliveLight = Color.FromArgb(245, 245, 220);
+    private static readonly Color AccentOliveDark = Color.FromArgb(76, 76, 44);
 
     // Подсветка активных режимов в панели «Узор по периметру» (кнопки строк областей)
     private static readonly Color AccentSubtractLight = Color.FromArgb(230, 220, 220);
@@ -100,6 +102,7 @@ public static class AppTheme
     public static Color AccentRedBack => Dark ? AccentRedDark : AccentRedLight;
     public static Color AccentBlueBack => Dark ? AccentBlueDark : AccentBlueLight;
     public static Color AccentYellowBack => Dark ? AccentYellowDark : AccentYellowLight;
+    public static Color AccentOliveBack => Dark ? AccentOliveDark : AccentOliveLight;
     public static Color AccentSubtractBack => Dark ? AccentSubtractDark : AccentSubtractLight;
     public static Color AccentCutBack => Dark ? AccentCutDark : AccentCutLight;
     public static Color AccentAreaBack => Dark ? AccentAreaDark : AccentAreaLight;
@@ -110,6 +113,7 @@ public static class AppTheme
         (AccentRedLight, AccentRedDark),
         (AccentBlueLight, AccentBlueDark),
         (AccentYellowLight, AccentYellowDark),
+        (AccentOliveLight, AccentOliveDark),
         (AccentSubtractLight, AccentSubtractDark),
         (AccentCutLight, AccentCutDark),
         (AccentAreaLight, AccentAreaDark),
@@ -231,6 +235,8 @@ public static class AppTheme
             form.BackColor = BackPanel;
         form.ForeColor = Fore;
 
+        WatchAddedControls(form);
+
         ApplyTitleBar(form);
 
         ApplyToChildren(form.Controls);
@@ -300,9 +306,34 @@ public static class AppTheme
 
     private static bool IsDataBack(Control c) => _dataBackControls.TryGetValue(c, out _);
 
+    // Контейнеры, за которыми уже следим (чтобы не подписаться повторно при каждом
+    // применении темы)
+    private static readonly ConditionalWeakTable<Control, object> _watchedControls = new();
+    private static readonly object _watchMarker = new();
+
+    /// <summary>Окна пересобирают содержимое уже после применения темы (строки списка
+    /// областей в «Узоре по периметру», редактор пака декалей и т.п.) — такие контролы
+    /// создаются заново и оставались со светлыми цветами. Поэтому следим за добавлением
+    /// контролов и сразу оформляем новые.</summary>
+    private static void WatchAddedControls(Control parent)
+    {
+        if (_watchedControls.TryGetValue(parent, out _)) return;
+        _watchedControls.AddOrUpdate(parent, _watchMarker);
+        parent.ControlAdded += OnControlAdded;
+    }
+
+    private static void OnControlAdded(object? sender, ControlEventArgs e)
+    {
+        if (e.Control is not Control added) return;
+        ApplyToControl(added);
+        ApplyToChildren(added.Controls);
+    }
+
     /// <summary>Окрашивает один контрол по типу, не трогая пользовательские цвета.</summary>
     public static void ApplyToControl(Control c)
     {
+        WatchAddedControls(c);
+
         // Фон-данные (образец цвета, превью) не перекрашиваем вовсе
         if (IsDataBack(c))
         {
@@ -326,16 +357,20 @@ public static class AppTheme
             case CheckedListBox:
             case ListBox:
             case DataGridView:
-            case TreeView:
                 c.BackColor = BackField;
                 c.ForeColor = Fore;
                 DarkScrollBars(c);
                 break;
+            // ListView и TreeView окно-тему Explorer'а не принимают: с ней область
+            // элементов рисует сама тема (белым) и BackColor игнорируется — поэтому
+            // задаём только цвета (полоса прокрутки при этом остаётся светлой)
             case ListView lv:
-                // ListView окно-тему Explorer'а не принимает: с ней область элементов
-                // рисуется темой (белым) и BackColor игнорируется — поэтому только цвета
                 lv.BackColor = BackField;
                 lv.ForeColor = Fore;
+                break;
+            case TreeView tv:
+                tv.BackColor = BackField;
+                tv.ForeColor = Fore;
                 break;
             case TextBox:
             case RichTextBox:

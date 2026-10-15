@@ -870,6 +870,16 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             _btnPlaceIntercom.Image = _intercomIcon;
             _btnPlaceIntercom.Invalidate();
         }
+        if (_btnPlaceFax != null && !_btnPlaceFax.IsDisposed)
+        {
+            _faxIcon?.Dispose();
+            // Факс по умолчанию — обычный FaxMachineBase, поэтому на иконке он же
+            // (отдельный прототип есть только у рубки капитана).
+            var bridgeFax = _roomTypeManager?.GetRoomType("Bridge")?.FaxProto;
+            _faxIcon = GetPrototypeIcon(!string.IsNullOrEmpty(bridgeFax) ? bridgeFax : "FaxMachineBase");
+            _btnPlaceFax.Image = _faxIcon;
+            _btnPlaceFax.Invalidate();
+        }
     }
     
     private Image? GetCachedProtoIcon(string protoId)

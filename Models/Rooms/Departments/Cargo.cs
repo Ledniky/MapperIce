@@ -19,6 +19,7 @@ public abstract class CargoRoomType : RoomType
 public class Cargo : CargoRoomType
 {
     public override string Name => "Cargo";
+    public override string? FaxName => "Cargo";
     public override string DisplayName => "Снабжение";
     public override string Description => "Комната снабжения. Основной отсек для хранения и распределения ресурсов станции.";
     public override string DoorProto => "AirlockCargoLocked";
@@ -60,6 +61,7 @@ public class Mining : CargoRoomType
 public class Quartermaster : CargoRoomType
 {
     public override string Name => "Quartermaster";
+    public override string? FaxName => "Quartermaster";
     public override string DisplayName => "Кватермастер";
     public override string Description => "Кабинет кватермастера. Офис руководителя отдела снабжения и логистики.";
     public override string DoorProto => "AirlockQuartermasterLocked";

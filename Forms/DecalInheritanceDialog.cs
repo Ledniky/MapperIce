@@ -427,6 +427,8 @@ public partial class DecalInheritanceDialog : Form
                         _inheritance.Save();
                     }
                 };
+                // Кнопка показывает цвет декали — это данные, тема её фон не меняет
+                AppTheme.MarkDataBack(btnColor);
                 row.Controls.Add(btnColor);
 
                 var btnPalette = new Button

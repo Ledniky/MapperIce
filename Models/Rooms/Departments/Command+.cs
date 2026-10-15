@@ -15,6 +15,7 @@ public abstract class CommandPlusRoomType : CommandRoomType
 public class ConferenceRoom : CommandPlusRoomType
 {
     public override string Name => "ConferenceRoom";
+    public override string? FaxName => "Bridge Conference";
     public override string DisplayName => "Конференц-зал";
     public override string DoorProto => "AirlockCommandLocked";
     public override string GlassDoorProto => "AirlockCommandGlassLocked";

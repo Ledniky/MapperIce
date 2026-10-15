@@ -22,6 +22,7 @@ public abstract class EngineeringRoomType : RoomType
 public class Engineering : EngineeringRoomType
 {
     public override string Name => "Engineering";
+    public override string? FaxName => "Engineering";
     public override string DisplayName => "Инженерный отсек";
     public override string Description => "Инженерная комната. Основной отсек для инженерных работ и обслуживания систем станции.";
     public override string DoorProto => "AirlockEngineeringLocked";
@@ -35,6 +36,7 @@ public class Engineering : EngineeringRoomType
 public class Atmospherics : AtmosRoomType
 {
     public override string Name => "Atmospherics";
+    public override string? FaxName => "Atmos";
     public override string DisplayName => "Атмосия";
     public override string Description => "Атмосферная станция. Помещение для обслуживания систем воздуха и давления на станции.";
     public override string DoorProto => "AirlockAtmosphericsLocked";

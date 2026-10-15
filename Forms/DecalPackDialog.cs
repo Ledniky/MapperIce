@@ -9,7 +9,10 @@ public partial class DecalPackDialog : Form
     private readonly DecalPackManager _manager;
     private readonly PrototypeIndexer? _indexer;
     private readonly TreeView _treeView;
+    private readonly TextBox _searchBox;
     private readonly Panel _editorPanel;
+    private readonly Button btnRemove;
+    private readonly Button btnExport;
     private DecalPack? _selectedPack;
     private string? _selectedCategory; // выбрана категория (папка), а не конкретный пак
 
@@ -27,13 +30,18 @@ public partial class DecalPackDialog : Form
         _indexer = indexer;
 
         Text = "Паки декалей";
-        Size = new Size(560, 520);
+        // Окно открывается в 1,75 раза выше исходного (520 -> 910), но не выше рабочего стола
+        Size = new Size(560, Math.Min((int)(520 * 1.75f), SystemInformation.WorkingArea.Height - 60));
         MinimumSize = new Size(480, 400);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false;
         MinimizeBox = false;
         MaximizeBox = false;
+
+        // Раскладка считается от высоты клиентской области: 40 px — шапка сверху,
+        // 50 px — панель кнопок снизу, остальное отдаём растягиваемой середине
+        int contentHeight = ClientSize.Height - 40 - 50;
 
         var headerPanel = new Panel
         {
@@ -50,14 +58,14 @@ public partial class DecalPackDialog : Form
 
         var mainPanel = new Panel
         {
-            Location = new Point(0, 40), Size = new Size(560, 380),
+            Location = new Point(0, 40), Size = new Size(560, contentHeight),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
 
         // ===== ЛЕВАЯ ПАНЕЛЬ =====
         var leftPanel = new Panel
         {
-            Location = new Point(0, 0), Size = new Size(250, 380), BorderStyle = BorderStyle.FixedSingle,
+            Location = new Point(0, 0), Size = new Size(250, contentHeight), BorderStyle = BorderStyle.FixedSingle,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom
         };
 
@@ -67,7 +75,7 @@ public partial class DecalPackDialog : Form
         var btnRescan = new Button
         {
             Text = "🔄", Location = new Point(5, 5), Size = new Size(32, 26),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(220, 235, 250), Cursor = Cursors.Hand
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentBlueBack, Cursor = Cursors.Hand
         };
         var rescanTip = new ToolTip();
         rescanTip.SetToolTip(btnRescan, "Обновить паки в папке Extracted из репозитория");
@@ -76,32 +84,32 @@ public partial class DecalPackDialog : Form
         var btnAddCustom = new Button
         {
             Text = "➕", Location = new Point(40, 5), Size = new Size(32, 26),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(220, 250, 225), Cursor = Cursors.Hand
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentGreenBack, Cursor = Cursors.Hand
         };
         var addTip = new ToolTip();
         addTip.SetToolTip(btnAddCustom, "Создать новый пак в папке Custom");
         buttonPanel.Controls.Add(btnAddCustom);
 
-        var btnRemove = new Button
+        btnRemove = new Button
         {
             Text = "🗑", Location = new Point(75, 5), Size = new Size(32, 26),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(250, 240, 240), Cursor = Cursors.Hand, Enabled = false
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentRedBack, Cursor = Cursors.Hand, Enabled = false
         };
         buttonPanel.Controls.Add(btnRemove);
 
         var btnImport = new Button
         {
             Text = "📥", Location = new Point(110, 5), Size = new Size(32, 26),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(245, 245, 220), Cursor = Cursors.Hand
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentOliveBack, Cursor = Cursors.Hand
         };
         var importTip = new ToolTip();
         importTip.SetToolTip(btnImport, "Импортировать пак(и) из файла");
         buttonPanel.Controls.Add(btnImport);
 
-        var btnExport = new Button
+        btnExport = new Button
         {
             Text = "📤", Location = new Point(145, 5), Size = new Size(32, 26),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(220, 245, 220), Cursor = Cursors.Hand, Enabled = false
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentGreenBack, Cursor = Cursors.Hand, Enabled = false
         };
         var exportTip = new ToolTip();
         exportTip.SetToolTip(btnExport, "Экспортировать выбранный пак или папку целиком");
@@ -109,9 +117,33 @@ public partial class DecalPackDialog : Form
 
         leftPanel.Controls.Add(buttonPanel);
 
+        // Строка поиска над деревом: фильтрует паки по названию, категории и
+        // ID прототипов в позициях пака
+        var searchPanel = new Panel { Location = new Point(0, 36), Size = new Size(250, 28), BackColor = Color.FromArgb(248, 248, 248) };
+
+        _searchBox = new TextBox
+        {
+            Location = new Point(5, 3), Width = 210, Font = new Font("Segoe UI", 9),
+            PlaceholderText = "Поиск пака…"
+        };
+        _searchBox.TextChanged += (s, e) => RefreshTree();
+        searchPanel.Controls.Add(_searchBox);
+
+        var btnClearSearch = new Button
+        {
+            Text = "✕", Location = new Point(219, 3), Size = new Size(26, 22),
+            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(240, 240, 240), Cursor = Cursors.Hand
+        };
+        var clearTip = new ToolTip();
+        clearTip.SetToolTip(btnClearSearch, "Сбросить поиск");
+        btnClearSearch.Click += (s, e) => { _searchBox.Clear(); _searchBox.Focus(); };
+        searchPanel.Controls.Add(btnClearSearch);
+
+        leftPanel.Controls.Add(searchPanel);
+
         _treeView = new TreeView
         {
-            Location = new Point(0, 36), Size = new Size(250, 344),
+            Location = new Point(0, 64), Size = new Size(250, contentHeight - 64),
             Font = new Font("Segoe UI", 10), BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom, LabelEdit = true
         };
@@ -121,7 +153,7 @@ public partial class DecalPackDialog : Form
         // ===== ПРАВАЯ ПАНЕЛЬ =====
         _editorPanel = new Panel
         {
-            Location = new Point(255, 0), Size = new Size(300, 380),
+            Location = new Point(255, 0), Size = new Size(300, contentHeight),
             BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, Padding = new Padding(8), AutoScroll = true,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
@@ -131,7 +163,7 @@ public partial class DecalPackDialog : Form
         // ===== НИЖНЯЯ ПАНЕЛЬ =====
         var bottomPanel = new Panel
         {
-            Location = new Point(0, 420), Size = new Size(560, 50),
+            Location = new Point(0, 40 + contentHeight), Size = new Size(560, 50),
             BackColor = Color.FromArgb(240, 240, 240), BorderStyle = BorderStyle.FixedSingle,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
@@ -139,7 +171,7 @@ public partial class DecalPackDialog : Form
         var btnSelect = new Button
         {
             Text = "Выбрать", Location = new Point(360, 10), Size = new Size(85, 30),
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(220, 230, 240), Cursor = Cursors.Hand
+            FlatStyle = FlatStyle.Flat, BackColor = AppTheme.AccentBlueBack, Cursor = Cursors.Hand
         };
         btnSelect.Click += (s, e) =>
         {
@@ -296,14 +328,28 @@ public partial class DecalPackDialog : Form
     private void RefreshTree()
     {
         string? previouslySelectedId = _selectedPack?.Id;
+        string query = _searchBox.Text.Trim();
 
         _treeView.BeginUpdate();
         _treeView.Nodes.Clear();
 
         foreach (var category in _manager.GetCategories())
         {
+            // Категория подходит целиком, если её название содержит запрос —
+            // тогда показываем все паки внутри, независимо от их названий
+            bool categoryMatches = query.Length > 0 &&
+                category.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+            var packs = _manager.Packs
+                .Where(p => p.Category == category)
+                .Where(p => query.Length == 0 || categoryMatches || MatchesQuery(p, query))
+                .OrderBy(p => p.Name)
+                .ToList();
+
+            if (packs.Count == 0) continue; // пустые категории при фильтре не показываем
+
             var categoryNode = new TreeNode($"📁 {category}");
-            foreach (var pack in _manager.Packs.Where(p => p.Category == category).OrderBy(p => p.Name))
+            foreach (var pack in packs)
                 categoryNode.Nodes.Add(new TreeNode(pack.Name) { Tag = pack });
 
             _treeView.Nodes.Add(categoryNode);
@@ -315,11 +361,32 @@ public partial class DecalPackDialog : Form
         if (previouslySelectedId != null)
         {
             var updated = _manager.GetById(previouslySelectedId);
-            if (updated != null) SelectNodeByPack(updated);
+            if (updated != null && SelectNodeByPack(updated)) return;
+
+            // Пак скрыт фильтром: редактор закрываем, кнопки «удалить/экспорт» гасим
+            _selectedPack = null;
+            _selectedCategory = null;
+            btnRemove.Enabled = false;
+            btnExport.Enabled = false;
+            _editorPanel.Controls.Clear();
         }
     }
 
-    private void SelectNodeByPack(DecalPack pack)
+    /// <summary>Пак подходит под запрос, если он встречается в названии пака, в его Id
+    /// или в любом из ID прототипов позиций (чтобы находить пак по конкретной декали).</summary>
+    private static bool MatchesQuery(DecalPack pack, string query)
+    {
+        if (pack.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) return true;
+        if (pack.Id.Contains(query, StringComparison.OrdinalIgnoreCase)) return true;
+
+        foreach (var protoId in pack.Positions.Values)
+            if (protoId != null && protoId.Contains(query, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        return false;
+    }
+
+    private bool SelectNodeByPack(DecalPack pack)
     {
         foreach (TreeNode categoryNode in _treeView.Nodes)
             foreach (TreeNode node in categoryNode.Nodes)
@@ -327,8 +394,9 @@ public partial class DecalPackDialog : Form
                 {
                     _treeView.SelectedNode = node;
                     node.EnsureVisible();
-                    return;
+                    return true;
                 }
+        return false;
     }
 
 
@@ -340,7 +408,15 @@ public partial class DecalPackDialog : Form
     public void SelectPack(string packId)
     {
         var pack = _manager.GetById(packId);
-        if (pack != null) SelectNodeByPack(pack);
+        if (pack == null) return;
+
+        // Пак может быть скрыт активным фильтром — тогда снимаем фильтр,
+        // иначе вызывающий диалог не увидел бы ожидаемый пак в дереве
+        if (!SelectNodeByPack(pack) && _searchBox.Text.Length > 0)
+        {
+            _searchBox.Clear();
+            SelectNodeByPack(pack);
+        }
     }
 
 
@@ -383,6 +459,8 @@ public partial class DecalPackDialog : Form
                 _manager.AddOrUpdate(pack);
             }
         };
+        // Кнопка показывает цвет пака — это данные, тема её фон не меняет
+        AppTheme.MarkDataBack(btnColor);
         _editorPanel.Controls.Add(btnColor);
 
         var btnPickFromPalette = new Button

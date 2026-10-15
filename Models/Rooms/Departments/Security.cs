@@ -20,6 +20,7 @@ public abstract class SecurityRoomType : RoomType
 public class Security : SecurityRoomType
 {
     public override string Name => "Security";
+    public override string? FaxName => "Security";
     public override string DisplayName => "Безопасность";
     public override string Description => "Комната безопасности. Основной отсек для патрулирования и обеспечения порядка на станции.";
     public override string DoorProto => "AirlockSecurityLocked";
@@ -35,6 +36,7 @@ public class Security : SecurityRoomType
 public class Brig : SecurityRoomType
 {
     public override string Name => "Brig";
+    public override string? FaxName => "Prison";
     public override string DisplayName => "Бриг";
     public override string Description => "Бриг. Изолятор для содержания задержанных с усиленными стенами и дверями.";
     public override string DoorProto => "AirlockBrigLocked";
@@ -63,6 +65,7 @@ public class Armory : SecurityRoomType
 public class Detective : SecurityRoomType
 {
     public override string Name => "Detective";
+    public override string? FaxName => "Detective's Office";
     public override string DisplayName => "Детектив";
     public override string Description => "Кабинет детектива. Офис для расследований и допросов с тёплой цветовой гаммой.";
     public override string DoorProto => "AirlockDetectiveLocked";
@@ -77,6 +80,7 @@ public class Detective : SecurityRoomType
 public class Warden : Armory
 {
     public override string Name => "Warden";
+    public override string? FaxName => "Warden's Office";
     public override string DisplayName => "Смотритель";
     public override string Description => "Кабинет смотриеля. Офис руководителя тюрьмы с белым полом.";
     public override string DoorProto => "AirlockWardenLocked";

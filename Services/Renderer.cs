@@ -337,12 +337,19 @@ public class Renderer
                     }
                 }
 
+                // Список труб строится ВСЕГДА, даже когда оверлей труб выключен флагом «🔧»
+                // в верхней панели: сами линии/точки/стрелки тогда скрываются, а вот
+                // элементы на КОНЦАХ труб (утилизационные и почтовые юниты на слое U,
+                // вентиляции газовых слоёв L1..L3) должны оставаться видимыми — иначе
+                // вместе с трубами с карты пропадали бы и расставленные на них приёмники.
+                var gridPipes = _pipeBuilder.GetPipes(grid);
+                var allPipes = gridPipes
+                    .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
+                    .OrderBy(p => p.Y)
+                    .ToList();
+
                 if (ShowPipeOverlay)
                 {
-                    var allPipes = _pipeBuilder.GetPipes(grid)
-                        .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
-                        .OrderBy(p => p.Y)
-                        .ToList();
                     DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     // Маркеры фильтра — рисуем первыми, чтобы стрелка и точка трубы были поверх
@@ -352,10 +359,7 @@ public class Renderer
                     DrawPipeFlowArrows(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     if (allPipes.Count > 0)
-                    {
                         DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
-                        DrawEndpointMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
-                    }
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
                     {
@@ -365,6 +369,14 @@ public class Renderer
                         DrawTempPipePath(g, path, tileSize, viewOffset, gridOffset);
                     }
                 }
+
+                // Концы труб (юниты утилизации/почты и вентиляции на законцовках) —
+                // вне зависимости от флага «Трубы». Соседей для определения конца
+                // считаем по ПОЛНОМУ списку труб слоя: иначе у края экрана труба,
+                // у которой сосед остался за кадром, считалась бы концом и получала
+                // лишний спрайт приёмника/вентиляции.
+                if (allPipes.Count > 0)
+                    DrawEndpointMarkers(g, allPipes, gridPipes, tileSize, viewOffset, gridOffset);
 
                 // Область обзора камер — тот же приём, что и зона покрытия НВ-кабеля
                 // (см. DrawLvCoverageOverlay), только радиус больше. Рисуется и для
@@ -1269,19 +1281,25 @@ public class Renderer
                !proto.Contains("Assembly");
     }
 
-    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset)
+    private void DrawEndpointMarkers(Graphics g, List<PipeEntity> pipes, List<PipeEntity>? neighborSource,
+        int tileSize, PointF viewOffset, PointF gridOffset)
     {
         if (pipes.Count == 0) return;
 
         var dirs = new (int dx, int dy)[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+
+        // Соседей берём из полного списка труб (если он передан), а рисуем только
+        // переданные маркеры — обычно это трубы, попавшие в видимую область экрана.
+        var allForNeighbors = neighborSource ?? pipes;
 
         // Группируем трубы по слою: конец определяется по соседям того же слоя
         foreach (var group in pipes.GroupBy(p => p.PipeType))
         {
             var groupPipes = group.ToList();
             var posSet = new HashSet<(int x, int y)>();
-            foreach (var p in groupPipes)
-                posSet.Add(((int)p.X, (int)p.Y));
+            foreach (var p in allForNeighbors)
+                if (p.PipeType == group.Key)
+                    posSet.Add(((int)p.X, (int)p.Y));
 
             foreach (var pipe in groupPipes)
             {
@@ -1844,7 +1862,7 @@ public class Renderer
         // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
         foreach (var entity in grid.Entities)
         {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity) continue;
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity or FaxMachineEntity) continue;
             if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
             if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             int dd = entity.DrawDepthOffset;
@@ -1922,6 +1940,16 @@ public class Renderer
             int dd = _drawDepthManager.GetOffset("Objects") + 1;
             var i = intercom;
             renderQueue.Add((i.Y, dd, 0, _insertCounter++, () => DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset)));
+        }
+
+        // Факсы — отдельный слой «привязок»; стоят по центру клетки, как комод,
+        // отличаются прототипом (FaxMachineBase / FaxMachineCaptain) и адресом.
+        foreach (var fax in grid.Entities.OfType<FaxMachineEntity>())
+        {
+            if (!IsPointVisible(fax.X, fax.Y, visibleRect)) continue;
+            int dd = _drawDepthManager.GetOffset("Objects") + 1;
+            var f = fax;
+            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleFax(g, f.FaxProto, f.X, f.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
@@ -2518,6 +2546,18 @@ public class Renderer
     }
 
     /// <summary>
+    /// Отрисовка факса как «привязки» — обычный маркер авто-объекта во всю клетку
+    /// с текстурой прототипа (адрес факса в подписи не помещается, он виден в лупе).
+    /// </summary>
+    private void DrawSingleFax(Graphics g, string protoId, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        DrawAutoObject(g, protoId, worldX, worldY, tileSize, viewOffset, gridOffset,
+            fallbackBrush: Color.FromArgb(40, 200, 200, 200),
+            fallbackPen: Color.FromArgb(180, 130, 130, 130),
+            protoLabel: "fax");
+    }
+
+    /// <summary>
     /// Общая отрисовка «привязки» (авто-объекта из свойств комнаты): почти прозрачный
     /// оранжевый прямоугольник-маркер + рамка, поверх — текстура прототипа (если есть),
     /// а при достаточном зуме — подпись "auto" справа сверху и короткое имя прототипа снизу.
@@ -2568,7 +2608,7 @@ public class Renderer
 
     /// <summary>Короткое имя прототипа для подписи снизу у привязок.</summary>
     private static string ShortenProtoLabel(string protoId) =>
-        protoId.Replace("SurveillanceCamera", "cam ").Replace("Dresser", "drs ").Replace("Intercom", "ic ").Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
+        protoId.Replace("SurveillanceCamera", "cam ").Replace("Dresser", "drs ").Replace("Intercom", "ic ").Replace("FaxMachine", "fax ").Replace("Holopad", "").Replace("Bedsheet", "").Replace("SuitStorage", "")
                .Replace("General", "$").Replace("Command", "C").Replace("Science", "S")
                .Replace("Medical", "M").Replace("Engineering", "E").Replace("Security", "Sec")
                .Replace("Service", "Sv").Replace("Cargo", "Cg").Replace("Long", "LR").Replace("Range", "");
@@ -3252,7 +3292,7 @@ public class Renderer
         using var brush = new SolidBrush(Color.DarkGray);
         var name = map.ActiveGrid?.Name ?? "Нет";
         string mode = HideRoomOverlay ? " [ОВЕРЛЕЙ СКРЫТ]" : "";
-        string pipeMode = ShowPipeOverlay ? "" : " [ТРУБЫ СКРЫТЫ]";
+        string pipeMode = ShowPipeOverlay ? "" : " [ЛИНИИ ТРУБ СКРЫТЫ, КОНЦЫ ВИДНЫ]";
         string connectionsMode = ShowAlarmConnections ? "" : " [СВЯЗИ СКРЫТЫ]";
         g.DrawString($"Инструмент: {toolName}{mode}{pipeMode}{connectionsMode}  Масштаб: {scale:P0}  Активный грид: {name}  Всего гридов: {map.Grids.Count}",
             font, brush, 10, 10);

@@ -35,6 +35,7 @@ public class ToolManager
         PlaceCamera,
         PlaceDresser,
         PlaceIntercom,
+        PlaceFax,
         PlacePrototype,
         Move,
         DecalRule,

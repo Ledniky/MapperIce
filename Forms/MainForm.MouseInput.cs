@@ -965,7 +965,7 @@ public partial class MainForm
         tool is ToolManager.Tool.PlaceHolopad or ToolManager.Tool.PlaceLocker
              or ToolManager.Tool.PlaceSuitStorage or ToolManager.Tool.PlaceBed
              or ToolManager.Tool.PlaceCamera or ToolManager.Tool.PlaceDresser
-             or ToolManager.Tool.PlaceIntercom;
+             or ToolManager.Tool.PlaceIntercom or ToolManager.Tool.PlaceFax;
 
     /// <summary>
     /// У этой привязки направление можно задать вручную колёсиком мыши.
@@ -1155,6 +1155,14 @@ public partial class MainForm
                     return ("", tileX + 0.5f, tileY + 0.5f, 0f);
                 return (room.DresserProto, tileX + 0.5f, tileY + 0.5f, 0f);
 
+            // Факс ставится по центру клетки комнаты, как комод. Прототип берётся из
+            // свойств комнаты (FaxProto — у капитана свой), а адрес (FaxName) запекается
+            // в привязку отдельным полем: он же уходит в компонент FaxMachine при экспорте.
+            case ToolManager.Tool.PlaceFax:
+                if (room == null || string.IsNullOrEmpty(room.FaxName) || LinkedEntityCellBusy<FaxMachineEntity>(grid, tileX, tileY))
+                    return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+                return (string.IsNullOrEmpty(room.FaxProto) ? "FaxMachineBase" : room.FaxProto, tileX + 0.5f, tileY + 0.5f, 0f);
+
             default:
                 return ("", tileX + 0.5f, tileY + 0.5f, 0f);
         }
@@ -1185,6 +1193,8 @@ public partial class MainForm
             ToolManager.Tool.PlaceCamera => new CameraEntity { Proto = proto, CameraProto = proto },
             ToolManager.Tool.PlaceDresser => new DresserEntity { Proto = proto, DresserProto = proto },
             ToolManager.Tool.PlaceIntercom => new IntercomEntity { Proto = proto, IntercomProto = proto },
+            // Адрес факса запекается при установке — из свойств комнаты, в которой стоит клетка
+            ToolManager.Tool.PlaceFax => new FaxMachineEntity { Proto = proto, FaxProto = proto, FaxName = room?.FaxName ?? "" },
             _ => new MapEntity { Proto = proto }
         };
 

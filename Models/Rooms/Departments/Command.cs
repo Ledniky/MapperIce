@@ -58,6 +58,9 @@ public class Vault : CommandRoomType
 public class Captain : CommandRoomType
 {
     public override string Name => "Captain";
+    public override string? FaxName => "Captain's office";
+    // Как на эталонных картах: у рубки капитана отдельный прототип факса
+    public override string FaxProto => "FaxMachineCaptain";
     public override string DisplayName => "Капитан";
     public override string Description => "Капитанская каюта. Личные покои капитана станции с максимальной защитой.";
     public override string DoorProto => "AirlockCaptainLocked";
@@ -74,6 +77,7 @@ public class Captain : CommandRoomType
 public class HeadOfPersonnel : CommandRoomType
 {
     public override string Name => "HeadOfPersonnel";
+    public override string? FaxName => "HoP Office";
     public override string DisplayName => "Глава персоонала";
     public override string Description => "Кабинет начальника кадров. Офис руководителя отдела кадров и управления персоналом.";
     public override string DoorProto => "AirlockHeadOfPersonnelLocked";
@@ -89,6 +93,7 @@ public class HeadOfPersonnel : CommandRoomType
 public class Bridge : CommandRoomType
 {
     public override string Name => "Bridge";
+    public override string? FaxName => "Bridge";
     public override string DisplayName => "Мостик";
     public override string Description => "Мостик. Центральная командная точка управления станцией с полным обзором.";
     public override string DoorProto => "AirlockCommandLocked";

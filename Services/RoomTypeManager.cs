@@ -141,7 +141,7 @@ public class RoomTypeManager
     }
 
     public void CreateCustomType(string pack, string name, string category, string wallProto, string floorProto,
-        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null)
+        string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null, string? faxName = null, string? faxProto = null)
     {
         if (_types.ContainsKey(name))
         {
@@ -167,6 +167,8 @@ public class RoomTypeManager
             CameraProto = cameraProto,
             DresserProto = dresserProto,
             IntercomProto = intercomProto,
+            FaxName = faxName,
+            FaxProto = faxProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -180,7 +182,7 @@ public class RoomTypeManager
     }
 
     public void EditCustomType(string oldName, string newName, string pack, string category, string wallProto,
-        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null)
+        string floorProto, string doorProto, string glassDoorProto, Color fillColor, Color lineColor, int priority = 0, string description = "", string? holopadProto = null, string? lockerProto = null, string? suitStorageProto = null, string? bedProto = null, string? bedsheetProto = null, string? cameraProto = null, string? dresserProto = null, string? intercomProto = null, string? faxName = null, string? faxProto = null)
     {
         var oldType = _types.Values.FirstOrDefault(t => t.IsCustom && t.Name == oldName);
         if (oldType == null) return;
@@ -211,6 +213,8 @@ public class RoomTypeManager
             CameraProto = cameraProto,
             DresserProto = dresserProto,
             IntercomProto = intercomProto,
+            FaxName = faxName,
+            FaxProto = faxProto,
             FillColor = $"{fillColor.A},{fillColor.R},{fillColor.G},{fillColor.B}",
             LineColor = $"{lineColor.A},{lineColor.R},{lineColor.G},{lineColor.B}",
             Priority = priority
@@ -315,6 +319,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
     room.CameraProto = type.CameraProto;
     room.DresserProto = type.DresserProto;
     room.IntercomProto = type.IntercomProto;
+    room.FaxName = type.FaxName;
+    room.FaxProto = type.FaxProto;
     room.FillColor = type.FillColor;
     room.LineColor = type.LineColor;
     room.RoomType = type.Name;
@@ -353,6 +359,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             CameraProto = type.CameraProto,
             DresserProto = type.DresserProto,
             IntercomProto = type.IntercomProto,
+            FaxName = type.FaxName,
+            FaxProto = type.FaxProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -400,6 +408,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
             CameraProto = type.CameraProto,
             DresserProto = type.DresserProto,
             IntercomProto = type.IntercomProto,
+            FaxName = type.FaxName,
+            FaxProto = type.FaxProto,
             FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
             LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
             Priority = type.Priority
@@ -448,6 +458,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 CameraProto = type.CameraProto,
                 DresserProto = type.DresserProto,
                 IntercomProto = type.IntercomProto,
+                FaxName = type.FaxName,
+                FaxProto = type.FaxProto,
                 FillColor = $"{type.FillColor.A},{type.FillColor.R},{type.FillColor.G},{type.FillColor.B}",
                 LineColor = $"{type.LineColor.A},{type.LineColor.R},{type.LineColor.G},{type.LineColor.B}",
                 Priority = type.Priority
@@ -490,6 +502,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 CameraProto = data.CameraProto,
                 DresserProto = data.DresserProto,
                 IntercomProto = data.IntercomProto,
+                FaxName = data.FaxName,
+                FaxProto = data.FaxProto,
                 FillColor = data.FillColor,
                 LineColor = data.LineColor,
                 Priority = data.Priority
@@ -534,6 +548,8 @@ public void ApplyTypeToRoom(Room room, string? typeName = null)
                 CameraProto = data.CameraProto,
                 DresserProto = data.DresserProto,
                 IntercomProto = data.IntercomProto,
+                FaxName = data.FaxName,
+                FaxProto = data.FaxProto,
             FillColor = data.FillColor,
             LineColor = data.LineColor,
             Priority = data.Priority
