@@ -129,6 +129,7 @@ public class PrototypeIndexer
     /// через Fluent-синтаксис "{ ent-ДругойId }" (см. пример BarricadeBlock -> Barricade
     /// -> BaseBarricade в barricades.ftl) — такие ссылки резолвятся рекурсивно, аналогично
     /// тому, как FindPathRecursive идёт по цепочке parent:.
+    /// Заодно собирает атрибуты ".suffix" тех же записей — см. ResolveFtlSuffix.
     /// </summary>
     private void ApplyLocalizedNames(string repoPath)
     {
@@ -136,13 +137,14 @@ public class PrototypeIndexer
         if (!Directory.Exists(localeDir)) return;
 
         var rawNames = new Dictionary<string, string>();
+        var rawSuffixes = new Dictionary<string, string>();
         var ftlFiles = Directory.GetFiles(localeDir, "*.ftl", SearchOption.AllDirectories);
         foreach (var file in ftlFiles)
         {
             try
             {
                 var content = File.ReadAllText(file);
-                foreach (var kv in ParseFtlEntityNames(content))
+                foreach (var kv in ParseFtlEntityNames(content, rawSuffixes))
                 {
                     if (!rawNames.ContainsKey(kv.Key))
                         rawNames[kv.Key] = kv.Value;
@@ -156,6 +158,10 @@ public class PrototypeIndexer
         var resolved = new Dictionary<string, string>();
         foreach (var id in rawNames.Keys)
             ResolveFtlValue(id, rawNames, resolved, new HashSet<string>(), 0);
+
+        var resolvedSuffixes = new Dictionary<string, string>();
+        foreach (var id in rawSuffixes.Keys)
+            ResolveFtlSuffix(id, rawNames, resolved, rawSuffixes, resolvedSuffixes, new HashSet<string>(), 0);
 
         foreach (var proto in _prototypes.Values)
         {
@@ -172,38 +178,65 @@ public class PrototypeIndexer
                 if (resolved.TryGetValue(proto.Id, out var localized) &&
                     !string.IsNullOrWhiteSpace(localized))
                     proto.LocalizedName = localized;
+
+                // Суффикс для показа в списке: перевод атрибута ".suffix", а если
+                // перевода нет — сырое YAML-поле "suffix:" (движок в этом случае
+                // тоже отдаёт английский вариант, см. EntityPrototype.EditorSuffix).
+                proto.LocalizedSuffix = resolvedSuffixes.TryGetValue(proto.Id, out var localizedSuffix)
+                    ? localizedSuffix
+                    : FindSuffixRecursive(proto.Id, 0);
             }
         }
     }
 
     /// <summary>
-    /// Парсит один .ftl-файл и достаёт только "имя" сущности/тайла — верхнеуровневую
-    /// строку вида "ent-{Id} = значение" или "tiles-* = значение". Строки с отступом
-    /// (например ".desc = ...") пропускаются: они относятся не к имени, а к атрибутам
-    /// той же записи. Ключ сохраняется целиком, чтобы ApplyLocalizedNames мог различить
-    /// сущность (по Id) и тайл (по LocalizationKey).
+    /// Парсит один .ftl-файл и достаёт "имя" сущности/тайла — верхнеуровневую
+    /// строку вида "ent-{Id} = значение" или "tiles-* = значение", — а также
+    /// атрибуты ".suffix" этих записей (в suffixes). Ключ сохраняется целиком,
+    /// чтобы ApplyLocalizedNames мог различить сущность (по Id) и тайл (по
+    /// LocalizationKey). Прочие атрибуты (.desc и т.п.) пропускаются.
     /// </summary>
-    private Dictionary<string, string> ParseFtlEntityNames(string content)
+    private Dictionary<string, string> ParseFtlEntityNames(string content, Dictionary<string, string> suffixes)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         var lines = content.Replace("\r\n", "\n").Split('\n');
 
+        // Ключ последней верхнеуровневой записи: атрибуты идут с отступом ПОД ней
+        // и относятся именно к ней. null — запись не наша (комментарий, ключ UI),
+        // тогда и атрибуты ниже пропускаем.
+        string? currentKey = null;
+
         foreach (var line in lines)
         {
-            if (line.Length == 0 || char.IsWhiteSpace(line[0])) continue; // атрибут/продолжение — не имя
+            if (line.Length == 0) continue;
 
-            var m = Regex.Match(line, @"^(ent-|tiles-)(\S+)\s*=\s*(.*)$");
-            if (!m.Success) continue;
+            if (!char.IsWhiteSpace(line[0]))
+            {
+                currentKey = null;
 
-            string prefix = m.Groups[1].Value;
-            string name = m.Groups[2].Value;
-            // Сущности: ключ — голый Id (в Fluent-ссылках "{ ent-ДругойId }" тоже голый Id),
-            // маппится на proto.Id. Тайлы: ключ — полный "tiles-*", маппится на
-            // proto.LocalizationKey (поле "name:" в YAML).
-            string key = prefix == "tiles-" ? prefix + name : name;
-            string value = m.Groups[3].Value.TrimEnd('\r');
-            if (!result.ContainsKey(key))
-                result[key] = value;
+                var m = Regex.Match(line, @"^(ent-|tiles-)(\S+)\s*=\s*(.*)$");
+                if (!m.Success) continue;
+
+                string prefix = m.Groups[1].Value;
+                string name = m.Groups[2].Value;
+                // Сущности: ключ — голый Id (в Fluent-ссылках "{ ent-ДругойId }" тоже голый Id),
+                // маппится на proto.Id. Тайлы: ключ — полный "tiles-*", маппится на
+                // proto.LocalizationKey (поле "name:" в YAML).
+                string key = prefix == "tiles-" ? prefix + name : name;
+                string value = m.Groups[3].Value.TrimEnd('\r');
+                if (!result.ContainsKey(key))
+                    result[key] = value;
+                currentKey = key;
+                continue;
+            }
+
+            if (currentKey == null) continue;
+
+            var attr = Regex.Match(line, @"^\s+\.(\S+)\s*=\s*(.*)$");
+            if (!attr.Success || attr.Groups[1].Value != "suffix") continue;
+
+            if (!suffixes.ContainsKey(currentKey))
+                suffixes[currentKey] = attr.Groups[2].Value.TrimEnd('\r');
         }
 
         return result;
@@ -230,6 +263,61 @@ public class PrototypeIndexer
         return result;
     }
 
+    /// <summary>
+    /// Резолвит значение атрибута ".suffix" из .ftl (в игре это
+    /// EntityPrototype.EditorSuffix). Кроме обычного текста там встречаются
+    /// Fluent-ссылки двух видов:
+    ///   "{ ent-ДругойId }"        — имя другой сущности;
+    ///   "{ ent-ДругойId.suffix }" — её суффикс (так оформлены, например, все органы:
+    ///                               ent-OrganHumanHeart ссылается на ent-OrganAnimal).
+    /// Для ссылки на суффикс, если перевода у неё нет, берётся YAML-поле "suffix:"
+    /// (FindSuffixRecursive) — как это делает движок.
+    /// Результат кэшируется в resolvedSuffixes. null — суффикса нет или в нём осталась
+    /// неразрешённая ссылка (тогда суффикс не показываем, чтобы в списке не торчало
+    /// "{ ent-... }").
+    /// </summary>
+    private string? ResolveFtlSuffix(string id, Dictionary<string, string> rawNames,
+        Dictionary<string, string> resolvedNames, Dictionary<string, string> rawSuffixes,
+        Dictionary<string, string> resolvedSuffixes, HashSet<string> visiting, int depth)
+    {
+        if (resolvedSuffixes.TryGetValue(id, out var cached)) return cached;
+        if (!rawSuffixes.TryGetValue(id, out var value)) return null;
+        if (depth > 10 || !visiting.Add(id)) return null;
+
+        bool unresolved = false;
+        string result = Regex.Replace(value, @"\{\s*ent-(\S+?)(\.suffix)?\s*\}", m =>
+        {
+            string refId = m.Groups[1].Value.TrimEnd('.');
+
+            string? replacement = m.Groups[2].Success
+                // Ссылка на суффикс другой сущности: перевод, иначе YAML-поле
+                ? ResolveFtlSuffix(refId, rawNames, resolvedNames, rawSuffixes, resolvedSuffixes, visiting, depth + 1)
+                  ?? FindSuffixRecursive(refId, 0)
+                // Ссылка на имя другой сущности
+                : (rawNames.ContainsKey(refId)
+                    ? ResolveFtlValue(refId, rawNames, resolvedNames, visiting, depth + 1)
+                    : null);
+
+            if (string.IsNullOrWhiteSpace(replacement))
+            {
+                unresolved = true;
+                return "";
+            }
+
+            return replacement;
+        });
+
+        visiting.Remove(id);
+
+        if (unresolved) return null;
+
+        result = result.Trim();
+        if (result.Length == 0) return null;
+
+        resolvedSuffixes[id] = result;
+        return result;
+    }
+
 
     private string GetCacheDir()
     {
@@ -247,7 +335,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 28;
+    private const int CacheFormatVersion = 29;
 
     private class CacheEnvelope
     {
@@ -1169,12 +1257,15 @@ public class PrototypeIndexer
                 return cached;
         }
 
-        // Матчим и по id (как раньше), и по русскому названию из локализации —
-        // пользователь может не знать/не помнить английский id прототипа
+        // Матчим и по id (как раньше), и по русскому названию из локализации, и по
+        // суффиксу — он показывается в списке в квадратных скобках («стеклянный короб
+        // [Антикварный лазер, Открытый]»), поэтому искать по нему тоже должно находить.
         var results = _prototypes.Values
             .Where(p => p.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                         (!string.IsNullOrEmpty(p.LocalizedName) &&
-                         p.LocalizedName.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                         p.LocalizedName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(p.LocalizedSuffix) &&
+                         p.LocalizedSuffix.Contains(query, StringComparison.OrdinalIgnoreCase)))
             .Select(p => p.Id)
             .Take(1000)
             .ToList();
@@ -1223,6 +1314,34 @@ public class PrototypeIndexer
     public string? GetDrawDepth(string protoId)
     {
         return FindDrawDepthRecursive(protoId, 0);
+    }
+
+    /// <summary>
+    /// Рекурсивно ищет YAML-поле "suffix:" по цепочке родителей — движок наследует
+    /// его от предка так же, как остальные DataField (EntityPrototype.SetSuffix).
+    /// Запасной вариант для показа суффикса, когда в .ftl нет перевода ".suffix".
+    /// ВНИМАНИЕ: само поле Suffix у прототипа используется ещё и для выбора спрайта
+    /// (open.png у открытых штор) — здесь оно только читается.
+    /// </summary>
+    private string? FindSuffixRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+
+        if (!string.IsNullOrWhiteSpace(proto.Suffix))
+            return proto.Suffix;
+
+        // Ищем suffix у ВСЕХ родителей (поддерживаем массив parent: [A, B])
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindSuffixRecursive(parent, depth + 1);
+            if (result != null)
+                return result;
+        }
+
+        return null;
     }
 
     /// <summary>

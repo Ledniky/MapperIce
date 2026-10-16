@@ -1188,8 +1188,60 @@ private static float HueToRgb(float p, float q, float t)
 
 
     /// <summary>
-    /// Наполняет выпадающий список окон прототипами, содержащими "Window",
-    /// но НЕ содержащими "Directional" и "Diagonal".
+    /// Створки и взрывные двери, которые ставятся инструментом «Заменить на окно»
+    /// наравне с окнами. Список ТОЧНЫХ id, а не поиск по подстроке: в репозитории
+    /// полно производных от BlastDoor (= сотни автолинк-вариантов вида
+    /// BlastDoorBridgeOpen, BlastDoorScience, BlastDoorWindows) и ставней
+    /// (ShuttersWindowCentralCommand и т.п.) — в стену вручную ставят только
+    /// базовые пары «закрыто/открыто».
+    /// </summary>
+    private static readonly HashSet<string> _extraWindowComboIds = new(StringComparer.Ordinal)
+    {
+        "BlastDoor", "BlastDoorOpen",
+        "ShuttersNormal", "ShuttersNormalOpen",
+        "ShuttersRadiation", "ShuttersRadiationOpen",
+        "ShuttersWindow", "ShuttersWindowOpen"
+    };
+
+    /// <summary>
+    /// Проходит ли прототип в выпадающий список «Окна»: настоящие окна (по слову
+    /// Window в id) плюс створки и взрывные двери из <see cref="_extraWindowComboIds"/> —
+    /// их на карте ставят тем же инструментом, что и окна (замена клетки стены).
+    /// </summary>
+    private bool IsWindowComboCandidate(string id)
+    {
+        // Полуокна и диагональные варианты в тайл не встают, кнопки/РКД-стойкие
+        // окна — не то, что ставят в стену вручную.
+        if (id.Contains("Directional", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("Diagonal", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("Button", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Contains("RCD", StringComparison.OrdinalIgnoreCase)) return false;
+
+        bool byExactId = _extraWindowComboIds.Contains(id);
+
+        if (!byExactId)
+        {
+            if (!id.Contains("Window", StringComparison.OrdinalIgnoreCase)) return false;
+
+            // Двери и ставни попадали сюда только из-за слова Window в id
+            // (BlastDoorWindows — обычная BlastDoor с каналом автолинка Windows,
+            // ShuttersWindowCentralCommand — вариант центрального командования).
+            // Их в списке быть не должно: ставятся только базовые прототипы.
+            if (id.Contains("BlastDoor", StringComparison.OrdinalIgnoreCase) ||
+                id.Contains("Shutter", StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        // Отсекаем шаблоны с "abstract: true" (BaseShutter и т.п.) и не-структуры:
+        // каркасы ShuttersFrame/BlastDoorFrame наследуют BaseStructureDynamic,
+        // на карте они бессмысленны.
+        var proto = _indexer.FindPrototype(id);
+        return proto != null && !proto.IsAbstract && proto.IsStructure;
+    }
+
+    /// <summary>
+    /// Наполняет выпадающий список окон прототипами-окнами, створками и
+    /// взрывными дверями (см. <see cref="IsWindowComboCandidate"/>).
     /// </summary>
     private void UpdateWindowCombo()
     {
@@ -1205,19 +1257,16 @@ private static float HueToRgb(float p, float q, float t)
         _windowIconCache.Clear();
         _windowProtoIdCache.Clear();
 
-        var windowIds = allIds.Where(i =>
-            i.Contains("Window", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Directional", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Diagonal", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Shutters", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("Button", StringComparison.OrdinalIgnoreCase) &&
-            !i.Contains("RCD", StringComparison.OrdinalIgnoreCase) &&
-            (_indexer.FindPrototype(i)?.IsAbstract != true) && // исключаем шаблоны с "abstract: true"
-            (_indexer.FindPrototype(i)?.IsStructure ?? false))
-            .ToList();
+        var windowIds = allIds.Where(IsWindowComboCandidate).ToList();
 
         string GetWindowDisplayName(string protoId)
         {
+            // Створки и взрывные двери показываем полным id: у ShuttersWindow слово
+            // "Window" — часть названия (створки-окно), а усечение дало бы ярлыки
+            // «Shutters», неотличимые от базовых прототипов.
+            if (_extraWindowComboIds.Contains(protoId))
+                return protoId;
+
             var name = protoId.Replace("Window", "").TrimStart('-', '_');
             return string.IsNullOrEmpty(name) ? "Window" : name;
         }

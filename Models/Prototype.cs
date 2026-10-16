@@ -48,6 +48,15 @@ public class Prototype
     public string? LocalizedName { get; set; }
 
     /// <summary>
+    /// Суффикс прототипа для показа в списке — как "Name [Suffix]" в редакторе игры
+    /// (EntityPrototype.EditorSuffix). Берётся из атрибута ".suffix" локализованной
+    /// записи "ent-{Id}" (например ent-GlassBoxLaserOpen → "Антикварный лазер,
+    /// Открытый"), а если перевода нет — из сырого YAML-поля "suffix:"
+    /// (в том числе унаследованного от родителя). Null — показывать нечего.
+    /// </summary>
+    public string? LocalizedSuffix { get; set; }
+
+    /// <summary>
     /// Ключ локализации из поля "name:" в YAML (например "tiles-steel-floor" у тайлов).
     /// Сущности обычно не имеют такого поля и локализуются через "ent-{Id}" — тогда
     /// LocalizationKey == null. Используется ApplyLocalizedNames для простановки

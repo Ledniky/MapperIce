@@ -78,19 +78,19 @@ public partial class MainForm
         _linkedEntitiesPanel.Controls.Add(title);
         y += 25 + 2;
 
-        // // === ЗАГОЛОВОК СЕКЦИИ ===
-        // var doorsLabel = new Label
-        // {
-        //     Text = "Двери/проходы:",
-        //     Location = new Point(leftMargin + 2, y),
-        //     Width = contentWidth - 4,
-        //     Height = 20,
-        //     TextAlign = ContentAlignment.MiddleLeft,
-        //     Font = new Font("Arial", 8, FontStyle.Bold),
-        //     ForeColor = Color.DarkGray
-        // };
-        // _linkedEntitiesPanel.Controls.Add(doorsLabel);
-        // y += 20 + 2;
+        // === ЗАГОЛОВОК СЕКЦИИ ДВЕРЕЙ ===
+        var doorsLabel = new Label
+        {
+            Text = "Двери:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _linkedEntitiesPanel.Controls.Add(doorsLabel);
+        y += 20 + 2;
 
         // === ВЫПАДАЮЩИЙ СПИСОК ДВЕРЕЙ (перенесён из панели инструментов) ===
         _doorToolCombo = BuildDoorWindowCombo(drawDoorIcons: true);
@@ -108,19 +108,19 @@ public partial class MainForm
         _linkedEntitiesPanel.Controls.Add(_doorToolCombo);
         y += 40 + 2;
 
-        // // === ЗАГОЛОВОК СЕКЦИИ ОКОН ===
-        // var windowsLabel = new Label
-        // {
-        //     Text = "Окна:",
-        //     Location = new Point(leftMargin + 2, y),
-        //     Width = contentWidth - 4,
-        //     Height = 20,
-        //     TextAlign = ContentAlignment.MiddleLeft,
-        //     Font = new Font("Arial", 8, FontStyle.Bold),
-        //     ForeColor = Color.DarkGray
-        // };
-        // _linkedEntitiesPanel.Controls.Add(windowsLabel);
-        // y += 20 + 2;
+        // === ЗАГОЛОВОК СЕКЦИИ ОКОН ===
+        var windowsLabel = new Label
+        {
+            Text = "Окна:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _linkedEntitiesPanel.Controls.Add(windowsLabel);
+        y += 20 + 2;
 
         // === ВЫПАДАЮЩИЙ СПИСОК ОКОН (наполняется в UpdateWindowCombo) ===
         _windowToolCombo = BuildDoorWindowCombo(drawDoorIcons: false);
@@ -138,10 +138,10 @@ public partial class MainForm
         _linkedEntitiesPanel.Controls.Add(_windowToolCombo);
         y += 40 + 2;
 
-        // === ЗАГОЛОВОК СЕКЦИИ ПРИВЯЗОК ===
-        var linksLabel = new Label
+        // === ЗАГОЛОВОК СЕКЦИИ АТМОСА (сигнализации) ===
+        var atmosLabel = new Label
         {
-            Text = "Привязки:",
+            Text = "Атмос:",
             Location = new Point(leftMargin + 2, y),
             Width = contentWidth - 4,
             Height = 20,
@@ -149,7 +149,7 @@ public partial class MainForm
             Font = new Font("Arial", 8, FontStyle.Bold),
             ForeColor = Color.DarkGray
         };
-        _linkedEntitiesPanel.Controls.Add(linksLabel);
+        _linkedEntitiesPanel.Controls.Add(atmosLabel);
         y += 20 + 2;
 
         // === СИГНАЛИЗАЦИЯ (перенесена из панели инструментов в «Привязки») ===
@@ -222,6 +222,21 @@ public partial class MainForm
 
         _linkedEntitiesPanel.Controls.Add(alarmPanel);
         y += 34 + 2;
+
+        // === ЗАГОЛОВОК СЕКЦИИ «ПРОЧЕЕ» — привязки (голопад, шкафчик, скафандр,
+        // кровать, камера, комод, интерком, факс) ===
+        var otherLabel = new Label
+        {
+            Text = "Прочее:",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 8, FontStyle.Bold),
+            ForeColor = Color.DarkGray
+        };
+        _linkedEntitiesPanel.Controls.Add(otherLabel);
+        y += 20 + 2;
 
         // === КНОПКА УСТАНОВКИ ГОЛОПАДА ===
         _btnPlaceHolopad = new Button
@@ -374,6 +389,38 @@ public partial class MainForm
         _btnPlaceFax.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceFax);
         _linkedEntitiesPanel.Controls.Add(_btnPlaceFax);
         y += 40 + 2;
+
+        // Ширина панели не постоянна: при открытии она берёт ширину панели инструментов
+        // (см. ShowLinkedEntitiesPanel), а ту можно тянуть за границу. Поэтому содержимое
+        // растягиваем по текущей ширине на каждый Resize — так же, как ряды кнопок
+        // в панели инструментов, а не фиксируем размеры один раз при создании.
+        void StretchContentToPanelWidth()
+        {
+            int content = Math.Max(40, _linkedEntitiesPanel.Width - leftMargin - rightMargin);
+
+            backButton.Width = content;
+            title.Width = content;
+            _doorToolCombo.Width = content - 4;
+            _windowToolCombo.Width = content - 4;
+            doorsLabel.Width = content - 4;
+            windowsLabel.Width = content - 4;
+            atmosLabel.Width = content - 4;
+            otherLabel.Width = content - 4;
+            alarmPanel.Width = content - 4;
+
+            foreach (var button in new[]
+                     {
+                         _btnPlaceHolopad, _btnPlaceLocker, _btnPlaceSuitStorage, _btnPlaceBed,
+                         _btnPlaceCamera, _btnPlaceDresser, _btnPlaceIntercom, _btnPlaceFax
+                     })
+            {
+                if (button != null && !button.IsDisposed)
+                    button.Width = content - 4;
+            }
+        }
+
+        _linkedEntitiesPanel.Resize += (s, e) => StretchContentToPanelWidth();
+        StretchContentToPanelWidth();
     }
 
     private ComboBox BuildDoorWindowCombo(bool drawDoorIcons)

@@ -20,6 +20,9 @@ namespace MapperIce.Services;
 /// которые знает TileBuilder:
 /// 1) обычная граница комнаты (ортогональный сосед вне Room.Contains);
 /// 2) диагональный "пинч" во внутреннем углу выемки (RoomSubtractor).
+/// Клетка-проход (Room.Passages) ни в один из этих источников не попадает: стена
+/// на ней снесена инструментом «Проход», пол там есть — для узора это обычная
+/// клетка пола (и НЕ дверь: своей декали DoorN/S/E/W у прохода нет).
 /// </summary>
 public class DecalPatternBuilder
 {
@@ -70,8 +73,13 @@ public class DecalPatternBuilder
         return false;
     }
 
-    private static bool IsWallCell(Room room, int x, int y)
+    // Клетка-проход стеной не считается: инструмент «Проход» сносит на ней стену
+    // (TileBuilder пропускает её в стадии 2, а пол под ней уже лежит со стадии 1),
+    // поэтому для узора это обычная клетка пола, а не клетка периметра.
+    private static bool IsWallCell(Grid grid, Room room, int x, int y)
     {
+        if (IsPassageAnywhereInGrid(grid, x, y)) return false;
+
         return IsOrthogonalBoundaryWall(room, x, y) || IsConcavePinchWall(room, x, y);
     }
 
@@ -83,7 +91,7 @@ public class DecalPatternBuilder
     {
         foreach (var r in grid.Rooms)
         {
-            if (r.Contains(x, y) && !IsWallCell(r, x, y)) return true;
+            if (r.Contains(x, y) && !IsWallCell(grid, r, x, y)) return true;
         }
         return false;
     }
@@ -91,19 +99,31 @@ public class DecalPatternBuilder
 private static bool IsObstacleSide(Grid grid, Room room, int x, int y)
 {
     if (!room.Contains(x, y)) return true;
-    if (IsWallCell(room, x, y)) return true;
+    if (IsWallCell(grid, room, x, y)) return true;
     if (IsDoorAnywhereInGrid(grid, x, y)) return true;
     return false;
 }
 
+/// <summary>Дверь (обычная или «свободная») — но НЕ проход: проход считается
+/// обычной клеткой пола, у него нет своей декали двери.</summary>
 private static bool IsDoorAnywhereInGrid(Grid grid, int x, int y)
     {
         foreach (var r in grid.Rooms)
         {
             if (r.Doors.Any(d => d.X == x && d.Y == y)) return true;
-            if (r.Passages.Any(p => p.X == x && p.Y == y)) return true;
         }
         return grid.LooseDoors.Any(d => d.X == x && d.Y == y);
+    }
+
+/// <summary>Клетка помечена инструментом «Проход» у любой комнаты грида — стена на
+/// ней снесена, значит для узора декалей это пол.</summary>
+private static bool IsPassageAnywhereInGrid(Grid grid, int x, int y)
+    {
+        foreach (var r in grid.Rooms)
+        {
+            if (r.Passages.Any(p => p.X == x && p.Y == y)) return true;
+        }
+        return false;
     }
 
     private struct NeighborMask
@@ -207,7 +227,7 @@ public void RecalculateForRoom(Grid grid, Room room)
                         {
                             if (room.RemovedCells.Contains((x, y))) continue;
                             if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-                            if (IsWallCell(room, x, y)) continue;
+                            if (IsWallCell(grid, room, x, y)) continue;
                             legalCenters.Add((x, y));
                         }
                     }
@@ -278,11 +298,11 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
             {
                 if (room.RemovedCells.Contains((x, y))) continue;
                 if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-                if (IsWallCell(room, x, y)) continue;
+                if (IsWallCell(grid, room, x, y)) continue;
 
                 var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
                 AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
-                PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
+                PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, ownerId, result);
             }
         }
 
@@ -309,7 +329,7 @@ private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDec
             if (!area.Contains(x, y)) continue;
             if (!room.Contains(x, y)) continue;
             if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-            if (IsWallCell(room, x, y)) continue;
+            if (IsWallCell(grid, room, x, y)) continue;
             // Потайлёвая вырезка декалей (✖): на отмеченных клетках декали не рисуются,
             // а соседние клетки строятся как обычно — эта клетка просто перестаёт получать
             // свою декаль, не перестраивая форму области.
@@ -387,7 +407,7 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
             if (!room.Contains(x, y)) continue;
             if (room.RemovedCells.Contains((x, y))) continue;
             if (IsDoorAnywhereInGrid(grid, x, y)) continue;
-            if (IsWallCell(room, x, y)) continue;
+            if (IsWallCell(grid, room, x, y)) continue;
             // Потайлёвая вырезка декалей (✖): на отмеченных клетках декали не рисуются,
             // а соседние клетки строятся как обычно — эта клетка просто перестаёт получать
             // свою декаль, не перестраивая форму области.
@@ -395,7 +415,7 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
 
             var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
             AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
-            PlacePatternDecals(layer, layerIndex, room, x, y, mask, ownerId, result);
+            PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, ownerId, result);
         }
     }
 
@@ -419,7 +439,7 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
     }
 
     /// <summary>Расстановка декалей по классификации маски соседей (Side/Corner/DeadEnd/Inner).</summary>
-    private void PlacePatternDecals(DecalLayer layer, int layerIndex, Room room, int x, int y, NeighborMask mask, int ownerId, List<PlacedDecal> result)
+    private void PlacePatternDecals(Grid grid, DecalLayer layer, int layerIndex, Room room, int x, int y, NeighborMask mask, int ownerId, List<PlacedDecal> result)
     {
         foreach (var (position, cornerDir) in ClassifyPositions(mask))
         {
@@ -429,7 +449,7 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
                 int targetX = x + (int)Math.Round(-cornerDir.dx * InnerCornerOffset);
                 int targetY = y + (int)Math.Round(-cornerDir.dy * InnerCornerOffset);
 
-                bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(room, targetX, targetY);
+                bool targetIsFloor = room.Contains(targetX, targetY) && !IsWallCell(grid, room, targetX, targetY);
 
                 if (targetIsFloor)
                 {

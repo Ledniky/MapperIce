@@ -157,18 +157,14 @@ public static class RoomSubtractor
             }
         }
 
-        // Удаляем полностью "съеденные" комнаты вместе с их декалями
+        // Удаляем полностью "съеденные" комнаты вместе со всем, что они привнесли
+        // на карту: пометками проходов/окон на своих клетках (в том числе у
+        // соседей по общей стене — иначе там навсегда остаётся проход), оконными
+        // сущностями и декалями узора (см. RoomCleanup.Remove)
         var roomsToPurge = grid.Rooms.Where(r => r.Width <= 0 || r.Height <= 0).ToList();
         foreach (var room in roomsToPurge)
         {
-            var decalsToRemove = grid.Decals
-                .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
-                            d.Y >= room.Y && d.Y < room.Y + room.Height)
-                .ToList();
-            foreach (var decal in decalsToRemove)
-                grid.Decals.Remove(decal);
-
-            grid.Rooms.Remove(room);
+            RoomCleanup.Remove(grid, room);
         }
 
         return anyChanged;

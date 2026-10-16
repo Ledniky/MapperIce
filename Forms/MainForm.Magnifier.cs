@@ -367,18 +367,12 @@ public partial class MainForm
                 $"Комната: {roomRef.RoomType} [{roomRef.Width}×{roomRef.Height} @ ({roomRef.X},{roomRef.Y})]",
                 () => DeleteMagnifierObject(() =>
                 {
-                    // Та же последовательность, что и в Delete-инструменте по комнате:
-                    // сначала снести декали внутри её границ, потом саму комнату,
-                    // потом пересчитать двери всей карты
-                    var roomDecals = grid.Decals
-                        .Where(d => d.X >= roomRef.X && d.X < roomRef.X + roomRef.Width &&
-                                    d.Y >= roomRef.Y && d.Y < roomRef.Y + roomRef.Height)
-                        .ToList();
-                    foreach (var rd in roomDecals)
-                        grid.Decals.Remove(rd);
-
-                    grid.Rooms.Remove(roomRef);
-                    _doorUpdater.RecalculateAllDoors(grid);
+                    // Тот же каскадный снос, что и в Delete-инструменте по комнате
+                    // (RoomCleanup.Remove): комната, пометки проходов/окон на её
+                    // клетках — включая пометки соседей по общей стене, — сущности
+                    // окон и решёток, декали узора, а затем пересчёт дверей карты
+                    RoomCleanup.Remove(grid, roomRef, _doorUpdater);
+                    RecalculateDecalPatterns();
                     SaveState();
                     UpdateTileGrid();
                     Render();
@@ -445,8 +439,22 @@ public partial class MainForm
                     AddMagnifierRow($"Факс: {fax.FaxProto} — адрес \"{fax.FaxName}\"",
                         DeleteEntity, placeProtoId: fax.FaxProto);
                     break;
+                case WireEntity wire:
+                    {
+                        // Кабель хранит тип отдельным полем (WireType), а Proto у него пустой —
+                        // поэтому в общей ветке «Сущность:» строка выглядела пустой.
+                        var wireColor = _wireTypeManager.GetWireType(wire.WireType).Color;
+                        AddMagnifierRow(
+                            $"Кабель [{wire.WireType}] цвет:#{wireColor.R:X2}{wireColor.G:X2}{wireColor.B:X2}",
+                            DeleteEntity);
+                        break;
+                    }
                 default:
-                    AddMagnifierRow($"Сущность: {entity.Proto}", DeleteEntity, placeProtoId: entity.Proto);
+                    // Прототип может быть пустым (сущность хранит тип отдельным полем) —
+                    // тогда показываем имя класса, чтобы строка не оставалась пустой.
+                    AddMagnifierRow(
+                        $"Сущность: {(string.IsNullOrEmpty(entity.Proto) ? entity.GetType().Name : entity.Proto)}",
+                        DeleteEntity, placeProtoId: entity.Proto);
                     break;
             }
         }

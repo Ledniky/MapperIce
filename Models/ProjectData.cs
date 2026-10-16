@@ -10,6 +10,26 @@ public class ProjectData
     public string? ActiveGridName { get; set; }
     public DateTime LastSaved { get; set; }
     public string? Version { get; set; } = "1.0";
+
+    // Настройки слоёв труб (цвет, вентиляция на концах) — часть проекта, а не
+    // сеанса. Без сохранения после загрузки .ice цвета слоёв возвращались к
+    // PipeSettings.DefaultLayers (цвет «сбрасывался»).
+    public List<PipeLayerData> PipeLayers { get; set; } = new();
+}
+
+/// <summary>
+/// Сохранённая настройка слоя труб. Цвет — строкой "A,R,G,B", как у прочих
+/// цветов проекта (GridData.Color, RoomGridData.FillColor). Подпись слоя (L1/L2/L3)
+/// здесь НЕ хранится: это фиксированная метка из PipeSettings.DefaultLayers, а не
+/// пользовательская настройка — иначе старый файл возвращал бы прежнее название
+/// слоя после переименования.
+/// </summary>
+public class PipeLayerData
+{
+    public string Layer { get; set; } = "";
+    public string Color { get; set; } = "255,0,85,204";
+    public bool HasColor { get; set; } = true;
+    public string VentProto { get; set; } = "GasVentScrubber";
 }
 
 public class GridData

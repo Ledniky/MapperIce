@@ -32,7 +32,28 @@ public class Renderer
     private readonly Dictionary<string, string> _protoStateNameCache = new();
     private readonly Dictionary<string, Dictionary<string, (int directions, int framesPerDirection)>> _rsiStateDirectionsCache = new();
     private readonly HashSet<int> _dirtyTileGrids = new();
+    // Гриды, чей рендер-кэш (индекс сглаживания и чанки пола) устарел и должен быть
+    // пересобран при следующем Render. Отличается от _dirtyTileGrids: тот очищается в
+    // Render после пересборки TileGrid (стр. ~284) — ДО вызова DrawRenderLayer, поэтому
+    // на его основе кэши сглаживания/пола не могли пересобираться на структурное изменение.
+    private readonly HashSet<int> _dirtyRenderCaches = new();
     private readonly Dictionary<int, TileGrid> _tileGridCache = new();
+
+    // === Чанковый кэш статичного слоя ПОЛА (инстанцирование для GDI+) ===
+    // Пол — самый массовый слой (тысячи одинаковых тайлов). Вместо того чтобы на каждый
+    // кадр делать тысячи отдельных DrawImage по тайлам, пол выпекается в маленькие
+    // битмапы по чанкам: на кадр выводится по одному DrawImage на видимый чанк.
+    // Пол всегда строго внизу z-порядка (ниже полки декалей), поэтому запекать его
+    // отдельным слоем безопасно — с декалями/сущностями/дверями не переплетается.
+    // Кэш валиден, потому что пол не меняется при панорамировании/зуме — пересобирается
+    // только при структурном изменении грида (тот же флаг _dirtyTileGrids).
+    private const int StaticChunkTiles = 16;
+    private const int StaticChunkMaxBitmaps = 512;
+    // ключ (gridUid, chunkX, chunkY) -> Bitmap. Чанковый битмап полностью непрозрачен
+    // в запечённых тайлах и прозрачен там, где пола нет.
+    private readonly Dictionary<(int gridUid, int cx, int cy), Bitmap> _floorChunkCache = new();
+    private readonly LinkedList<(int gridUid, int cx, int cy)> _floorChunkLru = new();
+    private int _floorChunkTileSize = 0;
 
     // Кэш кадров IconSmooth-стейтов: ключ "прототип|имя файла стейта" -> Image.
     // Один state_N.png (например state_3.png, 64×64) содержит 4 кадра-фриза по 32×32 —
@@ -55,12 +76,7 @@ public class Renderer
     /// <summary>Клетки, участвующие в связях выбранного устройства — их связи рисуются ярко.</summary>
     public HashSet<(int x, int y)> NetworkHighlightPositions { get; set; } = new();
 
-    // Предпросмотр сигнализации
-    private bool _showAlarmPreview = false;
-    private int _previewX;
-    private int _previewY;
-    private float _previewRotation;
-    private string _previewType = "";
+    // Предпросмотр размещаемого объекта (привязки, узлы сети, сигнализации, прототипы)
     private bool _showEntityPreview = false;
     private float _previewEntityX;
     private float _previewEntityY;
@@ -293,16 +309,6 @@ public class Renderer
                 // что реально видно, вместо полного прогона по всей карте на каждый кадр
                 var visibleRect = GetVisibleWorldRect(tileSize, viewOffset, gridOffset);
 
-                var floorTiles = tileGrid.GetTilesByContent(TileContent.Floor)
-                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
-                    .ToList();
-                var wallTiles = tileGrid.GetTilesByContent(TileContent.Wall)
-                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
-                    .ToList();
-                var doorTiles = tileGrid.GetTilesByContent(TileContent.Door)
-                    .Where(t => IsTileVisible(t.X, t.Y, visibleRect))
-                    .ToList();
-
                 DrawGrid(g, tileSize, viewOffset, gridOffset, opacity);
 
                 // Объединённый рендеринг: все элементы сортируются по Y + DrawDepthOffset
@@ -375,7 +381,10 @@ public class Renderer
                 // считаем по ПОЛНОМУ списку труб слоя: иначе у края экрана труба,
                 // у которой сосед остался за кадром, считалась бы концом и получала
                 // лишний спрайт приёмника/вентиляции.
-                if (allPipes.Count > 0)
+                // Здесь они рисуются только при ВКЛЮЧЁННОМ оверлее — поверх всего,
+                // вместе с линиями. При выключенном оверлее концы уходят под ковры
+                // (см. DrawRenderLayer).
+                if (ShowPipeOverlay && allPipes.Count > 0)
                     DrawEndpointMarkers(g, allPipes, gridPipes, tileSize, viewOffset, gridOffset);
 
                 // Область обзора камер — тот же приём, что и зона покрытия НВ-кабеля
@@ -424,10 +433,8 @@ public class Renderer
 
             DrawInfo(g, scale, toolName, map);
 
-            // Рисуем предпросмотр сигнализации под курсором
-            DrawAlarmPreview(g, scale, viewOffset);
-
-            // Рисуем предпросмотр размещаемого прототипа под курсором
+            // Рисуем предпросмотр размещаемого объекта под курсором (привязки, узлы
+            // сети, сигнализации и обычные прототипы — все через один механизм)
             DrawEntityPreview(g, scale, viewOffset);
             DrawExpandRoomPreview(g, scale, viewOffset);
             DrawSelectionHighlight(g, scale, viewOffset);
@@ -1110,10 +1117,10 @@ public class Renderer
                     penCache[wire.WireType] = pen;
                 }
 
-                float cx = (wire.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float cy = (wire.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
-                float nx = (key.Item1 + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-                float ny = (key.Item2 + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+                // Смещение узла зависит от типа кабеля (как у труб): иначе кабели
+                // разных типов на одной клетке рисовались бы поверх друг друга.
+                var (cx, cy) = GetWireNodeScreenCenter(wire.X, wire.Y, wire.WireType, tileSize, viewOffset, gridOffset);
+                var (nx, ny) = GetWireNodeScreenCenter(key.Item1, key.Item2, wire.WireType, tileSize, viewOffset, gridOffset);
                 g.DrawLine(pen, cx, cy, nx, ny);
             }
         }
@@ -1137,8 +1144,7 @@ public class Renderer
                 brushCache[wire.WireType] = brush;
             }
 
-            float cx = (wire.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
-            float cy = (wire.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
+            var (cx, cy) = GetWireNodeScreenCenter(wire.X, wire.Y, wire.WireType, tileSize, viewOffset, gridOffset);
 
             g.FillEllipse(brush, cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
         }
@@ -1153,6 +1159,37 @@ public class Renderer
         // берётся из WireTypeManager — так диалог "Настройки" реально влияет
         // на отрисовку, а не только на иконки инструментов
         return _wireTypeManager.GetWireType(wireType).Color;
+    }
+
+    /// <summary>
+    /// Смещение узла кабеля от центра тайла в долях тайла, в зависимости ТОЛЬКО от типа
+    /// кабеля — та же идея, что у труб (GetPipeTypeOffset): на одной клетке могут лежать
+    /// кабели разных типов, и без разведения они рисовались бы поверх друг друга.
+    /// ВВ уходит влево-вверх, НВ — вправо-вниз, СВ остаётся по центру.
+    /// </summary>
+    public static (float offsetX, float offsetY) GetWireTypeOffset(string wireType)
+    {
+        const float q = 0.25f; // четверть тайла
+
+        return wireType switch
+        {
+            "HV" => (-q, -q), // ВВ — влево-вверх
+            "LV" => (q, q),   // НВ — вправо-вниз
+            _ => (0, 0)       // СВ (и незнакомые типы) — по центру
+        };
+    }
+
+    /// <summary>
+    /// Экранный центр узла кабеля с учётом смещения по типу — единая точка расчёта для
+    /// линий и точек, чтобы они всегда совпадали.
+    /// </summary>
+    private static (float cx, float cy) GetWireNodeScreenCenter(float x, float y, string wireType, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var (offX, offY) = GetWireTypeOffset(wireType);
+
+        float cx = (x + 0.5f + offX + gridOffset.X) * tileSize - viewOffset.X;
+        float cy = (y + 0.5f + offY + gridOffset.Y) * tileSize - viewOffset.Y;
+        return (cx, cy);
     }
 
     /// <summary>
@@ -1714,7 +1751,17 @@ public class Renderer
 
         // Индекс IconSmooth (тайл → smooth-ключи): собирает И тайлы-стены, И сущности, чтобы
         // стены из генератора комнат и из панели репозитория сглаживались друг с другом.
-        BuildIconSmoothIndex(grid, tileGrid, visibleRect);
+        // Кэшируется по гриду — перестраивается один раз на структурное изменение
+        // (тот же сигнал, что инвалидирует кэши рендера), а не на каждый кадр рендера
+        // (индекс не зависит от области видимости, поэтому при панорамировании
+        // переиспользуется без пересборки).
+        if (!_smoothIndexCache.TryGetValue(grid.Uid, out var smoothIndex) ||
+            _dirtyRenderCaches.Contains(grid.Uid))
+        {
+            smoothIndex = BuildIconSmoothIndex(grid, tileGrid);
+            _smoothIndexCache[grid.Uid] = smoothIndex;
+        }
+        _smoothKeysByTile = smoothIndex;
 
         // Пол
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Floor))
@@ -1789,6 +1836,22 @@ public class Renderer
         // Единая полка также означает, что среди декалей наслоение целиком решает
         // LayerOrder (порядок слоёв из «Наследования декалей»), а не глубина прототипа.
         int decalShelfDepth = _drawDepthManager.GetOffset("FloorObjects") - 1;
+        // Концы атмос-труб (вентиляции и приёмники утилизации) при ВЫКЛЮЧЕННОМ оверлее
+        // труб остаются видны, но как напольные детали: кладём всю их пачку на полку
+        // декалей с максимальным layerOrder — то есть выше всех декалей, но ПОД ковры,
+        // которые лежат на FloorObjects. При включённом оверлее концы, наоборот, рисуются
+        // вместе с линиями труб поверх всего (см. блок труб в Render).
+        if (!ShowPipeOverlay && _pipeBuilder != null)
+        {
+            var layerPipes = _pipeBuilder.GetPipes(grid);
+            var visiblePipes = layerPipes.Where(p => IsPointVisible(p.X, p.Y, visibleRect)).ToList();
+            if (visiblePipes.Count > 0)
+            {
+                renderQueue.Add((float.MinValue, decalShelfDepth, int.MaxValue, _insertCounter++,
+                    () => DrawEndpointMarkers(g, visiblePipes, layerPipes, tileSize, viewOffset, gridOffset)));
+            }
+        }
+
         // Ковры (сущности с id "Carpet*") — отдельная полка ровно НА ОДИН слой выше
         // декалей (FloorObjects вместо FloorObjects-1). В игре ковры рисуются на
         // drawdepth "FloorObjects" — поверх пола и декалей, но под мебелью/мобами,
@@ -2174,6 +2237,14 @@ public class Renderer
     // через панель репозитория (сущности), и наоборот.
     private Dictionary<(int x, int y), HashSet<string>> _smoothKeysByTile = new();
 
+    // Кэш индекса сглаживания по гриду (gridUid -> индекс). Индекс зависит только от
+    // содержимого карты (стены/двери тайлов + сущности), а не от области видимости,
+    // поэтому строится ОДИН раз на структурное изменение грида (тот же флаг _dirtyTileGrids,
+    // что пересобирает TileGrid) и переиспользуется при панорамировании/выделении/зуме,
+    // когда карта не менялась. Раньше BuildIconSmoothIndex фильтровал по visibleRect и
+    // перестраивался на каждый кадр — на больших картах это была заметная постоянная нагрузка.
+    private readonly Dictionary<int, Dictionary<(int x, int y), HashSet<string>>> _smoothIndexCache = new();
+
     // Кэш: protoId -> список smooth-ключей (Key + AdditionalKeys), чтобы не пересчитывать GetIconSmoothInfo
     // для каждого прототипа на каждый кадр.
     private readonly Dictionary<string, HashSet<string>?> _smoothProtoKeyCache = new();
@@ -2207,26 +2278,40 @@ public class Renderer
     /// <summary>
     /// Построение единого индекса сглаживания: для каждого тайла собираем множество smooth-ключей,
     /// которые на нём представлены — из тайлов-стен (tileGrid) и из сущностей (grid). 
+    /// Индекс строится по ВСЕМУ гриду (не фильтруется по области видимости), потому что
+    /// он переиспользуется между кадрами при панорамировании — соседи любого края экрана
+    /// должны быть в индексе независимо от текущего viewOffset. Возвращает готовый словарь.
     /// </summary>
-    private void BuildIconSmoothIndex(Grid grid, TileGrid tileGrid, RectangleF visibleRect)
+    private Dictionary<(int x, int y), HashSet<string>> BuildIconSmoothIndex(Grid grid, TileGrid tileGrid)
     {
-        _smoothKeysByTile = new Dictionary<(int, int), HashSet<string>>();
+        var index = new Dictionary<(int, int), HashSet<string>>();
 
-        if (_indexer == null) return;
+        if (_indexer == null) return index;
 
         void AddKey(int x, int y, string key)
         {
             if (string.IsNullOrEmpty(key)) return;
-            if (_smoothKeysByTile.TryGetValue((x, y), out var set))
+            if (index.TryGetValue((x, y), out var set))
                 set.Add(key);
             else
-                _smoothKeysByTile[(x, y)] = new HashSet<string>(StringComparer.Ordinal) { key };
+                index[(x, y)] = new HashSet<string>(StringComparer.Ordinal) { key };
         }
 
         // 1) Тайлы-стены (генератор комнат): ключ из прототипа стены на тайле.
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
         {
-            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
+            var keys = GetSmoothKeysForProto(tile.ProtoId);
+            if (keys == null) continue;
+            foreach (var k in keys) AddKey(tile.X, tile.Y, k);
+        }
+
+        // 1b) Тайлы-двери (шлюзы). У шлюза в игре IconSmooth { key: walls, mode: NoSprite }:
+        // своей сглаженной иконки он не рисует (base отсутствует — см. DrawWallTile), но для
+        // соседних стен он такой же сосед, как стена, поэтому линия стены «слипается» через шлюз.
+        // Двери лежат отдельным содержимым тайла (TileContent.Door), а не Wall, и без этого шага
+        // стены по бокам от шлюза, поставленного привязкой комнаты, оставались с разрывом.
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+        {
             var keys = GetSmoothKeysForProto(tile.ProtoId);
             if (keys == null) continue;
             foreach (var k in keys) AddKey(tile.X, tile.Y, k);
@@ -2236,13 +2321,14 @@ public class Renderer
         foreach (var entity in grid.Entities.OfType<Models.MapEntity>())
         {
             if (string.IsNullOrEmpty(entity.Proto)) continue;
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
             var keys = GetSmoothKeysForProto(entity.Proto);
             if (keys == null) continue;
             int tx = (int)Math.Floor(entity.X);
             int ty = (int)Math.Floor(entity.Y);
             foreach (var k in keys) AddKey(tx, ty, k);
         }
+
+        return index;
     }
 
     // Смещения 8 соседей в тайловых координатах: North,NorthEast,East,SouthEast,South,SouthWest,West,NorthWest
@@ -2938,10 +3024,21 @@ public class Renderer
         }
         _textureCache.Clear();
         _sourceRectCache.Clear();
+        _smoothIndexCache.Clear();
+        ClearFloorChunks();
 
         foreach (var kvp in _decalTintCache)
             kvp.Value.Dispose();
         _decalTintCache.Clear();
+    }
+
+    private void ClearFloorChunks()
+    {
+        foreach (var kvp in _floorChunkCache)
+            kvp.Value.Dispose();
+        _floorChunkCache.Clear();
+        _floorChunkLru.Clear();
+        _floorChunkTileSize = 0;
     }
 
     #endregion
@@ -3341,14 +3438,20 @@ public class Renderer
             float tx = (connection.Target.X + 0.5f + gridOffset.X) * tileSize - viewOffset.X;
             float ty = (connection.Target.Y + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y;
 
-            using (var pen = new Pen(connection.LineColor, connection.LineWidth))
+            // Связи пожарных сигнализаций — тёмно-оранжевые, воздушных остаются зелёными
+            // по умолчанию (connection.LineColor).
+            Color lineColor = connection.Source is FireAlarmDevice
+                ? Color.FromArgb(255, 200, 90, 0)
+                : connection.LineColor;
+
+            using (var pen = new Pen(lineColor, connection.LineWidth))
             {
                 pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
                 g.DrawLine(pen, sx, sy, tx, ty);
             }
 
             float dotSize = 4;
-            using (var brush = new SolidBrush(connection.LineColor))
+            using (var brush = new SolidBrush(lineColor))
             {
                 g.FillEllipse(brush, sx - dotSize / 2, sy - dotSize / 2, dotSize, dotSize);
                 g.FillEllipse(brush, tx - dotSize / 2, ty - dotSize / 2, dotSize, dotSize);
@@ -3369,97 +3472,10 @@ public class Renderer
     public void InvalidateTileGrid(int gridUid)
     {
         _dirtyTileGrids.Add(gridUid);
+        // Кэши рендера (индекс сглаживания, чанки пола) тоже зависят от содержимого
+        // грида — при любом структурном изменении их нужно пересобрать.
+        _dirtyRenderCaches.Add(gridUid);
     }
-    public void SetAlarmPreview(int x, int y, float rotation, string type)
-    {
-        _previewX = x;
-        _previewY = y;
-        _previewRotation = rotation;
-        _previewType = type;
-        _showAlarmPreview = true;
-    }
-
-    public void ClearAlarmPreview()
-    {
-        _showAlarmPreview = false;
-    }
-
-    private void DrawAlarmPreview(Graphics g, float scale, PointF viewOffset)
-    {
-        if (!_showAlarmPreview || string.IsNullOrEmpty(_previewType)) return;
-        if (_currentMap?.ActiveGrid == null) return;
-
-        int tileSize = (int)(Constants.TILE_SIZE * scale);
-        int activeIndex = _currentMap.Grids.IndexOf(_currentMap.ActiveGrid!);
-        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
-        float gridOffsetX = _currentMap.ActiveGrid!.Position.X * tileSize;
-        float gridOffsetY = (_currentMap.ActiveGrid.Position.Y + layerOffsetY) * tileSize;
-
-        float screenX = _previewX * tileSize + gridOffsetX - viewOffset.X;
-        float screenY = _previewY * tileSize + gridOffsetY - viewOffset.Y;
-
-        // Рисуем полупрозрачный фон тайла
-        using (var brush = new SolidBrush(Color.FromArgb(60, 100, 200, 255)))
-        {
-            g.FillRectangle(brush, screenX, screenY, tileSize, tileSize);
-        }
-
-        // Рисуем рамку
-        using (var pen = new Pen(Color.FromArgb(200, 0, 200, 255), 2))
-        {
-            g.DrawRectangle(pen, screenX, screenY, tileSize, tileSize);
-        }
-
-        // Рисуем иконку сигнализации
-        float centerX = screenX + tileSize / 2;
-        float centerY = screenY + tileSize / 2;
-        float iconSize = tileSize * 0.4f;
-
-        var state = g.Save();
-
-        g.TranslateTransform(centerX, centerY);
-        g.RotateTransform(_previewRotation * 180 / (float)Math.PI);
-
-        string iconText = _previewType == "AirAlarm" ? "🔊" : "🔥";
-        using (var font = new Font("Segoe UI", iconSize, FontStyle.Regular))
-        using (var brush = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
-        {
-            var size = g.MeasureString(iconText, font);
-            g.DrawString(iconText, font, brush, -size.Width / 2, -size.Height / 2);
-        }
-
-        // Стрелка направления
-        float arrowLength = tileSize * 0.35f;
-        using (var pen = new Pen(Color.FromArgb(200, 0, 255, 255), 3))
-        {
-            pen.EndCap = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
-            g.DrawLine(pen, 0, 0, 0, -arrowLength);
-        }
-
-        // Круг в центре
-        using (var brush = new SolidBrush(Color.FromArgb(200, 0, 200, 255)))
-        {
-            g.FillEllipse(brush, -4, -4, 8, 8);
-        }
-
-        g.Restore(state);
-
-        // Текст с типом сигнализации под тайлом
-        using (var font = new Font("Arial", 8, FontStyle.Bold))
-        using (var brush = new SolidBrush(Color.White))
-        using (var shadow = new SolidBrush(Color.FromArgb(180, 0, 0, 0)))
-        {
-            string label = _previewType == "AirAlarm" ? "Воздух" : "Пожар";
-            var size = g.MeasureString(label, font);
-            float textX = screenX + tileSize / 2 - size.Width / 2;
-            float textY = screenY + tileSize + 2;
-
-            g.DrawString(label, font, shadow, textX + 1, textY + 1);
-            g.DrawString(label, font, brush, textX, textY);
-        }
-    }
-
-
     private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     {
         if (!_showEntityPreview) return;
@@ -3472,17 +3488,17 @@ public class Renderer
 
         var rect = ToRect(_previewEntityX, _previewEntityY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
-        // Рамка целевого тайла: сразу видно, в какую клетку встанет объект. Красная
-        // рамка — ставить нельзя (нет комнаты/прототипа для этой комнаты или клетка
-        // уже занята), тогда спрайт не рисуется вовсе.
-        using (var fillBrush = new SolidBrush(_previewEntityValid
-                   ? Color.FromArgb(45, 60, 230, 90)
-                   : Color.FromArgb(80, 220, 60, 60)))
-            g.FillRectangle(fillBrush, rect);
-        using (var framePen = new Pen(_previewEntityValid
-                   ? Color.FromArgb(220, 40, 170, 60)
-                   : Color.FromArgb(230, 200, 40, 40), 2f))
-            g.DrawRectangle(framePen, rect.X, rect.Y, rect.Width, rect.Height);
+        // Красная рамка тайла — только когда ставить нельзя (нет комнаты/прототипа для
+        // этой комнаты или клетка уже занята): тогда спрайт не рисуется вовсе и видно,
+        // почему не ставится. У валидного превью тайл ничем не закрашивается — под
+        // спрайтом не должно быть плашки.
+        if (!_previewEntityValid)
+        {
+            using (var fillBrush = new SolidBrush(Color.FromArgb(80, 220, 60, 60)))
+                g.FillRectangle(fillBrush, rect);
+            using (var framePen = new Pen(Color.FromArgb(230, 200, 40, 40), 2f))
+                g.DrawRectangle(framePen, rect.X, rect.Y, rect.Width, rect.Height);
+        }
 
         if (!_previewEntityValid || string.IsNullOrEmpty(_previewEntityProto)) return;
 

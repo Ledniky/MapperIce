@@ -84,17 +84,12 @@ public partial class MainForm
 
         if (e.Button == MouseButtons.Middle)
         {
-            if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
-                _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
+            if (IsAlarmTool(_toolManager.CurrentTool))
             {
-                _currentAlarmRotation += (float)(Math.PI / 2);
-                if (_currentAlarmRotation >= (float)(Math.PI * 2))
-                    _currentAlarmRotation -= (float)(Math.PI * 2);
-
-                var alarmTilePos = GetTilePosition(_lastMousePosition);  // Переименовано
-                string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
-                _renderer.SetAlarmPreview(alarmTilePos.x, alarmTilePos.y, _currentAlarmRotation, type);
-
+                // СКМ поворачивает сигнализацию так же, как колесо: состояние поворота
+                // общее для всех ручных поворотов размещения (_placeRotation).
+                RotatePlacementByQuarter(1);
+                UpdateAlarmPreview();
                 Render();
                 return;
             }
@@ -257,16 +252,15 @@ public partial class MainForm
                 var room = grid.Rooms.FirstOrDefault(r => tileX >= r.X && tileX < r.X + r.Width && tileY >= r.Y && tileY < r.Y + r.Height);
                 if (room != null && canDeleteRooms)
                 {
-                    // Удаляем декали, принадлежащие удаляемой комнате
-                    var roomDecals = grid.Decals
-                        .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
-                                    d.Y >= room.Y && d.Y < room.Y + room.Height)
-                        .ToList();
-                    foreach (var rd in roomDecals)
-                        grid.Decals.Remove(rd);
-
-                    grid.Rooms.Remove(room);
-                    _doorUpdater.RecalculateAllDoors(grid);
+                    // Снос комнаты идёт одним каскадом (RoomCleanup.Remove): вместе с
+                    // ней уходят пометки проходов/окон на её клетках — в том числе
+                    // те, что записаны у соседей по общей стене, — сущности окон и
+                    // решёток и декали узора. Иначе проход в стене оставался навсегда
+                    // (его пометку продолжал видеть TileBuilder), а окно с решёткой
+                    // висели спрайтами там, где комнаты уже нет. Пометки соседей
+                    // влияют на их узоры, поэтому пересчитываем декали.
+                    RoomCleanup.Remove(grid, room, _doorUpdater);
+                    RecalculateDecalPatterns();
                     SaveState(); UpdateTileGrid(); Render(); return;
                 }
             }
@@ -558,10 +552,10 @@ public partial class MainForm
 
             else if (_toolManager.CurrentTool == ToolManager.Tool.PlaceSubstation)
             {
-                // Подстанция — переходник ВВ↔СВ. Ставится только там, где на клетке
-                // физически совпадают провод ВВ и провод СВ (как дверь — только
-                // там, где есть граница комнаты). Валидность и поворот считает
-                // ResolvePowerJunctionPlacement — тот же расчёт, что и в превью.
+                // Подстанция — переходник ВВ↔СВ. Ставится на клетку с любым из своих
+                // кабелей (ВВ или СВ) — второй можно дотянуть потом. Валидность
+                // и поворот считает ResolvePowerJunctionPlacement — тот же расчёт,
+                // что и в превью.
                 var grid = _map.ActiveGrid;
                 var (proto, rotation, valid) = ResolvePowerJunctionPlacement(tileX, tileY);
 
@@ -967,6 +961,10 @@ public partial class MainForm
              or ToolManager.Tool.PlaceCamera or ToolManager.Tool.PlaceDresser
              or ToolManager.Tool.PlaceIntercom or ToolManager.Tool.PlaceFax;
 
+    /// <summary>Инструмент установки сигнализации — воздуха или пожарной.</summary>
+    private static bool IsAlarmTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.AirAlarm or ToolManager.Tool.FireAlarm;
+
     /// <summary>
     /// У этой привязки направление можно задать вручную колёсиком мыши.
     /// Пока только интерком: у остальных направление либо не нужно, либо
@@ -977,10 +975,10 @@ public partial class MainForm
 
     /// <summary>
     /// Инструмент, у которого направление размещаемого объекта задаётся колёсиком мыши:
-    /// интерком-привязка и ЛКП (ставится из меню инструментов).
+    /// интерком-привязка, ЛКП и обе сигнализации.
     /// </summary>
     private static bool ToolSupportsManualRotation(ToolManager.Tool tool) =>
-        LinkedEntityToolSupportsRotation(tool) || tool == ToolManager.Tool.PlaceApc;
+        LinkedEntityToolSupportsRotation(tool) || tool == ToolManager.Tool.PlaceApc || IsAlarmTool(tool);
 
     /// <summary>Инструмент установки узла сети — ЛКП или подстанции (ставит обычную сущность).</summary>
     private static bool IsPowerJunctionTool(ToolManager.Tool tool) =>
@@ -988,7 +986,7 @@ public partial class MainForm
 
     /// <summary>У этих инструментов под курсором показывается превью размещения.</summary>
     private static bool IsPlacementPreviewTool(ToolManager.Tool tool) =>
-        IsLinkedEntityTool(tool) || IsPowerJunctionTool(tool);
+        IsLinkedEntityTool(tool) || IsPowerJunctionTool(tool) || IsAlarmTool(tool);
 
     /// <summary>В клетке уже стоит привязка этого типа.</summary>
     private static bool LinkedEntityCellBusy<T>(Grid grid, int tileX, int tileY) where T : MapEntity =>
@@ -1230,10 +1228,10 @@ public partial class MainForm
 
     /// <summary>
     /// Можно ли поставить выбранный узел сети (ЛКП или подстанцию) в клетку и с каким
-    /// поворотом. Узел ставится только там, где на клетке сходятся нужные провода:
-    /// подстанция — ВВ↔СВ, ЛКП — СВ↔НВ (та же идея, что у двери, которая ставится
-    /// только на границе комнаты). Поворот берётся из ручного (колёсико мыши);
-    /// подстанция — неориентированная структура, у неё поворот всегда 0.
+    /// поворотом. Узлу достаточно ОДНОГО из своих кабелей на клетке: ЛКП — СВ (MV)
+    /// или НВ (LV), подстанция — ВВ (HV) или СВ (MV). Второй кабель можно дотянуть
+    /// потом, поэтому требовать сразу оба не нужно. Поворот берётся из ручного
+    /// (колёсико мыши); подстанция — неориентированная структура, у неё поворот 0.
     /// </summary>
     private (string Proto, float Rotation, bool Valid) ResolvePowerJunctionPlacement(int tileX, int tileY)
     {
@@ -1243,9 +1241,9 @@ public partial class MainForm
 
         bool wiresOk = _selectedPowerJunctionType switch
         {
-            "APC" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") &&
+            "APC" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV") ||
                      _wireBuilder.HasWireOfType(grid, tileX, tileY, "LV"),
-            "Substation" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") &&
+            "Substation" => _wireBuilder.HasWireOfType(grid, tileX, tileY, "HV") ||
                             _wireBuilder.HasWireOfType(grid, tileX, tileY, "MV"),
             _ => false
         };
@@ -1278,11 +1276,66 @@ public partial class MainForm
         _renderer.SetEntityPreview(tilePos.x + 0.5f, tilePos.y + 0.5f, rotation, proto, null, valid);
     }
 
-    /// <summary>Превью размещения для текущего инструмента (привязка или узел сети).</summary>
+    /// <summary>
+    /// Поворот размещаемого объекта на четверть оборота (колёсико мыши или СКМ у
+    /// сигнализаций). Направление считается заданным вручную — оно переопределяет
+    /// автоопределение (у интеркома — «вовнутрь комнаты»).
+    /// </summary>
+    private void RotatePlacementByQuarter(int direction)
+    {
+        float step = (float)(Math.PI / 2);
+        _placeRotation += direction > 0 ? step : -step;
+        _placeRotation = (float)(Math.Round(_placeRotation / step) * step);
+        _placeRotationManual = true;
+    }
+
+    /// <summary>
+    /// Можно ли поставить сигнализацию (воздуха или пожарную) в клетку и с каким
+    /// поворотом. Условия те же, что и при установке (см. AddAirAlarm/AddFireAlarm):
+    /// с включённой привязкой к сетке нужна стена, и вторую такую же сигнализацию
+    /// на клетку не поставить.
+    /// </summary>
+    private (string Proto, float Rotation, bool Valid) ResolveAlarmPlacement(ToolManager.Tool tool, int tileX, int tileY)
+    {
+        string proto = tool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
+
+        var grid = _map.ActiveGrid;
+        if (grid == null) return (proto, _placeRotation, false);
+
+        bool wallOk = !_snapToGrid || HasWallAt(grid, tileX, tileY);
+        bool busy = tool == ToolManager.Tool.AirAlarm
+            ? LinkedEntityCellBusy<AirAlarmEntity>(grid, tileX, tileY)
+            : LinkedEntityCellBusy<FireAlarmEntity>(grid, tileX, tileY);
+
+        return (proto, _placeRotation, wallOk && !busy);
+    }
+
+    /// <summary>
+    /// Превью сигнализации под курсором: тот же спрайт, что появится на карте
+    /// (у спрайтов сигнализаций directions: 1, поэтому поворот у них аффинный —
+    /// так же, как при отрисовке уже поставленных сигнализаций), плюс красная
+    /// рамка, если в этой клетке ставить нельзя.
+    /// </summary>
+    private void UpdateAlarmPreview()
+    {
+        if (!IsAlarmTool(_toolManager.CurrentTool))
+        {
+            _renderer.ClearEntityPreview();
+            return;
+        }
+
+        var tilePos = GetTilePosition(_lastMousePosition);
+        var (proto, rotation, valid) = ResolveAlarmPlacement(_toolManager.CurrentTool, tilePos.x, tilePos.y);
+        _renderer.SetEntityPreview(tilePos.x + 0.5f, tilePos.y + 0.5f, rotation, proto, null, valid);
+    }
+
+    /// <summary>Превью размещения для текущего инструмента (привязка, узел сети, сигнализация).</summary>
     private void UpdatePlacementPreview()
     {
         if (IsLinkedEntityTool(_toolManager.CurrentTool))
             UpdateLinkedEntityPreview();
+        else if (IsAlarmTool(_toolManager.CurrentTool))
+            UpdateAlarmPreview();
         else
             UpdatePowerJunctionPreview();
     }
@@ -1291,13 +1344,10 @@ public partial class MainForm
     {
         // Поворот размещаемого объекта колёсиком — как поворот прототипа при спавне
         // из левого меню: шаг 90°. Работает у интеркома (переопределяет автонаправление
-        // «вовнутрь комнаты») и у ЛКП; результат сразу видно в превью.
+        // «вовнутрь комнаты»), у ЛКП и у сигнализаций; результат сразу видно в превью.
         if (ToolSupportsManualRotation(_toolManager.CurrentTool) && !ModifierKeys.HasFlag(Keys.Control))
         {
-            float placeStep = (float)(Math.PI / 2);
-            _placeRotation += e.Delta > 0 ? placeStep : -placeStep;
-            _placeRotation = (float)(Math.Round(_placeRotation / placeStep) * placeStep);
-            _placeRotationManual = true;
+            RotatePlacementByQuarter(e.Delta > 0 ? 1 : -1);
 
             UpdatePlacementPreview();
             Render();
@@ -1495,22 +1545,8 @@ public partial class MainForm
         }
 
 
-        if (_toolManager.CurrentTool == ToolManager.Tool.AirAlarm ||
-            _toolManager.CurrentTool == ToolManager.Tool.FireAlarm)
-        {
-            var tilePos = GetTilePosition(e.Location);
-            string type = _toolManager.CurrentTool == ToolManager.Tool.AirAlarm ? "AirAlarm" : "FireAlarm";
-            _renderer.SetAlarmPreview(tilePos.x, tilePos.y, _currentAlarmRotation, type);
-            Render();
-            return;
-        }
-        else
-        {
-            _renderer.ClearAlarmPreview();
-        }
-
-        // Привязка или узел сети: пока инструмент выбран, под курсором постоянно видно,
-        // в какую клетку объект встанет (рамка тайла) и как будет повёрнут.
+        // Привязка, узел сети или сигнализация: пока инструмент выбран, под курсором
+        // постоянно видно, в какую клетку объект встанет и как будет повёрнут.
         if (IsPlacementPreviewTool(_toolManager.CurrentTool))
         {
             UpdatePlacementPreview();
@@ -1772,14 +1808,14 @@ public partial class MainForm
                 var rooms = grid.Rooms.Where(r => RoomAreaOverlapsBox(r, minX, minY, maxX, maxY)).ToList();
                 foreach (var room in rooms)
                 {
-                    // Удаляем декали, сгенерированные Decal Rule для этой комнаты
-                    // (идентифицируются по PatternOwnerId = room.Id — тот же ключ, что
-                    // ставит DecalPatternBuilder при генерации). Их координаты могут
-                    // выходить за выделенную область (периметр, смещённые offset-декали),
-                    // поэтому фильтр по рамке их не ловит.
-                    int ownerId = room.Id;
-                    grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
-                    grid.Rooms.Remove(room);
+                    // Тот же каскад, что и в Delete по одной комнате (декали узора,
+                    // пометки проходов/окон на её клетках — включая пометки соседей,
+                    // сущности окон и решёток). Двери и шлюзы пересчитаем один раз
+                    // после цикла, поэтому DoorUpdater сюда не передаём.
+                    // Декали узора снимаются по PatternOwnerId = room.Id: их
+                    // координаты могут выходить за выделенную область (периметр,
+                    // смещённые offset-декали), поэтому фильтр по рамке их не ловит.
+                    RoomCleanup.Remove(grid, room);
                 }
 
                 if (rooms.Count > 0)
@@ -1883,17 +1919,12 @@ public partial class MainForm
                         .ToList();
                     foreach (var room in roomsToRemove)
                     {
-                        int ownerId = room.Id;
-                        grid.Decals.RemoveAll(d => d.PatternOwnerId == ownerId);
-
-                        var roomDecals = grid.Decals
-                            .Where(d => d.X >= room.X && d.X < room.X + room.Width &&
-                                        d.Y >= room.Y && d.Y < room.Y + room.Height)
-                            .ToList();
-                        foreach (var rd in roomDecals)
-                            grid.Decals.Remove(rd);
-
-                        grid.Rooms.Remove(room);
+                        // Каскадный снос (см. RoomCleanup.Remove): комната, пометки
+                        // проходов/окон на её клетках у всех комнат (включая соседей,
+                        // если пометка досталась им), сущности окон/решёток и декали
+                        // узора (по PatternOwnerId = room.Id). Двери и шлюзы
+                        // пересчитываются один раз после цикла.
+                        RoomCleanup.Remove(grid, room);
                     }
 
                     if (roomsToRemove.Count > 0)
@@ -2005,7 +2036,6 @@ public partial class MainForm
     {
         if (_renderer != null)
         {
-            _renderer.ClearAlarmPreview();
             _renderer.ClearEntityPreview();
 
             if (_isBoxSelecting)

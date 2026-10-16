@@ -134,7 +134,10 @@ public partial class MainForm : Form
     private bool _showWires = true;
     private bool _showCameraAreas = true;
     private bool _showNetworkLinks = false;
-    private Dictionary<string, PipeSettings> _pipeLayers = new(PipeSettings.DefaultLayers);
+    // Рабочие настройки слоёв труб — копии встроенных (PipeSettings.DefaultLayers),
+    // а не те же самые объекты: иначе сброс слоя и «Отмена» присваивали значения
+    // объекту самому себе и ничего не меняли
+    private Dictionary<string, PipeSettings> _pipeLayers = PipeSettings.CreateDefaultLayers();
     private Form? _pipeSettingsForm = null;
     private Form? _utilSettingsForm = null;
     private Button _btnPipeSettings = null!;
@@ -165,7 +168,6 @@ public partial class MainForm : Form
     private Image? _intercomIcon;
     private Button _btnPlaceFax = null!;
     private Image? _faxIcon;
-    private float _currentAlarmRotation = 0;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
     private Point _deleteStartPoint;
@@ -175,7 +177,6 @@ public partial class MainForm : Form
     private Form? _deleteSettingsForm = null;
     private bool _showAlarmConnections = true;
     private Point _lastMousePosition;
-    private bool _showAlarmPreview = false;
     private string? _protoToPlace = null;
     private Button? _btnPlaceProto;
     private bool _snapEntityToCenter = false;

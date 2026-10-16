@@ -159,6 +159,17 @@ public partial class MainForm
     }
 
     /// <summary>
+    /// Настройки JSON для .ice: одни и те же при записи и чтении. Конвертер цвета
+    /// обязателен — System.Text.Json не умеет читать System.Drawing.Color сам
+    /// (получался Color.Empty, из-за чего терялся цвет труб).
+    /// </summary>
+    private static readonly JsonSerializerOptions ProjectJsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new ArgbColorJsonConverter() }
+    };
+
+    /// <summary>
     /// Сериализует проект и записывает его в указанный путь. Отдельно от UI-части
     /// (диалоги/сообщения), чтобы и «Сохранить как», и Ctrl+S переиспользовали одну
     /// и ту же логику. Обновляет _currentProjectPath.
@@ -296,7 +307,7 @@ public partial class MainForm
                 gridData.Entities.Add(new GenericEntityData
                 {
                     Type = entity.GetType().Name,
-                    Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType())
+                    Data = System.Text.Json.JsonSerializer.SerializeToElement(entity, entity.GetType(), ProjectJsonOptions)
                 });
             }
 
@@ -315,10 +326,19 @@ public partial class MainForm
             data.Grids.Add(gridData);
         }
 
-        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
+        // Настройки слоёв труб (цвет/вентиляция) — проектные, сохраняем вместе с
+        // картой, иначе после загрузки .ice они вернутся к дефолтным
+        data.PipeLayers = _pipeLayers.Values
+            .Select(s => new PipeLayerData
+            {
+                Layer = s.Layer,
+                Color = $"{s.Color.A},{s.Color.R},{s.Color.G},{s.Color.B}",
+                HasColor = s.HasColor,
+                VentProto = s.VentProto
+            })
+            .ToList();
+
+        var json = System.Text.Json.JsonSerializer.Serialize(data, ProjectJsonOptions);
         File.WriteAllText(filePath, json);
 
         _currentProjectPath = filePath;
@@ -340,7 +360,7 @@ public partial class MainForm
         try
         {
             var json = File.ReadAllText(dialog.FileName);
-            var data = System.Text.Json.JsonSerializer.Deserialize<ProjectData>(json);
+            var data = System.Text.Json.JsonSerializer.Deserialize<ProjectData>(json, ProjectJsonOptions);
 
             if (data == null)
             {
@@ -354,6 +374,10 @@ public partial class MainForm
             // Очищаем все текущие данные
             _map.Grids.Clear();
             _map.ActiveGridUid = null;
+
+            // Слои труб восстанавливаем ДО отрисовки карты в конце метода, чтобы
+            // трубы сразу рисовались сохранёнными цветами
+            ApplyPipeLayers(data.PipeLayers);
 
             int totalRooms = 0;
             int totalDoors = 0;
@@ -537,7 +561,7 @@ public partial class MainForm
 
                     try
                     {
-                        var restored = JsonSerializer.Deserialize(entityData.Data.GetRawText(), type);
+                        var restored = JsonSerializer.Deserialize(entityData.Data.GetRawText(), type, ProjectJsonOptions);
                         if (restored is MapEntity mapEntity)
                         {
                             grid.Entities.Add(mapEntity);
@@ -545,6 +569,19 @@ public partial class MainForm
                         }
                     }
                     catch { /* повреждённая запись — пропускаем */ }
+                }
+
+                // БЭКФИЛЛ цвета труб: проекты, сохранённые до появления
+                // ArgbColorJsonConverter, содержат цвет трубы как Color.Empty (A=0) —
+                // System.Text.Json не умел читать System.Drawing.Color и отдавал нули.
+                // Это потерянный цвет: возвращаем трубе цвет её слоя — ровно то, что
+                // запекает простановка (PipeBuilder.AddPipe). У Util пустой цвет
+                // означает «узел не помечен» (охра ставится только конкретному узлу),
+                // поэтому утилизация просто остаётся без цвета.
+                foreach (var pipe in grid.Entities.OfType<PipeEntity>())
+                {
+                    if (!pipe.CustomColor.HasValue || pipe.CustomColor.Value.A != 0) continue;
+                    pipe.CustomColor = pipe.PipeType == "Util" ? null : GetPipeLayerColor(pipe.PipeType);
                 }
 
                 // Тайлы
@@ -611,7 +648,12 @@ public partial class MainForm
 
             InitGridTabs();
 
-            MessageBox.Show($"Проект загружен!\nСлоёв: {data.Grids.Count}\nКомнат: {totalRooms}\nДверей: {totalDoors}\nСущностей: {totalEntities}\nДекалей: {totalDecals}");
+            // Без модального окна: загрузка проекта не должна прерывать работу,
+            // итог показываем всплывающим уведомлением (как при сохранении)
+            ToastNotification.Show(this,
+                $"Проект загружен: {Path.GetFileName(dialog.FileName)} — слоёв {data.Grids.Count}, комнат {totalRooms}, " +
+                $"дверей {totalDoors}, сущностей {totalEntities}, декалей {totalDecals}",
+                "MapperIce", 4000);
         }
         catch (Exception ex)
         {
@@ -619,6 +661,56 @@ public partial class MainForm
         }
     }
 
+
+    /// <summary>
+    /// Применяет сохранённые в проекте настройки слоёв труб к _pipeLayers: цвет и
+    /// прототип вентиляции. Слои, которых нет в файле (новые в текущей версии),
+    /// остаются с дефолтными значениями; битый цвет слоя не затирает текущий.
+    /// Вызывается только при загрузке проекта.
+    /// </summary>
+    private void ApplyPipeLayers(List<PipeLayerData>? savedLayers)
+    {
+        if (savedLayers == null || savedLayers.Count == 0) return;
+
+        foreach (var layerData in savedLayers)
+        {
+            if (string.IsNullOrEmpty(layerData.Layer)) continue;
+
+            if (!_pipeLayers.TryGetValue(layerData.Layer, out var settings))
+            {
+                settings = new PipeSettings { Layer = layerData.Layer };
+                _pipeLayers[layerData.Layer] = settings;
+            }
+
+            if (TryParseColor(layerData.Color, out var color))
+                settings.Color = color;
+            // Подпись слоя (L1/L2/L3) — фиксированная метка из DefaultLayers, а не
+            // пользовательская настройка: держим её из кода, чтобы проект, сохранённый
+            // до переименования слоёв, не вернул прежнее название
+            if (PipeSettings.DefaultLayers.TryGetValue(layerData.Layer, out var def))
+                settings.DisplayName = def.DisplayName;
+            settings.HasColor = layerData.HasColor;
+            if (!string.IsNullOrEmpty(layerData.VentProto))
+                settings.VentProto = layerData.VentProto;
+        }
+
+        UpdatePipeButtonColors();
+    }
+
+    private static bool TryParseColor(string? value, out Color color)
+    {
+        color = default;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var parts = value.Split(',');
+        if (parts.Length != 4) return false;
+        if (!int.TryParse(parts[0], out var a) || !int.TryParse(parts[1], out var r) ||
+            !int.TryParse(parts[2], out var g) || !int.TryParse(parts[3], out var b))
+            return false;
+
+        color = Color.FromArgb(a, r, g, b);
+        return true;
+    }
 
     private Color ParseColor(string value)
     {

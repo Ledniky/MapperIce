@@ -11,6 +11,16 @@ public partial class MainForm
     private System.Windows.Forms.Timer? _searchDebounceTimer;
     private System.Windows.Forms.Timer? _moveTimer;
     private DragGhostForm? _dragGhost;
+    // Последний запрос, по которому реально выполнен поиск. Нужен, чтобы не
+    // перезапускать дорогой поиск на неизменившийся текст (и чтобы не
+    // подгружать весь список при пустом поле).
+    private string _lastSearchedText = "";
+
+    // Кэш результата фильтрации прототипов по ключу (текст-запрос; выбранный
+    // фильтр). GetPrototypeIds()/SearchPrototypes() + FindPrototype() внутри
+    // каждой ветки switch — дорогие операции, а фильтр в списке переключается
+    // часто. Кэш сбрасывается при переиндексации репозитория.
+    private readonly Dictionary<(string query, string filter), List<string>> _searchFilterCache = new();
 
     // === ПАНЕЛЬ РЕПОЗИТОРИЕВ ===
     private void CreateRepositoryPanel()
@@ -90,8 +100,23 @@ listContainer.Controls.Add(_protoList);
         _searchDebounceTimer.Tick += (s, e) =>
         {
             _searchDebounceTimer!.Stop();
-            UpdatePrototypeList(_searchBox.Text);
+            string text = _searchBox.Text.Trim();
+            // Пустой запрос (или плейсхолдер) НЕ запускает поиск: иначе при
+            // очистке поля снова подгружаются ВСЕ прототипы (десятки тысяч),
+            // и интерфейс зависает на секунды. Список при пустом поле
+            // сохраняет последний результат поиска.
+            if (string.IsNullOrEmpty(text) || text == "Поиск прототипов...")
+                return;
+            // Запрос не изменился относительно последнего выполненного — не перезапускаем
+            // дорогой поиск (и кэш в PrototypeIndexer всё равно бы не сработал многократно).
+            if (text == _lastSearchedText)
+                return;
+            _lastSearchedText = text;
+            UpdatePrototypeList(text);
         };
+        // Запуск debounce-таймера на отжатие клавиши (а не на каждую букву).
+        // Сам Tick берёт актуальный текст из _searchBox, поэтому здесь достаточно
+        // просто сбросить и перезапустить таймер.
         _searchBox.KeyUp += (s, e) =>
         {
             _searchDebounceTimer!.Stop();
@@ -384,6 +409,18 @@ listContainer.Controls.Add(_protoList);
     {
         if (_repoSelector.SelectedItem is Repository repo)
         {
+            // Подтверждение спрашиваем только у ранее проиндексированного репозитория:
+            // обновление пересобирает индекс с нуля и занимает время, а первый проход
+            // ничего не перезаписывает — там подтверждение лишнее
+            if (repo.IsIndexed &&
+                MessageBox.Show(
+                    $"Обновить индекс репозитория '{repo.Name}'?\n" +
+                    $"Текущий индекс ({repo.PrototypeCount} прототипов) будет пересобран заново.",
+                    "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                return;
+            }
+
             _indexer.ReindexFromDisk(repo);
             int count = _indexer.GetPrototypeIds().Count;
             _repoManager.MarkAsIndexed(repo.Id, count);
@@ -438,75 +475,92 @@ listContainer.Controls.Add(_protoList);
                 _protoList.HandleCreated += (s, e) => { if (!_protoList.IsDisposed) _protoList.Invoke(action); };
         }
 
-        Task.Run(() =>
+Task.Run(() =>
         {
             try
             {
-                var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
-                    ? _indexer.GetPrototypeIds()
-                    : _indexer.SearchPrototypes(filter);
+                // Кэш фильтрации: дорогие GetPrototypeIds()/SearchPrototypes() и
+                // FindPrototype() в switch не пересчитываем, если для данного
+                // (запрос, фильтр) результат уже получен. Оборачиваем в try, чтобы
+                // при гонке потоков (два запроса с одинаковым ключом) не упасть.
+                List<string>? filteredIds;
+                var cacheKey = (filter, _currentFilter);
+                lock (_searchFilterCache)
+                    _searchFilterCache.TryGetValue(cacheKey, out filteredIds);
 
-                if (token.IsCancellationRequested) return;
-
-                var filteredIds = allIds;
-
-                switch (_currentFilter)
+                if (filteredIds == null)
                 {
-                    case "all":
-                    case "все":
-                        // Декали по умолчанию скрыты из общего списка — слишком много "мусора"
-                        // (сотни BrickTile*, RoadLine* и т.п.), видны только через отдельный фильтр
-                        filteredIds = allIds.Where(id =>
-                            _indexer.FindPrototype(id)?.Type != "decal"
-                        ).ToList();
-                        break;
-                    case "тайлы":
-                    case "tiles":
-                        // Тайлы ищем по реальному Type из YAML (type: tile), а не по подстроке
-                        // в id — имена настоящих тайлов (FloorSteel, Plating, FloorCarpet и т.п.)
-                        // лишь отчасти содержат "tile"/"floor"/"plating", и часть тайлов из-за
-                        // этого терялась из фильтра
-                        filteredIds = allIds.Where(id =>
-                            _indexer.FindPrototype(id)?.Type == "tile"
-                        ).ToList();
-                        break;
-                    case "структура":
-                    case "structures":
-                        filteredIds = allIds.Where(id =>
-                            id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
-                            id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
-                            id.Contains("window", StringComparison.OrdinalIgnoreCase)
-                        ).ToList();
-                        break;
-                    case "спавнер":
-                    case "spawner":
-                        filteredIds = allIds.Where(id =>
-                            id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
-                            id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
-                        ).ToList();
-                        break;
-                    case "декали":
-                    case "decals":
-                        // Декали ищем по реальному Type из YAML (type: decal), а не по подстроке в id —
-                        // имена декалей (BrickTileDarkBox и т.п.) никак не намекают на то, что это декаль
-                        filteredIds = allIds.Where(id =>
-                            _indexer.FindPrototype(id)?.Type == "decal"
-                        ).ToList();
-                        break;
+                    var allIds = string.IsNullOrEmpty(filter) || filter == "Поиск прототипов..."
+                        ? _indexer.GetPrototypeIds()
+                        : _indexer.SearchPrototypes(filter);
+
+                    if (token.IsCancellationRequested) return;
+
+                    filteredIds = allIds;
+
+                    switch (_currentFilter)
+                    {
+                        case "all":
+                        case "все":
+                            // Декали по умолчанию скрыты из общего списка — слишком много "мусора"
+                            // (сотни BrickTile*, RoadLine* и т.п.), видны только через отдельный фильтр
+                            filteredIds = allIds.Where(id =>
+                                _indexer.FindPrototype(id)?.Type != "decal"
+                            ).ToList();
+                            break;
+                        case "тайлы":
+                        case "tiles":
+                            // Тайлы ищем по реальному Type из YAML (type: tile), а не по подстроке
+                            // в id — имена настоящих тайлов (FloorSteel, Plating, FloorCarpet и т.п.)
+                            // лишь отчасти содержат "tile"/"floor"/"plating", и часть тайлов из-за
+                            // этого терялась из фильтра
+                            filteredIds = allIds.Where(id =>
+                                _indexer.FindPrototype(id)?.Type == "tile"
+                            ).ToList();
+                            break;
+                        case "структура":
+                        case "structures":
+                            filteredIds = allIds.Where(id =>
+                                id.Contains("wall", StringComparison.OrdinalIgnoreCase) ||
+                                id.Contains("door", StringComparison.OrdinalIgnoreCase) ||
+                                id.Contains("window", StringComparison.OrdinalIgnoreCase)
+                            ).ToList();
+                            break;
+                        case "спавнер":
+                        case "spawner":
+                            filteredIds = allIds.Where(id =>
+                                id.Contains("spawn", StringComparison.OrdinalIgnoreCase) ||
+                                id.Contains("spawner", StringComparison.OrdinalIgnoreCase)
+                            ).ToList();
+                            break;
+                        case "декали":
+                        case "decals":
+                            // Декали ищем по реальному Type из YAML (type: decal), а не по подстроке в id —
+                            // имена декалей (BrickTileDarkBox и т.п.) никак не намекают на то, что это декаль
+                            filteredIds = allIds.Where(id =>
+                                _indexer.FindPrototype(id)?.Type == "decal"
+                            ).ToList();
+                            break;
+                    }
+
+                    filteredIds = filteredIds
+                        .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
+                        .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
+                        .Where(id => _indexer.FindPrototype(id)?.IsAbstract != true) // исключаем шаблоны с "abstract: true"
+                        .ToList();
+
+                    lock (_searchFilterCache)
+                        _searchFilterCache[cacheKey] = filteredIds;
+
+                    if (token.IsCancellationRequested) return;
                 }
 
+                // Десятки тысяч прототипов в ListBox всё равно не прокрутишь без
+                // зависания (авто-подбор ширины O(N) + добавление элементов), поэтому
+                // ограничиваем вывод разумным числом самых релевантных совпадений.
+                var result = filteredIds.Take(2000).ToList();
 
-
-
-                filteredIds = filteredIds
-                    .Where(id => !id.StartsWith("*"))           // исключаем начинающиеся с *
-                    .Where(id => !id.Contains("Action"))        // исключаем содержащие "Action"
-                    .Where(id => _indexer.FindPrototype(id)?.IsAbstract != true) // исключаем шаблоны с "abstract: true"
-                    .ToList();
-
-                var result = filteredIds.Take(100000).ToList();
-
-                if (token.IsCancellationRequested) return;
+if (token.IsCancellationRequested) return;
 
                 SafeInvoke(() =>
                 {
@@ -918,6 +972,8 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
         _protoIconCache.Clear();
         _iconLoadInFlight.Clear();
         _rsiFrameSizeCache.Clear();
+        // После переиндексации репозитория старые результаты фильтрации недействительны
+        _searchFilterCache.Clear();
     }
     private void ProtoList_DrawItem(object? sender, DrawItemEventArgs e)
     {
@@ -941,12 +997,21 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
         // ТОЛЬКО отображаемый текст на русское название, если оно нашлось и содержит
         // кириллицу. При этом под локализованным именем второй строкой рисуется сам id.
         bool hasLocalizedName = false;
-        string? localizedName = null;
+        string? displayName = null;
         if (isRealProto)
         {
-            localizedName = _indexer.FindPrototype(id!)?.LocalizedName;
+            var proto = _indexer.FindPrototype(id!);
+            var localizedName = proto?.LocalizedName;
             hasLocalizedName = !string.IsNullOrWhiteSpace(localizedName) &&
                                localizedName.Any(c => c >= '\u0400' && c <= '\u04FF');
+
+            // Суффикс показываем в квадратных скобках, как редактор самой игры
+            // ("Name [Suffix]", см. EntityPrototype.EditorSuffix): иначе варианты
+            // одного прототипа (GlassBoxLaser / GlassBoxLaserOpen / ...FilledOpen)
+            // в списке выглядели одинаково — «стеклянный короб».
+            displayName = hasLocalizedName && !string.IsNullOrWhiteSpace(proto!.LocalizedSuffix)
+                ? $"{localizedName} [{proto.LocalizedSuffix}]"
+                : localizedName;
         }
 
         if (isRealProto)
@@ -983,7 +1048,7 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             var r1 = new Rectangle(textX, e.Bounds.Top + 3, e.Bounds.Right - textX, line1H);
             var r2 = new Rectangle(textX, e.Bounds.Top + 3 + line1H, e.Bounds.Right - textX, line2H);
 
-            TextRenderer.DrawText(e.Graphics, localizedName!, nameFont, r1, e.ForeColor,
+            TextRenderer.DrawText(e.Graphics, displayName!, nameFont, r1, e.ForeColor,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(e.Graphics, id!, idFont, r2, Color.Gray,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);

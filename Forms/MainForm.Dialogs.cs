@@ -91,6 +91,11 @@ public partial class MainForm
         };
         _pipeSettingsForm.Owner = this;
 
+        // Снимок настроек на момент открытия: цвет и вентиляция применяются сразу
+        // (кнопка цвета пишет в настройки слоя), поэтому «Отмена» должна вернуть
+        // именно это состояние, а не встроенные дефолты
+        var layersSnapshot = _pipeLayers.ToDictionary(kv => kv.Key, kv => kv.Value.Clone());
+
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -228,15 +233,18 @@ public partial class MainForm
         };
         btnCancel.Click += (s, e) =>
         {
-            foreach (var layer in _pipeLayers.Keys)
+            // Возврат к состоянию на момент открытия диалога: цвета слоёв (включая
+            // утилизацию, которую правят в отдельном диалоге) применялись сразу,
+            // поэтому «Отмена» восстанавливает снимок, а не встроенные дефолты
+            foreach (var kv in layersSnapshot)
             {
-                if (PipeSettings.DefaultLayers.TryGetValue(layer, out var defaultSettings))
-                {
-                    _pipeLayers[layer].Color = defaultSettings.Color;
-                    _pipeLayers[layer].VentProto = defaultSettings.VentProto;
-                }
+                if (!_pipeLayers.TryGetValue(kv.Key, out var settings)) continue;
+                settings.Color = kv.Value.Color;
+                settings.VentProto = kv.Value.VentProto;
+                settings.HasColor = kv.Value.HasColor;
             }
             UpdatePipeButtonColors();
+            Render();
             _pipeSettingsForm?.Close();
         };
         btnPanel.Controls.Add(btnCancel);
@@ -495,6 +503,8 @@ public partial class MainForm
 
         // Цвет
         var utilLayer = _pipeLayers.ContainsKey("Util") ? _pipeLayers["Util"] : PipeSettings.DefaultLayers["Util"];
+        // Снимок на момент открытия: цвет применяется сразу, «Отмена» возвращает его
+        var utilOriginalColor = utilLayer.Color;
         var btnColor = new Button
         {
             BackColor = utilLayer.Color,
@@ -541,13 +551,12 @@ public partial class MainForm
         };
         btnCancel.Click += (s, e) =>
         {
-            if (PipeSettings.DefaultLayers.TryGetValue("Util", out var defaultSettings))
-            {
-                utilLayer.Color = defaultSettings.Color;
-                btnColor.BackColor = defaultSettings.Color;
-                UpdatePipeButtonColors();
-                Render();
-            }
+            // Возврат к цвету на момент открытия диалога: цвет применяется сразу,
+            // «Отмена» не должна оставлять пользователя без прежнего значения
+            utilLayer.Color = utilOriginalColor;
+            btnColor.BackColor = utilOriginalColor;
+            UpdatePipeButtonColors();
+            Render();
             _utilSettingsForm?.Close();
         };
         btnPanel.Controls.Add(btnCancel);

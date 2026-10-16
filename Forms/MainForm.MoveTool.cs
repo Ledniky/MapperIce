@@ -145,6 +145,15 @@ public partial class MainForm
                         newRemovedCells.Add((cell.X + dx, cell.Y + dy));
                     }
                     room.RemovedCells = newRemovedCells;
+
+                    // Пометки прохода и окна — это части СТЕН комнаты, они обязаны
+                    // ехать вместе с ней. Если их оставить на прежних координатах,
+                    // на старом месте остаётся «проход в никуда» (пометка продолжает
+                    // глушить стену соседней комнаты, TileBuilder не строит её там
+                    // и после переноса), а на новом месте стена восстанавливается и
+                    // проход пропадает из уже перенесённой комнаты.
+                    room.Passages = room.Passages.Select(p => (p.X + dx, p.Y + dy)).ToList();
+                    room.Windows = room.Windows.Select(w => (w.X + dx, w.Y + dy)).ToList();
                 }
                 break;
             case Door door:

@@ -66,7 +66,7 @@ public class Captain : CommandRoomType
     public override string DoorProto => "AirlockCaptainLocked";
     public override string GlassDoorProto => "AirlockCaptainGlassLocked";
     public override string? HolopadProto => "HolopadCommandCaptain";
-    public override string? LockerProto => "LockerCaptainFilled";
+    public override string? LockerProto => "LockerCaptainFilledNoLaser";
     public override string? SuitStorageProto => "SuitStorageCaptain";
     public override string? BedProto => "Bed";
     public override string? BedsheetProto => "BedsheetCaptain";
