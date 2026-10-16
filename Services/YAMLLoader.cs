@@ -35,7 +35,17 @@ public class YAMLLoader
             .IgnoreUnmatchedProperties()
             .Build();
 
-        var doc = deserializer.Deserialize<Dictionary<object, object>>(yaml);
+        // Десериализуем в object и проверяем, что корень — объект (mapping).
+        // Раньше тут был жёсткий Deserialize<Dictionary<object, object>>, который
+        // бросал InvalidCastException ("Specified cast is not valid"), если корень
+        // YAML оказался не mapping'ом (например, одиночным списком или sequence),
+        // и ронял всю загрузку карты разом.
+        var root = deserializer.Deserialize<object?>(yaml);
+        if (root is not Dictionary<object, object> doc)
+        {
+            throw new InvalidDataException(
+                "Корень YAML-файла не является объектом (mapping). Возможно, файл повреждён или это не игровая карта.");
+        }
         var map = new MapData();
 
         // Создаём один слой для всей карты — grids: содержит список всех grid-сущностей,
@@ -59,23 +69,23 @@ public class YAMLLoader
         // Статичный грид определяется по наличию BecomesStation или MapAtmosphere
         // в любой сущности. Динамичный — по наличию MapGrid с Physics/Shuttle.
         if (!doc.TryGetValue("entities", out var entitiesObj)) return false;
-        var entitiesList = (List<object>)entitiesObj;
+        if (entitiesObj is not List<object> entitiesList) return false;
 
         foreach (var entityGroup in entitiesList)
         {
-            var group = (Dictionary<object, object>)entityGroup;
+            if (entityGroup is not Dictionary<object, object> group) continue;
             if (!group.TryGetValue("entities", out var entities)) continue;
-            var entityList = (List<object>)entities;
+            if (entities is not List<object> entityList) continue;
 
             foreach (var entityObj in entityList)
             {
-                var entity = (Dictionary<object, object>)entityObj;
+                if (entityObj is not Dictionary<object, object> entity) continue;
                 if (!entity.TryGetValue("components", out var compsObj)) continue;
-                var components = (List<object>)compsObj;
+                if (compsObj is not List<object> components) continue;
 
                 foreach (var compObj in components)
                 {
-                    var comp = (Dictionary<object, object>)compObj;
+                    if (compObj is not Dictionary<object, object> comp) continue;
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
                     var typeStr = typeObj.ToString();
                     if (typeStr == "BecomesStation") return true;
@@ -90,7 +100,7 @@ public class YAMLLoader
     {
         if (!doc.TryGetValue("tilemap", out var tilemapObj)) return;
 
-        var tilemap = (Dictionary<object, object>)tilemapObj;
+        if (tilemapObj is not Dictionary<object, object> tilemap) return;
         var tileIdMap = new Dictionary<int, string>();
 
         foreach (var kvp in tilemap)
@@ -108,40 +118,40 @@ public class YAMLLoader
         bool hasSpace = tileIdMap.ContainsValue("Space");
 
         if (!doc.TryGetValue("entities", out var entitiesObj)) return;
-        var entitiesList = (List<object>)entitiesObj;
+        if (entitiesObj is not List<object> entitiesList) return;
 
         foreach (var entityGroup in entitiesList)
         {
-            var group = (Dictionary<object, object>)entityGroup;
+            if (entityGroup is not Dictionary<object, object> group) continue;
             if (!group.ContainsKey("entities")) continue;
-
-            var entities = (List<object>)group["entities"];
+            if (group["entities"] is not List<object> entities) continue;
             foreach (var entityObj in entities)
             {
-                var entity = (Dictionary<object, object>)entityObj;
+                if (entityObj is not Dictionary<object, object> entity) continue;
 
                 // Grid entity определяется по наличию компонента MapGrid, а не по uid
                 // (uid может быть 1, 2 или другим в зависимости от экспорта)
                 if (!entity.TryGetValue("components", out var compsObj)) continue;
-                var components = (List<object>)compsObj;
+                if (compsObj is not List<object> components) continue;
 
                 foreach (var compObj in components)
                 {
-                    var comp = (Dictionary<object, object>)compObj;
+                    if (compObj is not Dictionary<object, object> comp) continue;
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
                     if (typeObj.ToString() != "MapGrid") continue;
 
                     // Парсим чанки
                     if (!comp.TryGetValue("chunks", out var chunksObj)) continue;
-                    var chunks = (Dictionary<object, object>)chunksObj;
+                    if (chunksObj is not Dictionary<object, object> chunks) continue;
 
                     foreach (var chunkKvp in chunks)
                     {
                         var chunkKey = chunkKvp.Key.ToString()!.Split(',');
+                        if (chunkKey.Length < 2) continue;
                         int chunkX = int.Parse(chunkKey[0], CultureInfo.InvariantCulture);
                         int chunkY = int.Parse(chunkKey[1], CultureInfo.InvariantCulture);
 
-                        var chunkData = (Dictionary<object, object>)chunkKvp.Value;
+                        if (chunkKvp.Value is not Dictionary<object, object> chunkData) continue;
                         if (!chunkData.TryGetValue("tiles", out var tilesBase64)) continue;
 
                         var tileIds = DecodeTiles(tilesBase64.ToString()!);
@@ -176,20 +186,20 @@ public class YAMLLoader
     private void ParseEntities(Dictionary<object, object> doc, Grid grid)
     {
         if (!doc.TryGetValue("entities", out var entitiesObj)) return;
-        var entitiesList = (List<object>)entitiesObj;
+        if (entitiesObj is not List<object> entitiesList) return;
 
         foreach (var entityGroup in entitiesList)
         {
-            var group = (Dictionary<object, object>)entityGroup;
+            if (entityGroup is not Dictionary<object, object> group) continue;
             if (!group.TryGetValue("proto", out var protoObj)) continue;
             string proto = protoObj.ToString()!;
 
             if (!group.TryGetValue("entities", out var entities)) continue;
-            var entityList = (List<object>)entities;
+            if (entities is not List<object> entityList) continue;
 
             foreach (var entityObj in entityList)
             {
-                var entity = (Dictionary<object, object>)entityObj;
+                if (entityObj is not Dictionary<object, object> entity) continue;
 
                 // Пропускаем Map Entity и Grid entity — они не являются игровыми сущностями
                 // Map entity определяется по наличию компонента Map (или BecomesStation в
@@ -198,25 +208,27 @@ public class YAMLLoader
                 bool isMapOrGridEntity = false;
                 if (entity.TryGetValue("components", out var compsObj))
                 {
-                    var components = (List<object>)compsObj;
-                    foreach (var compObj in components)
+                    if (compsObj is List<object> components)
                     {
-                        var comp = (Dictionary<object, object>)compObj;
-                        if (!comp.TryGetValue("type", out var typeObj)) continue;
-                        var typeStr = typeObj.ToString();
-                        // Grid entity
-                        if (typeStr == "MapGrid") { isMapOrGridEntity = true; break; }
-                        // Map entity (стандартный формат)
-                        if (typeStr == "Map") { isMapOrGridEntity = true; break; }
-                        // Map entity в некоторых экспортах (Zmap.yml)
-                        if (typeStr == "BecomesStation") { isMapOrGridEntity = true; break; }
+                        foreach (var compObj in components)
+                        {
+                            if (compObj is not Dictionary<object, object> comp) continue;
+                            if (!comp.TryGetValue("type", out var typeObj)) continue;
+                            var typeStr = typeObj.ToString();
+                            // Grid entity
+                            if (typeStr == "MapGrid") { isMapOrGridEntity = true; break; }
+                            // Map entity (стандартный формат)
+                            if (typeStr == "Map") { isMapOrGridEntity = true; break; }
+                            // Map entity в некоторых экспортах (Zmap.yml)
+                            if (typeStr == "BecomesStation") { isMapOrGridEntity = true; break; }
+                        }
                     }
                 }
                 if (isMapOrGridEntity) continue;
 
                 // Парсим Transform
                 if (!entity.TryGetValue("components", out compsObj)) continue;
-                var transformComponents = (List<object>)compsObj;
+                if (compsObj is not List<object> transformComponents) continue;
 
                 float posX = 0, posY = 0;
                 float rotation = 0;
@@ -224,15 +236,18 @@ public class YAMLLoader
 
                 foreach (var compObj in transformComponents)
                 {
-                    var comp = (Dictionary<object, object>)compObj;
+                    if (compObj is not Dictionary<object, object> comp) continue;
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
                     if (typeObj.ToString() == "Transform")
                     {
                         if (comp.TryGetValue("pos", out var posObj))
                         {
                             var pos = posObj.ToString()!.Split(',');
-                            posX = float.Parse(pos[0].Trim(), CultureInfo.InvariantCulture);
-                            posY = float.Parse(pos[1].Trim(), CultureInfo.InvariantCulture);
+                            if (pos.Length >= 2)
+                            {
+                                posX = float.Parse(pos[0].Trim(), CultureInfo.InvariantCulture);
+                                posY = float.Parse(pos[1].Trim(), CultureInfo.InvariantCulture);
+                            }
                         }
                         if (comp.TryGetValue("rot", out var rotObj))
                         {
@@ -370,26 +385,25 @@ public class YAMLLoader
     private void ParseDecals(Dictionary<object, object> doc, Grid grid)
     {
         if (!doc.TryGetValue("entities", out var entitiesObj)) return;
-        var entitiesList = (List<object>)entitiesObj;
+        if (entitiesObj is not List<object> entitiesList) return;
 
         foreach (var entityGroup in entitiesList)
         {
-            var group = (Dictionary<object, object>)entityGroup;
+            if (entityGroup is not Dictionary<object, object> group) continue;
             if (!group.ContainsKey("entities")) continue;
-
-            var entities = (List<object>)group["entities"];
+            if (group["entities"] is not List<object> entities) continue;
             foreach (var entityObj in entities)
             {
-                var entity = (Dictionary<object, object>)entityObj;
+                if (entityObj is not Dictionary<object, object> entity) continue;
 
                 // Grid entity определяется по наличию компонента DecalGrid, а не по uid
                 if (!entity.TryGetValue("components", out var compsObj)) continue;
-                var components = (List<object>)compsObj;
+                if (compsObj is not List<object> components) continue;
 
                 bool hasDecalGrid = false;
                 foreach (var compObj in components)
                 {
-                    var comp = (Dictionary<object, object>)compObj;
+                    if (compObj is not Dictionary<object, object> comp) continue;
                     if (comp.TryGetValue("type", out var typeObj) && typeObj.ToString() == "DecalGrid")
                     {
                         hasDecalGrid = true;
@@ -401,21 +415,21 @@ public class YAMLLoader
                 // Перебираем компоненты снова для парсинга
                 foreach (var compObj in components)
                 {
-                    var comp = (Dictionary<object, object>)compObj;
+                    if (compObj is not Dictionary<object, object> comp) continue;
                     if (!comp.TryGetValue("type", out var typeObj)) continue;
                     if (typeObj.ToString() != "DecalGrid") continue;
 
                     if (!comp.TryGetValue("chunkCollection", out var chunkColl)) continue;
-                    var collection = (Dictionary<object, object>)chunkColl;
+                    if (chunkColl is not Dictionary<object, object> collection) continue;
 
                     if (!collection.TryGetValue("nodes", out var nodesObj)) continue;
-                    var nodes = (List<object>)nodesObj;
+                    if (nodesObj is not List<object> nodes) continue;
 
                     foreach (var nodeObj in nodes)
                     {
-                        var node = (Dictionary<object, object>)nodeObj;
+                        if (nodeObj is not Dictionary<object, object> node) continue;
                         if (!node.TryGetValue("node", out var nodeDataObj)) continue;
-                        var nodeData = (Dictionary<object, object>)nodeDataObj;
+                        if (nodeDataObj is not Dictionary<object, object> nodeData) continue;
 
                         string proto = nodeData.TryGetValue("id", out var idObj) ? idObj.ToString()! : "decal";
                         string color = nodeData.TryGetValue("color", out var colorObj) ? colorObj.ToString()! : "#FFFFFFFF";
@@ -424,11 +438,12 @@ public class YAMLLoader
                         bool cleanable = nodeData.TryGetValue("cleanable", out _);
 
                         if (!node.TryGetValue("decals", out var decalsObj)) continue;
-                        var decals = (Dictionary<object, object>)decalsObj;
+                        if (decalsObj is not Dictionary<object, object> decals) continue;
 
                         foreach (var decalKvp in decals)
                         {
                             var pos = decalKvp.Value.ToString()!.Split(',');
+                            if (pos.Length < 2) continue;
                             float x = float.Parse(pos[0].Trim(), CultureInfo.InvariantCulture);
                             float y = float.Parse(pos[1].Trim(), CultureInfo.InvariantCulture);
 

@@ -63,6 +63,7 @@ public partial class MainForm
         catch (Exception ex)
         {
             MessageBox.Show($"Ошибка загрузки карты: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine(ex.ToString());
         }
     }
 

@@ -15,6 +15,11 @@ public class TileBuilder
         { "WallReinforced", 1 },
     };
 
+    private static readonly (int dx, int dy)[] _wallDirs =
+    {
+        (-1, 0), (1, 0), (0, -1), (0, 1)
+    };
+
     public TileBuilder(RoomTypeManager roomTypeManager, DoorUpdater doorUpdater, DrawDepthManager? drawDepthManager = null)
     {
         _roomTypeManager = roomTypeManager;
@@ -168,9 +173,30 @@ foreach (var room in allRooms)
                     if (passagePositions.Contains((x, y))) continue;
                     if (windowPositions.Contains((x, y))) continue;
 
+                    // ОБЩАЯ СТЕНА: если ВСЕ открытые стороны клетки уже "закрыты"
+                    // стенами ДРУГИХ комнат в соседних клетках, свою стену не ставим —
+                    // впритык-комнаты делят одну физическую стену. Это позволяет
+                    // создавать комнату вплотную к другой, не расширяя её в соседа
+                    // и не получая двойной стены. Если хоть одна сторона выходит на
+                    // пустоту — стена кладётся как обычно (чтобы не терять углы/края).
+                    bool hasAnyBoundary = false;
+                    bool allBoundariesCovered = true;
+                    foreach (var (dx, dy) in _wallDirs)
+                    {
+                        int nx = x + dx, ny = y + dy;
+                        if (room.Contains(nx, ny)) continue; // внутренняя сторона
+                        hasAnyBoundary = true;
+                        var nTile = tileGrid.GetTile(nx, ny);
+                        bool covered = nTile != null && nTile.Content == TileContent.Wall && nTile.RoomUid != roomUid;
+                        if (!covered) allBoundariesCovered = false;
+                    }
+                    if (!hasAnyBoundary) continue;                       // не граница вообще
+                    if (allBoundariesCovered) continue;                  // общая стена — не дублируем
+
                     string? wall = GetBoundaryWallProto(room, allRooms, x, y);
                     if (wall != null)
-                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);                }
+                        tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                }
             }
         }
 

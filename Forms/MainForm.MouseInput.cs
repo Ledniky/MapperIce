@@ -397,54 +397,53 @@ public partial class MainForm
             else if (_toolManager.CurrentTool == ToolManager.Tool.ReplaceWallWithWindow)
             {
                 var grid = _map.ActiveGrid;
+
+                // Клетка — настоящая стена: у неё есть сосед вне комнаты (внешний
+                // периметр ИЛИ внутренняя стена, возникшая после вырезания). Вложенные
+                // комнаты (например, командование с WallReinforced внутри большой
+                // комнаты General) перекрывают те же координаты, поэтому комнату ищем
+                // не по первому попаданию прямоугольником, а по той, для которой клетка
+                // является реальной границей — иначе окно не ставится в укреплённую стену.
+                var dirs = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
+                if (!_tileGrid.IsWall(tileX, tileY)) return;
+
                 var room = grid.Rooms.FirstOrDefault(r =>
-                    tileX >= r.X && tileX < r.X + r.Width &&
-                    tileY >= r.Y && tileY < r.Y + r.Height);
+                    r.Contains(tileX, tileY) &&
+                    dirs.Any(d => r.HasWallOnSide(tileX, tileY, d.Item1, d.Item2)));
 
                 if (room != null)
                 {
-                    // Клетка — настоящая стена комнаты: принадлежит комнате и у неё есть
-                    // сосед вне комнаты (внешний периметр ИЛИ внутренняя стена, возникшая
-                    // после вырезания). Старая проверка "на краю прямоугольника комнаты"
-                    // не срабатывала для внутренних стен, образованных RoomSubtractor'ом.
-                    var dirs = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-                    bool isWallCell = _tileGrid.IsWall(tileX, tileY) &&
-                                      dirs.Any(d => room.HasWallOnSide(tileX, tileY, d.Item1, d.Item2));
-
-                    if (isWallCell)
+                    // Удаляем тайл стены
+                    _tileGrid.SetTile(tileX, tileY, TileContent.Empty, null, null, 0);
+                    // Добавляем сущность-окно
+                    string windowProto = _selectedWindowProto ?? "Window";
+                    grid.Entities.Add(new MapEntity
                     {
-                        // Удаляем тайл стены
-                        _tileGrid.SetTile(tileX, tileY, TileContent.Empty, null, null, 0);
-                        // Добавляем сущность-окно
-                        string windowProto = _selectedWindowProto ?? "Window";
+                        X = tileX + 0.5f,
+                        Y = tileY + 0.5f,
+                        Proto = windowProto
+                    });
+                    // Добавляем сущность-решётку под окном (в том же тайле) —
+                    // только если окно унаследовано от базового "Window" (проверка
+                    // по цепочке parent:), иначе решётка не ставится
+                    if (_indexer.IsWindow(windowProto))
+                    {
                         grid.Entities.Add(new MapEntity
                         {
                             X = tileX + 0.5f,
                             Y = tileY + 0.5f,
-                            Proto = windowProto
+                            Proto = "Grille"
                         });
-                        // Добавляем сущность-решётку под окном (в том же тайле) —
-                        // только если окно унаследовано от базового "Window" (проверка
-                        // по цепочке parent:), иначе решётка не ставится
-                        if (_indexer.IsWindow(windowProto))
-                        {
-                            grid.Entities.Add(new MapEntity
-                            {
-                                X = tileX + 0.5f,
-                                Y = tileY + 0.5f,
-                                Proto = "Grille"
-                            });
-                        }
-                        // Запоминаем клетку как "окно" в самой комнате — иначе
-                        // BuildFromRooms при следующем UpdateTileGrid() заново
-                        // поставит сюда стену (он перестраивает стены с нуля
-                        // из геометрии комнаты, а не из текущего _tileGrid)
-                        room.Windows.Add((tileX, tileY));
-                        RecalculateDecalPatterns();
-                        UpdateTileGrid();
-                        SaveState();
-                        Render();
                     }
+                    // Запоминаем клетку как "окно" в самой комнате — иначе
+                    // BuildFromRooms при следующем UpdateTileGrid() заново
+                    // поставит сюда стену (он перестраивает стены с нуля
+                    // из геометрии комнаты, а не из текущего _tileGrid)
+                    room.Windows.Add((tileX, tileY));
+                    RecalculateDecalPatterns();
+                    UpdateTileGrid();
+                    SaveState();
+                    Render();
                 }
             }
 

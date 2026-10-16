@@ -39,65 +39,18 @@ public static class RoomSubtractor
     }
 
 
-
     /// <summary>
-    /// Если newRoom впритык (без нахлёста и без зазора) касается уже существующей
-    /// комнаты по какой-либо стороне, "вдвигает" newRoom на 1 тайл в сторону этой
-    /// комнаты — создавая намеренный нахлёст в 1 тайл, на котором держится общая
-    /// стена (обе комнаты пишут Wall в одну и ту же физическую клетку TileGrid).
-    /// Без этого две просто соприкасающиеся комнаты получают КАЖДАЯ свою стену
-    /// в СВОЕЙ соседней клетке — визуально это выглядит как "двойная стена".
-    /// Вызывать ДО RoomSubtractor.ApplyToGrid и ДО добавления newRoom в grid.Rooms.
-    /// </summary>
-    public static void SnapAdjacentOverlap(Grid grid, Room newRoom)
-    {
-        bool expandLeft = false, expandRight = false, expandUp = false, expandDown = false;
-
-        foreach (var room in grid.Rooms)
-        {
-            bool yTouch = newRoom.Y < room.Y + room.Height && newRoom.Y + newRoom.Height > room.Y;
-            bool xTouch = newRoom.X < room.X + room.Width && newRoom.X + newRoom.Width > room.X;
-
-            // room слева от newRoom, впритык, без нахлёста
-            if (yTouch && room.X + room.Width == newRoom.X)
-                expandLeft = true;
-
-            // room справа от newRoom, впритык
-            if (yTouch && newRoom.X + newRoom.Width == room.X)
-                expandRight = true;
-
-            // room сверху от newRoom, впритык
-            if (xTouch && room.Y + room.Height == newRoom.Y)
-                expandUp = true;
-
-            // room снизу от newRoom, впритык
-            if (xTouch && newRoom.Y + newRoom.Height == room.Y)
-                expandDown = true;
-        }
-
-        if (expandLeft) { newRoom.X -= 1; newRoom.Width += 1; }
-        if (expandRight) { newRoom.Width += 1; }
-        if (expandUp) { newRoom.Y -= 1; newRoom.Height += 1; }
-        if (expandDown) { newRoom.Height += 1; }
-    }
-
-    
-
-    /// <summary>
-    /// Полная обработка размещения новой комнаты поверх существующих: сначала
-    /// SnapAdjacentOverlap создаёт нахлёст в 1 тайл там, где комнаты просто
-    /// впритык касаются (без пересечения), затем из существующих комнат
-    /// вырезается только ВНУТРЕННЯЯ часть footprint'а newRoom — отступив на
-    /// 1 тайл с каждой стороны. Внешнее кольцо в 1 тайл остаётся нетронутым
-    /// у старой комнаты, и на этом кольце обе комнаты (старая и новая) пишут
-    /// Wall в одну и ту же физическую клетку TileGrid — общая стена, а не
-    /// две соседние. Вырезание полного прямоугольника (без отступа) оставляло
-    /// старую комнату без граничной клетки и создавало двойную стену.
+    /// Полная обработка размещения новой комнаты поверх существующих: из существующих
+    /// комнат вырезается только ВНУТРЕННЯЯ часть footprint'а newRoom — отступив на
+    /// 1 тайл с каждой стороны. Внешнее кольцо в 1 тайл остаётся нетронутым у старой
+    /// комнаты — здесь проходит общая стена. Общая стена между комнатами впритык
+    /// строится в BuildFromRooms через WallDedupe (комната не плодит свою стену там,
+    /// где сосед уже держит чужую), поэтому новая комната не расширяется в соседа и
+    /// не "уворовывает" у него 1 тайл. Вырезание полного прямоугольника (без отступа)
+    /// оставляло старую комнату без граничной клетки и создавало двойную стену.
     /// </summary>
     public static void ApplyForNewRoom(Grid grid, Room newRoom)
     {
-        SnapAdjacentOverlap(grid, newRoom);
-
         int cutX = newRoom.X;
         int cutW = newRoom.Width;
         if (newRoom.Width > 2)
@@ -222,8 +175,8 @@ public static class RoomSubtractor
         // клетка, открытая хоть с одной стороны (неважно, с какой именно —
         // это может быть боковая стена соседней комнаты, а не обязательно
         // смотрящая точно в сторону нашего расширения), разрешаем расширение
-        // туда: обе комнаты разделят одну физическую клетку под общую стену,
-        // как и SnapAdjacentOverlap при обычном создании комнаты впритык.
+        // туда: обе комнаты разделят одну физическую клетку под общую стену
+        // (та же общая стена, что строится между комнатами впритык).
         // Блокируем только настоящую внутреннюю территорию (пол) чужой
         // комнаты — клетку, у которой нет ни одной открытой стороны.
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
