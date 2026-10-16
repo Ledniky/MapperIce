@@ -835,7 +835,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Font = new Font("Arial", 9, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter
         };
-        _btnNetworkConfigurator.Click += (s, e) => ShowNetworkConfigurator();
+        _btnNetworkConfigurator.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.NetworkConfigurator);
         _toolPanel.Controls.Add(_btnNetworkConfigurator);
         y += 34 + 2;
 

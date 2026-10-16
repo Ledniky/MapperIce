@@ -466,25 +466,6 @@ public partial class MainForm
                         RecalculateDecalPatterns();
                         UpdateTileGrid();
 
-                        // ВРЕМЕННАЯ ДИАГНОСТИКА — убрать после выяснения причины дублей
-                        int nullOwnerCount = grid.Decals.Count(d => d.PatternOwnerId == null);
-                        var dupRoomIds = grid.Rooms.GroupBy(r => r.Id).Where(grp => grp.Count() > 1)
-                            .Select(grp => grp.Key.ToString()).ToList();
-                        var multiOwnerCells = grid.Decals
-                            .Where(d => d.PatternOwnerId != null)
-                            .GroupBy(d => ((int)Math.Floor(d.X), (int)Math.Floor(d.Y)))
-                            .Where(grp => grp.Select(d => d.PatternOwnerId).Distinct().Count() > 1)
-                            .Select(grp => $"({grp.Key.Item1};{grp.Key.Item2}) owners=" +
-                                string.Join(",", grp.Select(d => d.PatternOwnerId).Distinct()))
-                            .ToList();
-                        MessageBox.Show(
-                            $"Декалей всего: {grid.Decals.Count}\n" +
-                            $"Без владельца (null): {nullOwnerCount}\n" +
-                            $"Id комнат, повторяющиеся: {(dupRoomIds.Count == 0 ? "нет" : string.Join(",", dupRoomIds))}\n" +
-                            $"Клеток с декалями от 2+ комнат: {multiOwnerCells.Count}\n" +
-                            string.Join("\n", multiOwnerCells.Take(8)),
-                            "Диагностика расширения");
-
                         SaveState();
                         Render();
                     }
@@ -893,6 +874,15 @@ public partial class MainForm
                 if (room != null)
                 {
                     ShowDecalRuleDialog(room);
+                }
+            }
+            else if (_toolManager.CurrentTool == ToolManager.Tool.NetworkConfigurator)
+            {
+                var grid = _map.ActiveGrid;
+                var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+                if (room != null)
+                {
+                    ShowNetworkConfigurator(room);
                 }
             }
             else if (_toolManager.CurrentTool == ToolManager.Tool.Move)

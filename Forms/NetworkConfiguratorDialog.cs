@@ -14,6 +14,7 @@ public class NetworkConfiguratorDialog : Form
 {
     private readonly Grid _grid;
     private readonly PrototypeIndexer _indexer;
+    private readonly Room _room;
     private readonly Action<IReadOnlyCollection<(int x, int y)>> _setHighlight;
     private readonly Action _requestRender;
     private readonly Action<bool> _setCanvasPickMode;
@@ -34,17 +35,19 @@ public class NetworkConfiguratorDialog : Form
     public NetworkConfiguratorDialog(
         Grid grid,
         PrototypeIndexer indexer,
+        Room room,
         Action<IReadOnlyCollection<(int x, int y)>> setHighlight,
         Action requestRender,
         Action<bool> setCanvasPickMode)
     {
         _grid = grid;
         _indexer = indexer;
+        _room = room;
         _setHighlight = setHighlight;
         _requestRender = requestRender;
         _setCanvasPickMode = setCanvasPickMode;
 
-        Text = "Конфигуратор сетей";
+        Text = "Конфигуратор сетей — " + GetRoomLabel();
         Size = new Size(820, 600);
         MinimumSize = new Size(680, 500);
         StartPosition = FormStartPosition.CenterParent;
@@ -155,6 +158,11 @@ public class NetworkConfiguratorDialog : Form
         };
     }
 
+    private string GetRoomLabel()
+    {
+        return $"{_room.RoomType} ({_room.X},{_room.Y})";
+    }
+
     private void TogglePickMode()
     {
         _pickMode = !_pickMode;
@@ -253,6 +261,7 @@ public class NetworkConfiguratorDialog : Form
 
         var entities = _grid.Entities.OfType<MapEntity>()
             .Where(e => !string.IsNullOrEmpty(e.Proto))
+            .Where(e => _room.Contains((int)Math.Round(e.X), (int)Math.Round(e.Y)))
             .ToList();
 
         foreach (var entity in entities)

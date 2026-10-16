@@ -53,6 +53,11 @@ public class Renderer
     // в запечённых тайлах и прозрачен там, где пола нет.
     private readonly Dictionary<(int gridUid, int cx, int cy), Bitmap> _floorChunkCache = new();
     private readonly LinkedList<(int gridUid, int cx, int cy)> _floorChunkLru = new();
+    // Чанки, в которых нет ни одного тайла пола — BakeFloorChunk возвращает для них null.
+    // Храним их отдельным множеством, а не как null-значения в _floorChunkCache, чтобы
+    // ClearGridFloorChunks/ClearFloorChunks могли безопасно Dispose каждый закэшированный
+    // битмап (null в словаре приводил к NullReferenceException).
+    private readonly HashSet<(int gridUid, int cx, int cy)> _emptyFloorChunks = new();
     private int _floorChunkTileSize = 0;
 
     // Кэш кадров IconSmooth-стейтов: ключ "прототип|имя файла стейта" -> Image.
@@ -415,14 +420,6 @@ public class Renderer
                         DrawTempPipePath(g, wirePath, tileSize, viewOffset, gridOffset);
                     }
                 }
-
-                // Собираем сигнализации для стрелок — они теперь внутри DrawRenderLayer,                // но стрелки рисуются отдельно, поэтому фильтруем заново
-                var visibleAlarmsForArrows = grid.Entities
-                    .OfType<MapEntity>()
-                    .Where(e => e is AirAlarmEntity or FireAlarmEntity)
-                    .Where(a => IsPointVisible(a.X, a.Y, visibleRect))
-                    .ToList();
-                DrawAlarmDirectionArrows(g, visibleAlarmsForArrows, scale, viewOffset, gridOffset);
 
                 if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
                 {
@@ -1744,6 +1741,152 @@ public class Renderer
         }
     }
 
+    // Помощник: нарисует один тайл пола в чанк-графике (запекание) без учёта сортировки.
+    private void DrawFloorTileInto(Graphics tg, float worldX, float worldY, string protoId, int tileSize)
+    {
+        // В чанке X/Y = локальные координаты тайла, поэтому рисуем от угла клетки.
+        var rect = new Rectangle((int)(worldX * tileSize), (int)(worldY * tileSize), tileSize, tileSize);
+        var texture = GetOrLoadTexture(protoId);
+        var srcRect = texture != null ? GetSourceRect(protoId, texture, 0f) : Rectangle.Empty;
+
+        if (texture != null)
+        {
+            tg.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
+        }
+        else
+        {
+            // Фолбэк-заглушка, как в DrawSingleTile (пол, opacity=1 при запекании).
+            using var brush = new SolidBrush(Color.FromArgb(150, 200, 200, 200));
+            tg.FillRectangle(brush, rect);
+        }
+    }
+
+    // Рисует CTAТИЧНЫЙ слой пола через чанковый кэш. Возвращает список используется ли вообще
+    // (пустой tileGrid пола -> ничеrmo рисуется). Интегрируется в z-порядок: пол запекается и
+    // выводится целиком ПЕРВЫМ, до декалей/стен/дверей/сущностей, т.к. пол всегда внизу.
+    private void DrawStaticFloorChunks(Graphics g, TileGrid tileGrid, int gridUid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
+    {
+        // Смена зума (tileSize) делает невалидным весь кэш чанков — размеры битмапов зависят
+        // от пиксельного размера тайла.
+        if (_floorChunkTileSize != tileSize)
+        {
+            if (_floorChunkTileSize != 0)
+            {
+                foreach (var kvp in _floorChunkCache)
+                    kvp.Value.Dispose();
+                _floorChunkCache.Clear();
+                _floorChunkLru.Clear();
+                _emptyFloorChunks.Clear();
+            }
+            _floorChunkTileSize = tileSize;
+        }
+
+        // Диапазон видимых чанков по осям (в мировых координатах, инклюзивно).
+        int chunkMinX = (int)Math.Floor(visibleRect.Left / StaticChunkTiles);
+        int chunkMaxX = (int)Math.Floor(visibleRect.Right / StaticChunkTiles);
+        int chunkMinY = (int)Math.Floor(visibleRect.Top / StaticChunkTiles);
+        int chunkMaxY = (int)Math.Floor(visibleRect.Bottom / StaticChunkTiles);
+
+        for (int cy = chunkMinY; cy <= chunkMaxY; cy++)
+        {
+            for (int cx = chunkMinX; cx <= chunkMaxX; cx++)
+            {
+                var key = (gridUid, cx, cy);
+                if (!_floorChunkCache.TryGetValue(key, out var chunk))
+                {
+                    if (_emptyFloorChunks.Contains(key))
+                        continue;
+
+                    chunk = BakeFloorChunk(tileGrid, key, tileSize);
+                    if (chunk == null)
+                    {
+                        _emptyFloorChunks.Add(key);
+                        continue;
+                    }
+                    InsertFloorChunk(key, chunk);
+                }
+
+                if (chunk == null) continue;
+
+                // Экранные координаты левого верхнего угла чанка.
+                int sx = (int)((cx * StaticChunkTiles + gridOffset.X) * tileSize - viewOffset.X);
+                int sy = (int)((cy * StaticChunkTiles + gridOffset.Y) * tileSize - viewOffset.Y);
+                g.DrawImage(chunk, sx, sy);
+            }
+        }
+    }
+
+    private void InsertFloorChunk((int gridUid, int cx, int cy) key, Bitmap chunk)
+    {
+        _floorChunkCache[key] = chunk;
+        _floorChunkLru.AddLast(key);
+        // LRU-обрезка: на сверхбольших картах не копим бесконечные чанки, если карта
+        // «пролистывается» — выкидываем давно не использованные, начиная с головы очереди.
+        while (_floorChunkCache.Count > StaticChunkMaxBitmaps && _floorChunkLru.Count > 0)
+        {
+            var lruKey = _floorChunkLru.First!.Value;
+            _floorChunkLru.RemoveFirst();
+            if (_floorChunkCache.TryGetValue(lruKey, out var old))
+            {
+                old.Dispose();
+                _floorChunkCache.Remove(lruKey);
+            }
+        }
+    }
+
+    // Запекает чанк пола (StaticChunkTiles×StaticChunkTiles тайлов) в Bitmap.
+    // Возвращает null, если в чанке нет ни одного тайла пола (чик пустой — не создаём битмап).
+    private Bitmap? BakeFloorChunk(TileGrid tileGrid, (int gridUid, int cx, int cy) key, int tileSize)
+    {
+        int chunkPx = StaticChunkTiles * tileSize;
+        int baseX = key.cx * StaticChunkTiles;
+        int baseY = key.cy * StaticChunkTiles;
+
+        // Быстрая проверка: есть ли в этом чанке хоть один тайл пола (или пол под дверью).
+        bool any = false;
+        for (int ly = 0; ly < StaticChunkTiles; ly++)
+        {
+            for (int lx = 0; lx < StaticChunkTiles; lx++)
+            {
+                var tile = tileGrid.GetTile(baseX + lx, baseY + ly);
+                if (tile != null &&
+                    (tile.Content == TileContent.Floor ||
+                     (tile.Content == TileContent.Door && tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))))
+                { any = true; break; }
+            }
+            if (any) break;
+        }
+        if (!any) return null;
+
+        var bmp = new Bitmap(chunkPx, chunkPx, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var tg = Graphics.FromImage(bmp))
+        {
+            tg.InterpolationMode = _interpolationMode;
+            tg.SmoothingMode = SmoothingMode.None;
+            tg.PixelOffsetMode = PixelOffsetMode.Half;
+
+            for (int ly = 0; ly < StaticChunkTiles; ly++)
+            {
+                for (int lx = 0; lx < StaticChunkTiles; lx++)
+                {
+                    var tile = tileGrid.GetTile(baseX + lx, baseY + ly);
+                    if (tile == null) continue;
+                    if (tile.Content == TileContent.Floor)
+                    {
+                        DrawFloorTileInto(tg, lx, ly, tile.ProtoId ?? "Plating", tileSize);
+                    }
+                    else if (tile.Content == TileContent.Door && tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))
+                    {
+                        // Пол под дверью (прежний цикл «Пол под дверями»): чтобы под дверью
+                        // не было пустоты, печём его в чанк — дверь рисуется позже поверх.
+                        DrawFloorTileInto(tg, lx, ly, tile.FloorProtoUnder!, tileSize);
+                    }
+                }
+            }
+        }
+        return bmp;
+    }
+
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
     {
         var renderQueue = new List<(double WorldY, int DrawDepthOffset, int LayerOrder, int InsertOrder, Action draw)>();
@@ -1760,40 +1903,21 @@ public class Renderer
         {
             smoothIndex = BuildIconSmoothIndex(grid, tileGrid);
             _smoothIndexCache[grid.Uid] = smoothIndex;
+
+            // Статичные чанки пола тоже зависят от содержимого грида — при структурном
+            // изменении выкидываем их, чтобы не рисовать устаревший пол.
+            ClearGridFloorChunks(grid.Uid);
+
+            _dirtyRenderCaches.Remove(grid.Uid);
         }
         _smoothKeysByTile = smoothIndex;
 
-        // Пол
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Floor))
-        {
-            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
-            int dd = tile.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "Plating");
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
-            var t = tile;
-            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.ProtoId ?? "Plating", tileSize, viewOffset, gridOffset, true, opacity)));
-        }
-
-        // Пол под дверями
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
-        {
-            if (tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))
-            {
-                int dd = 0;
-                if (_indexer != null)
-                {
-                    var ddName = _indexer.GetDrawDepth(tile.FloorProtoUnder);
-                    if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-                }
-                if (dd == 0) dd = _drawDepthManager.GetOffset("FloorTiles");
-                var t = tile;
-                renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleTile(g, t.X, t.Y, t.FloorProtoUnder!, tileSize, viewOffset, gridOffset, true, opacity)));
-            }
-        }
+        // Пол — через чанковый кэш (инстанцирование для GDI+): тысячи одинаковых тайлов
+        // выпекаются в битмапы по чанкам один раз на структурное изменение и выводятся
+        // на кадр по одному DrawImage на видимый чанк. Пол всегда внизу z-порядка, поэтому
+        // выводится ПЕРВЫМ — до декалей/стен/дверей/сущностей, что совпадает с прежним
+        // поведением (dd=FloorTiles, самый нижний слой, без индивидуальной сортировки выше декалей).
+        DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect);
 
         // Стены
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
@@ -3038,7 +3162,31 @@ public class Renderer
             kvp.Value.Dispose();
         _floorChunkCache.Clear();
         _floorChunkLru.Clear();
+        _emptyFloorChunks.Clear();
         _floorChunkTileSize = 0;
+    }
+
+    // Выкидывает чанки пола конкретного грида (при структурном изменении карты).
+    private void ClearGridFloorChunks(int gridUid)
+    {
+        bool any = false;
+        var keys = _floorChunkCache.Keys.Where(k => k.gridUid == gridUid).ToList();
+        foreach (var k in keys)
+        {
+            if (_floorChunkCache.TryGetValue(k, out var bmp))
+                bmp.Dispose();
+            _floorChunkCache.Remove(k);
+            any = true;
+        }
+        any |= _emptyFloorChunks.RemoveWhere(k => k.gridUid == gridUid) > 0;
+        if (any) RebuildFloorChunkLru();
+    }
+
+    private void RebuildFloorChunkLru()
+    {
+        _floorChunkLru.Clear();
+        foreach (var k in _floorChunkCache.Keys)
+            _floorChunkLru.AddLast(k);
     }
 
     #endregion
@@ -3558,45 +3706,6 @@ public class Renderer
             var rect = ToRect(cx, cy, tileSize, viewOffset, gridOffset);
             g.FillRectangle(blocked ? blockedBrush : freeBrush, rect);
             g.DrawRectangle(blocked ? blockedPen : freePen, rect);
-        }
-    }
-
-
-    private void DrawAlarmDirectionArrows(Graphics g, List<MapEntity> alarms, float scale, PointF viewOffset, PointF gridPosition)
-    {
-        if (!ShowAlarmConnections) return;
-        if (alarms.Count == 0) return;
-
-        int tileSize = (int)(Constants.TILE_SIZE * scale);
-        float gridOffsetX = gridPosition.X * tileSize;
-        float gridOffsetY = gridPosition.Y * tileSize;
-
-        // Список сигнализаций приходит уже отфильтрованным по видимой области вызывающим
-        // кодом (Render()) — раньше тут заново сканировались ВСЕ сигнализации грида через
-        // grid.Entities, включая те, что далеко за пределами экрана.
-        foreach (var alarm in alarms)
-        {
-            float screenX = (float)alarm.X * tileSize + gridOffsetX - viewOffset.X;
-            float screenY = (float)alarm.Y * tileSize + gridOffsetY - viewOffset.Y;
-            float centerX = screenX + tileSize / 2;
-            float centerY = screenY + tileSize / 2;
-
-            float rotation = alarm is AirAlarmEntity air ? air.Rotation :
-                            (alarm as FireAlarmEntity)?.Rotation ?? 0;
-
-            float arrowLength = tileSize * 0.4f;
-
-            var state = g.Save();
-            g.TranslateTransform(centerX, centerY);
-            g.RotateTransform(rotation * 180 / (float)Math.PI);
-
-            using (var pen = new Pen(Color.FromArgb(180, 255, 255, 0), 2))
-            {
-                pen.EndCap = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
-                g.DrawLine(pen, 0, 0, 0, -arrowLength);
-            }
-
-            g.Restore(state);
         }
     }
 

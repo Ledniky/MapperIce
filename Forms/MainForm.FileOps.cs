@@ -21,6 +21,9 @@ public partial class MainForm
         {
             var loader = new YAMLLoader(_indexer, _drawDepthManager);
             var loadedMap = loader.LoadFromFile(dialog.FileName);
+
+            // Запоминаем путь открытого YAML — Ctrl+S будет экспортировать в него же
+            _currentYamlPath = dialog.FileName;
             
             // Определяем смещение UID — все загруженные слои получат новые UID
             // чтобы не конфликтовать с существующими
@@ -90,15 +93,29 @@ public partial class MainForm
         {
             try
             {
-                var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings);
-                File.WriteAllText(dialog.FileName, yaml);
-                MessageBox.Show($"Карта экспортирована в {dialog.FileName}");
+                ExportToYamlPath(dialog.FileName);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Ошибка экспорта: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// Экспортирует активный слой в указанный YAML-файл и запоминает путь, чтобы
+    /// Ctrl+S сохранял в него же. Общая логика для «Экспорт в YAML» и быстрого
+    /// сохранения в открытый .yml.
+    /// </summary>
+    private void ExportToYamlPath(string filePath)
+    {
+        var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings);
+        File.WriteAllText(filePath, yaml);
+        _currentYamlPath = filePath;
+
+        // Экспорт в YAML-источник — это сохранение работы, а не создание нового
+        // проекта: сбрасываем привязку к .ice, чтобы Ctrl+S не уводило обратно туда
+        ToastNotification.Show(this, $"Сохранено в YAML: {Path.GetFileName(filePath)}", "MapperIce", 2500);
     }
 
 
@@ -130,9 +147,9 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Быстрое сохранение по Ctrl+S: пишет в файл, с которым уже работаем
-    /// (открытый или последний сохранённый в этом сеансе). Если файла ещё нет —
-    /// открывает диалог «Сохранить как».
+    /// Быстрое сохранение по Ctrl+S. Если карта открыта из YAML — пишет в тот же
+    /// .yml/.yaml. Если открыт .ice — создаёт новый файл с префиксом даты
+    /// «день_месяц_год_» рядом с исходным. Если файла ещё нет — диалог «Сохранить как».
     /// </summary>
     private void QuickSaveProject()
     {
@@ -142,20 +159,41 @@ public partial class MainForm
             return;
         }
 
-        if (_currentProjectPath == null)
-        {
-            SaveProject();
-            return;
-        }
-
         try
         {
-            WriteProjectToFile(_currentProjectPath);
+            if (!string.IsNullOrEmpty(_currentYamlPath))
+            {
+                ExportToYamlPath(_currentYamlPath);
+                return;
+            }
+
+            if (_currentProjectPath == null)
+            {
+                SaveProject();
+                return;
+            }
+
+            WriteProjectToFile(GetDatePrefixedPath(_currentProjectPath));
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Ошибка сохранения: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Возвращает путь к файлу рядом с исходным, но с префиксом текущей даты
+    /// «день_месяц_год_» перед именем: C:\...\16_10_2026_map.ice. Если имя уже
+    /// начинается с сегодняшнего префикса, дополнительную дату не добавляем —
+    /// повторный Ctrl+S в тот же день просто перезаписывает тот же файл.
+    /// </summary>
+    private static string GetDatePrefixedPath(string path)
+    {
+        var dir = Path.GetDirectoryName(path);
+        var name = Path.GetFileName(path);
+        var prefix = $"{DateTime.Now:dd_MM_yyyy}_";
+        var newName = name.StartsWith(prefix) ? name : prefix + name;
+        return string.IsNullOrEmpty(dir) ? newName : Path.Combine(dir, newName);
     }
 
     /// <summary>
@@ -342,6 +380,8 @@ public partial class MainForm
         File.WriteAllText(filePath, json);
 
         _currentProjectPath = filePath;
+        // Сохранение в .ice делает его источником работы — YAML-привязку снимаем
+        _currentYamlPath = null;
 
         // Ненавязчивое уведомление об успешном сохранении
         ToastNotification.Show(this, $"Проект сохранён: {Path.GetFileName(filePath)}", "MapperIce", 2500);
@@ -370,6 +410,8 @@ public partial class MainForm
 
             // Запоминаем путь открытого файла — Ctrl+S будет сохранять в него же
             _currentProjectPath = dialog.FileName;
+            // Источник теперь .ice, а не YAML
+            _currentYamlPath = null;
 
             // Очищаем все текущие данные
             _map.Grids.Clear();

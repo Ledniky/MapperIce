@@ -39,6 +39,7 @@ public class ToolManager
         PlacePrototype,
         Move,
         DecalRule,
+        NetworkConfigurator,
         Magnifier,
         WireHV,
         WireMV,

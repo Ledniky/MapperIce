@@ -48,10 +48,13 @@ public partial class MainForm : Form
     private Button _btnCreateRoom = null!;
     private Button _btnDelete = null!;
     private Button _btnRoomSettings = null!;
-    // Путь к проекту, с которым работаем в этом сеансе: последний открытый файл
+    // Путь к проекту, с которым работаем в этом сеансе: последний открытый .ice
     // или последний путь «Сохранить как». Используется Ctrl+S для быстрого
-    // сохранения в тот же файл. null — файл ещё ни разу не открывался/не сохранялся.
+    // сохранения в тот же файл. null — .ice ещё ни разу не открывался/не сохранялся.
     private string? _currentProjectPath;
+    // Путь к открытому/сохранённому в этом сеансе YAML (если источником карты был
+    // .yml/.yaml). Если задан — Ctrl+S экспортирует в него же, а не в .ice.
+    private string? _currentYamlPath;
     private ComboBox _doorToolCombo = null!;
     private ComboBox _windowToolCombo = null!;
     // Ключ — подпись пункта в списке, значение — инструмент (как _utilToolMap)
@@ -1262,6 +1265,7 @@ public partial class MainForm : Form
         if (_decalInheritanceForm != null && !_decalInheritanceForm.IsDisposed)
             _decalInheritanceForm.Close();
         if (_btnDecalRule != null) _btnDecalRule.BackColor = AppTheme.ButtonBack;
+        if (_btnNetworkConfigurator != null) _btnNetworkConfigurator.BackColor = AppTheme.ButtonBack;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = AppTheme.ButtonBack;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = AppTheme.ButtonBack;
@@ -1426,6 +1430,9 @@ public partial class MainForm : Form
             case ToolManager.Tool.DecalRule:
                 if (_btnDecalRule != null) _btnDecalRule.BackColor = AppTheme.SelectedBack;
                 break;
+            case ToolManager.Tool.NetworkConfigurator:
+                if (_btnNetworkConfigurator != null) _btnNetworkConfigurator.BackColor = AppTheme.SelectedBack;
+                break;
             case ToolManager.Tool.Magnifier:
                 if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.SelectedBack;
                 break;
@@ -1444,7 +1451,7 @@ public partial class MainForm : Form
         {
             ToolManager.Tool.CreateRoom or ToolManager.Tool.SubtractRoom or ToolManager.Tool.RestoreRoom => Cursors.Cross,
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
-            ToolManager.Tool.DecalRule => Cursors.Hand,
+            ToolManager.Tool.DecalRule or ToolManager.Tool.NetworkConfigurator => Cursors.Hand,
             ToolManager.Tool.Magnifier => Cursors.Cross,
             ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom or ToolManager.Tool.ReplaceWallWithWindow => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,

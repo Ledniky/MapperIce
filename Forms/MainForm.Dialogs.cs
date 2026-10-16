@@ -1456,7 +1456,7 @@ public partial class MainForm
     /// Открывает окно «Конфигуратор сетей» — связывание кнопок/рычагов с устройствами.
     /// Повторный клик по кнопке закрывает окно.
     /// </summary>
-    private void ShowNetworkConfigurator()
+    private void ShowNetworkConfigurator(Room room)
     {
         if (_networkConfiguratorForm != null && !_networkConfiguratorForm.IsDisposed)
         {
@@ -1474,6 +1474,7 @@ public partial class MainForm
         _networkConfiguratorForm = new NetworkConfiguratorDialog(
             _map.ActiveGrid,
             _indexer,
+            room,
             positions =>
             {
                 _networkHighlightPositions.Clear();
