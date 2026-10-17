@@ -18,10 +18,10 @@ namespace MapperIce.Services;
 ///    ВМЕСТЕ с этой комнатой, даже если их клетка вне выделения; остальные —
 ///    по центру клетки.
 ///  - Тайлы пола (PlacedTile): чья целочисленная клетка внутри куска области.
-///  - Комнаты (Room): всё, что ПЕРЕСЕКАЕТ область, переносится ЦЕЛИКОМ (с её
-///    стенами/дверями/проходами/окнами и привязками), т.к. комнату нельзя разрезать
-///    без потери логики узора декалей; комната попадает в тот кусок, с которым
-///    пересекается.
+///  - Комнаты (Room): ДЕЛЯТСЯ по выделению. В каждый кусок попадает клон комнаты,
+///    в котором оставлены только клетки этого куска (остальные вырезаны через
+///    RemovedCells), поэтому пол/стены/двери/окна строятся по фактической части;
+///    двери/проходы/окна вне части отбрасываются.
 ///  - Свободные двери (LooseDoors): по целой клетке внутри куска области.
 /// Каждый связный кусок области становится отдельным гридом. Всё, что осталось вне
 /// областей, тоже делится на связные куски (4-соседство клеток).
@@ -75,45 +75,6 @@ public static class GridDivider
             components.Add(cells);
         }
 
-        // Комната неделима: целиком уходит в тот кусок, с которым пересекается
-        // первой своей клеткой (иначе её стены/двери продублировались бы).
-        var roomsByComponent = new Dictionary<int, List<Room>>();
-        foreach (var room in sourceGrid.Rooms)
-        {
-            int cid = -1;
-            for (int y = room.Y; y < room.Y + room.Height && cid < 0; y++)
-            {
-                for (int x = room.X; x < room.X + room.Width; x++)
-                {
-                    if (componentOf.TryGetValue((x, y), out int found))
-                    {
-                        cid = found;
-                        break;
-                    }
-                }
-            }
-
-            if (cid < 0) continue;
-
-            if (!roomsByComponent.TryGetValue(cid, out var list))
-            {
-                list = new List<Room>();
-                roomsByComponent[cid] = list;
-            }
-            list.Add(room);
-        }
-
-        // Куда ушла каждая комната этой области (по Id) — чтобы её декали
-        // поехали вместе с ней, даже если лежат вне выделенных клеток.
-        var decalOwnerComponent = new Dictionary<int, int>();
-        foreach (var (cid, rooms) in roomsByComponent)
-            foreach (var room in rooms)
-                decalOwnerComponent[room.Id] = cid;
-
-        var allRoomIds = new HashSet<int>();
-        foreach (var room in sourceGrid.Rooms)
-            allRoomIds.Add(room.Id);
-
         var grids = new List<Grid>(components.Count);
         int number = firstNumber;
 
@@ -131,39 +92,42 @@ public static class GridDivider
                 ReplaceExteriorWalls = sourceGrid.ReplaceExteriorWalls
             };
 
-            bool CenterIn(float x, float y)
-            {
-                var cell = ((int)Math.Floor(x), (int)Math.Floor(y));
-                return componentOf.TryGetValue(cell, out int cid) && cid == i;
-            }
+            bool InComponent(int x, int y) =>
+                componentOf.TryGetValue((x, y), out int cid) && cid == i;
 
-            if (roomsByComponent.TryGetValue(i, out var rooms))
-                foreach (var room in rooms)
-                    newGrid.Rooms.Add(room.Clone());
+            bool CenterIn(float x, float y) =>
+                InComponent((int)Math.Floor(x), (int)Math.Floor(y));
+
+            // Комната ДЕЛИТСЯ по выделению: в этот грид попадает только та её
+            // часть, что лежит в данном куске; остальные её клетки вырезаются
+            // через RemovedCells (пол, стены, двери строятся только по остатку).
+            foreach (var room in sourceGrid.Rooms)
+            {
+                bool intersects = false;
+                for (int y = room.Y; y < room.Y + room.Height && !intersects; y++)
+                {
+                    for (int x = room.X; x < room.X + room.Width; x++)
+                    {
+                        if (room.Contains(x, y) && InComponent(x, y))
+                        {
+                            intersects = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!intersects) continue;
+                newGrid.Rooms.Add(CloneRoomRegion(room, InComponent));
+            }
 
             // Сущности по центру клетки
             foreach (var e in sourceGrid.Entities)
                 if (CenterIn(e.X, e.Y)) newGrid.Entities.Add(e);
 
-            // Декали: принадлежащие уехавшей комнате — вместе с ней (даже вне
-            // выделения), остальные — по центру клетки.
+            // Декали по центру клетки: комната поделена, поэтому узор едет
+            // ровно с той частью, на клетках которой он лежит
             foreach (var d in sourceGrid.Decals)
-            {
-                if (d.PatternOwnerId is int ownerId)
-                {
-                    if (decalOwnerComponent.TryGetValue(ownerId, out int ownerComponent))
-                    {
-                        if (ownerComponent == i) newGrid.Decals.Add(d);
-                        continue;
-                    }
-
-                    // Комната этой декали уехала в другую область или осталась
-                    // в остатке — здесь её не дублируем.
-                    if (allRoomIds.Contains(ownerId)) continue;
-                }
-
                 if (CenterIn(d.X, d.Y)) newGrid.Decals.Add(d);
-            }
 
             // Тайлы пола по целой клетке
             foreach (var t in sourceGrid.Tiles)
@@ -197,8 +161,8 @@ public static class GridDivider
     ///
     /// Сущности и декали чанков не дают, поэтому своего грида не образуют: они
     /// прикрепляются к тому куску, на клетке которого стоят, либо к ближайшему.
-    /// Комнаты, пересекающие любую область, целиком уходят в область и в остатке
-    /// не участвуют. Не изменяет исходный грид.
+    /// Комнаты тоже делятся: в остаток попадают только их клетки вне выделения
+    /// (и стены/двери/окна этих клеток). Не изменяет исходный грид.
     /// </summary>
     public static List<Grid> ExtractRemainderParts(Grid sourceGrid, TileBuilder tileBuilder)
     {
@@ -208,20 +172,6 @@ public static class GridDivider
                 if (area.Contains(x, y)) return true;
             return false;
         }
-
-        // Комнаты, пересекающие область, уходят в неё целиком — их клетки в
-        // остатке не учитываются вовсе (иначе часть комнаты образовала бы
-        // «фантомный» кусок без самой комнаты).
-        var movedRooms = new HashSet<Room>();
-        foreach (var room in sourceGrid.Rooms)
-            if (sourceGrid.DividerAreas.Any(a => RoomOverlapsArea(room, a)))
-                movedRooms.Add(room);
-
-        // Id комнат, ушедших в выделение: их декали тоже уезжают с комнатой,
-        // даже если стоят на клетках вне выделения.
-        var movedRoomIds = new HashSet<int>();
-        foreach (var room in movedRooms)
-            movedRoomIds.Add(room.Id);
 
         // Клетки, которые реально дают тайлы (пол/стена/дверь), — по ним и считаем
         // связность. Собираем остаток во временный грид и просим TileBuilder
@@ -235,8 +185,9 @@ public static class GridDivider
             ReplaceExteriorWalls = sourceGrid.ReplaceExteriorWalls
         };
 
+        // Комнаты тоже делятся: из них вырезаются все клетки, попавшие в выделение.
         foreach (var room in sourceGrid.Rooms)
-            if (!movedRooms.Contains(room)) remainderGrid.Rooms.Add(room.Clone());
+            remainderGrid.Rooms.Add(CloneRoomRegion(room, (x, y) => !InAnyArea(x, y)));
 
         foreach (var t in sourceGrid.Tiles)
             if (!InAnyArea(t.X, t.Y)) remainderGrid.Tiles.Add(t);
@@ -327,17 +278,6 @@ public static class GridDivider
             return 0;
         }
 
-        // Компонент комнаты — по любой её клетке с тайлом (верхняя левая может
-        // быть вырезана через RemovedCells).
-        int ComponentOfRoom(Room room)
-        {
-            for (int y = room.Y; y < room.Y + room.Height; y++)
-                for (int x = room.X; x < room.X + room.Width; x++)
-                    if (componentOf.TryGetValue((x, y), out int cid))
-                        return cid;
-            return -1;
-        }
-
         var grids = new List<Grid>(components.Count);
 
         // Вне областей нет ни одного тайла — оставляем один грид с тем, что есть
@@ -348,15 +288,13 @@ public static class GridDivider
             var single = NewGrid(sourceGrid.Name);
 
             foreach (var room in sourceGrid.Rooms)
-                if (!movedRooms.Contains(room)) single.Rooms.Add(room.Clone());
+                single.Rooms.Add(CloneRoomRegion(room, (x, y) => !InAnyArea(x, y)));
 
             foreach (var e in sourceGrid.Entities)
                 if (!InAnyAreaAt(e.X, e.Y)) single.Entities.Add(e);
 
             foreach (var d in sourceGrid.Decals)
-                if (!(d.PatternOwnerId is int ownerId && movedRoomIds.Contains(ownerId)) &&
-                    !InAnyAreaAt(d.X, d.Y))
-                    single.Decals.Add(d);
+                if (!InAnyAreaAt(d.X, d.Y)) single.Decals.Add(d);
 
             foreach (var t in sourceGrid.Tiles)
                 if (!InAnyArea(t.X, t.Y)) single.Tiles.Add(t);
@@ -379,20 +317,30 @@ public static class GridDivider
             list.Add(item);
         }
 
+        // Комнаты делятся по кускам: на каждый компонент, в который попали её
+        // клетки, создаётся клон комнаты с вырезанными «чужими» клетками.
         var roomsByComponent = new Dictionary<int, List<Room>>();
         foreach (var room in sourceGrid.Rooms)
         {
-            if (movedRooms.Contains(room)) continue;
-            int cid = ComponentOfRoom(room);
-            if (cid >= 0) AddItem(roomsByComponent, cid, room);
-        }
+            var seenComponents = new HashSet<int>();
 
-        // Комнаты, оставшиеся в остатке: все их декали идут в тот же кусок,
-        // в котором лежит комната (узор не должен разъезжаться по гридам).
-        var decalOwnerComponent = new Dictionary<int, int>();
-        foreach (var (cid, rooms) in roomsByComponent)
-            foreach (var room in rooms)
-                decalOwnerComponent[room.Id] = cid;
+            for (int y = room.Y; y < room.Y + room.Height; y++)
+            {
+                for (int x = room.X; x < room.X + room.Width; x++)
+                {
+                    if (!room.Contains(x, y)) continue;
+                    if (!componentOf.TryGetValue((x, y), out int cid)) continue;
+                    if (!seenComponents.Add(cid)) continue;
+
+                    int component = cid;
+                    var clone = CloneRoomRegion(room, (cx, cy) =>
+                        !InAnyArea(cx, cy) &&
+                        componentOf.TryGetValue((cx, cy), out int other) && other == component);
+
+                    AddItem(roomsByComponent, component, clone);
+                }
+            }
+        }
 
         var entitiesByComponent = new Dictionary<int, List<MapEntity>>();
         foreach (var e in sourceGrid.Entities)
@@ -404,19 +352,6 @@ public static class GridDivider
         var decalsByComponent = new Dictionary<int, List<PlacedDecal>>();
         foreach (var d in sourceGrid.Decals)
         {
-            // Декали комнаты, ушедшей в выделение, уже лежат в гриде этой комнаты.
-            if (d.PatternOwnerId is int movedOwnerId && movedRoomIds.Contains(movedOwnerId))
-                continue;
-
-            // Декаль комнаты, оставшейся в остатке, — вместе со своей комнатой.
-            if (d.PatternOwnerId is int ownerId &&
-                decalOwnerComponent.TryGetValue(ownerId, out int roomComponent))
-            {
-                AddItem(decalsByComponent, roomComponent, d);
-                continue;
-            }
-
-            // Ручные декали (без комнаты-владельца) — по клетке/ближайшему куску.
             if (InAnyAreaAt(d.X, d.Y)) continue;
             AddItem(decalsByComponent, NearestComponent((int)Math.Floor(d.X), (int)Math.Floor(d.Y)), d);
         }
@@ -474,15 +409,68 @@ public static class GridDivider
         return grids;
     }
 
-    private static bool RoomOverlapsArea(Room room, GridDividerArea area)
+    /// <summary>
+    /// Клон комнаты, в котором оставлены только клетки, для которых
+    /// <paramref name="keep"/> вернул true. Остальные клетки уходят в
+    /// RemovedCells — TileBuilder не строит на них пол/стены/двери, поэтому
+    /// каждая часть комнаты попадает в свой грид без дублей.
+    /// Двери/проходы/окна вне оставленной части отбрасываются.
+    /// </summary>
+    private static Room CloneRoomRegion(Room room, Func<int, int, bool> keep)
     {
-        int maxX = room.X + room.Width - 1;
-        int maxY = room.Y + room.Height - 1;
-        foreach (var (x, y) in area.Cells)
+        var clone = room.Clone();
+
+        for (int y = room.Y; y < room.Y + room.Height; y++)
         {
-            if (x >= room.X && x <= maxX && y >= room.Y && y <= maxY)
-                return true;
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                if (!room.Contains(x, y) || !keep(x, y))
+                    clone.RemovedCells.Add((x, y));
+            }
         }
-        return false;
+
+        clone.Doors = room.Doors.Where(d => room.Contains(d.X, d.Y) && keep(d.X, d.Y)).ToList();
+        clone.Passages = room.Passages.Where(p => room.Contains(p.X, p.Y) && keep(p.X, p.Y)).ToList();
+        clone.Windows = room.Windows.Where(w => room.Contains(w.X, w.Y) && keep(w.X, w.Y)).ToList();
+
+        // Линия разреза (сосед — клетка той же комнаты, ушедшая в другой грид).
+        // На внутренних клетках разреза стену не ставим, чтобы пол остался
+        // сплошным, как в оригинале. На клетках, которые уже были краем комнаты,
+        // стену оставляем — иначе в наружном периметре получилась бы дыра.
+        for (int y = room.Y; y < room.Y + room.Height; y++)
+        {
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                if (!room.Contains(x, y) || !keep(x, y)) continue;
+
+                bool isCut = false;
+                foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (room.Contains(nx, ny) && !keep(nx, ny))
+                    {
+                        isCut = true;
+                        break;
+                    }
+                }
+
+                if (!isCut) continue;
+
+                bool onOuterBoundary = false;
+                foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                {
+                    if (!room.Contains(x + dx, y + dy))
+                    {
+                        onOuterBoundary = true;
+                        break;
+                    }
+                }
+
+                if (!onOuterBoundary && !clone.Passages.Contains((x, y)))
+                    clone.Passages.Add((x, y));
+            }
+        }
+
+        return clone;
     }
 }
