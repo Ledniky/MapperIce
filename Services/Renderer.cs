@@ -126,17 +126,21 @@ public partial class Renderer
     private Point _selectionBoxStart;
     private Point _selectionBoxEnd;
 
-    // Растягиваемая рамка инструмента "Удалить область" (в тайловых координатах, инклюзивно)
+    // Растягиваемая рамка инструмента "Удалить область" (в тайловых координатах, инклюзивно).
+    // DividerStyle — рамка для «Разделителя гридов»: зелёная, в цвет выделения.
     private (int x, int y, int w, int h)? _deleteAreaRect = null;
+    private bool _deleteAreaDividerStyle = false;
 
-    public void SetDeleteAreaRect(int x, int y, int w, int h)
+    public void SetDeleteAreaRect(int x, int y, int w, int h, bool dividerStyle = false)
     {
         _deleteAreaRect = (x, y, w, h);
+        _deleteAreaDividerStyle = dividerStyle;
     }
 
     public void ClearDeleteAreaRect()
     {
         _deleteAreaRect = null;
+        _deleteAreaDividerStyle = false;
     }
 
     private (int x, int y, int w, int h)? _decalAreaEditRect = null;
@@ -4058,10 +4062,16 @@ public partial class Renderer
         float width = aw * tileSize;
         float height = ah * tileSize;
 
-        using var fillBrush = new SolidBrush(Color.FromArgb(50, 230, 70, 70));
+        Color fillColor = _deleteAreaDividerStyle
+            ? Color.FromArgb(50, 70, 210, 90)
+            : Color.FromArgb(50, 230, 70, 70);
+        using var fillBrush = new SolidBrush(fillColor);
         g.FillRectangle(fillBrush, left, top, width, height);
 
-        using var pen = new Pen(Color.FromArgb(255, 230, 60, 60), 2f)
+        Color penColor = _deleteAreaDividerStyle
+            ? Color.FromArgb(255, 60, 200, 90)
+            : Color.FromArgb(255, 230, 60, 60);
+        using var pen = new Pen(penColor, 2f)
         {
             DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
         };
@@ -4071,47 +4081,149 @@ public partial class Renderer
 
     /// <summary>
     /// Рисует накопленные области разделения инструмента «Разделитель гридов»
-    /// активного слоя: "Выделить" — полупрозрачной зелёной заливкой, "Вычесть" —
-    /// красной (вырезаются из области). Отрисовывается постоянно, пока область
-    /// сохранена в активном гриде, а не только во время драга.
+    /// активного слоя. Хранятся конкретные клетки: заливка рисуется объединёнными
+    /// горизонтальными отрезками (быстро даже на больших областях), а граница —
+    /// единым контуром по внешним рёбрам клеток: соседние рёбра сливаются в
+    /// отрезки, внутренние границы между выделенными клетками не рисуются.
+    /// Отрисовывается постоянно, пока область сохранена в активном гриде.
     /// </summary>
     private void DrawDividerAreasOverlay(Graphics g, float scale, PointF viewOffset)
     {
         if (_currentMap?.ActiveGrid == null) return;
         var grid = _currentMap.ActiveGrid;
         if (grid.DividerAreas == null || grid.DividerAreas.Count == 0) return;
+        if (!grid.DividerAreas.Any(a => !a.IsEmpty)) return;
 
         int tileSize = (int)(Constants.TILE_SIZE * scale);
+        if (tileSize <= 0) return;
         int activeIndex = _currentMap.Grids.IndexOf(grid);
         float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
         float gridOffsetX = grid.Position.X * tileSize;
         float gridOffsetY = (grid.Position.Y + layerOffsetY) * tileSize;
 
-        using var addFill = new SolidBrush(Color.FromArgb(45, 70, 210, 90));
-        using var addPen = new Pen(Color.FromArgb(220, 60, 200, 90), 2f)
+        using var fill = new SolidBrush(Color.FromArgb(45, 70, 210, 90));
+        using var edgePen = new Pen(Color.FromArgb(220, 60, 200, 90), 2f)
         {
-            DashStyle = System.Drawing.Drawing2D.DashStyle.Solid
-        };
-        using var subFill = new SolidBrush(Color.FromArgb(45, 230, 70, 70));
-        using var subPen = new Pen(Color.FromArgb(220, 230, 60, 60), 2f)
-        {
-            DashStyle = System.Drawing.Drawing2D.DashStyle.Solid
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Solid,
+            StartCap = System.Drawing.Drawing2D.LineCap.Flat,
+            EndCap = System.Drawing.Drawing2D.LineCap.Flat
         };
 
-        void DrawRect(GridDividerRect r, Brush fill, Pen pen)
+        float ScreenX(int x) => x * tileSize + gridOffsetX - viewOffset.X;
+        float ScreenY(int y) => y * tileSize + gridOffsetY - viewOffset.Y;
+
+        // Заливка: соседние клетки строки сливаются в один прямоугольник.
+        void FillArea(GridDividerArea area)
         {
-            float left = r.X * tileSize + gridOffsetX - viewOffset.X;
-            float top = r.Y * tileSize + gridOffsetY - viewOffset.Y;
-            float w = r.Width * tileSize;
-            float h = r.Height * tileSize;
-            g.FillRectangle(fill, left, top, w, h);
-            g.DrawRectangle(pen, left, top, w, h);
+            foreach (var row in area.Cells.GroupBy(c => c.Y))
+            {
+                var xs = row.Select(c => c.X).OrderBy(x => x).ToList();
+                if (xs.Count == 0) continue;
+
+                int runStart = xs[0];
+                int prev = xs[0];
+                for (int i = 1; i <= xs.Count; i++)
+                {
+                    int x = i < xs.Count ? xs[i] : int.MinValue;
+                    if (i < xs.Count && x == prev + 1)
+                    {
+                        prev = x;
+                        continue;
+                    }
+
+                    g.FillRectangle(fill, ScreenX(runStart), ScreenY(row.Key),
+                        (prev - runStart + 1) * tileSize, tileSize);
+
+                    if (i < xs.Count)
+                    {
+                        runStart = x;
+                        prev = x;
+                    }
+                }
+            }
+        }
+
+        // Граница: собираем внешние рёбра клеток (соседняя клетка не выделена),
+        // затем сливаем коллинеарные соседние рёбра в один отрезок.
+        void StrokeArea(GridDividerArea area)
+        {
+            var horizontal = new Dictionary<int, List<int>>();
+            var vertical = new Dictionary<int, List<int>>();
+
+            void AddEdge(Dictionary<int, List<int>> map, int line, int pos)
+            {
+                if (!map.TryGetValue(line, out var list))
+                {
+                    list = new List<int>();
+                    map[line] = list;
+                }
+                list.Add(pos);
+            }
+
+            foreach (var (x, y) in area.Cells)
+            {
+                if (!area.Contains(x, y - 1)) AddEdge(horizontal, y, x);
+                if (!area.Contains(x, y + 1)) AddEdge(horizontal, y + 1, x);
+                if (!area.Contains(x - 1, y)) AddEdge(vertical, x, y);
+                if (!area.Contains(x + 1, y)) AddEdge(vertical, x + 1, y);
+            }
+
+            foreach (var (line, positions) in horizontal)
+            {
+                positions.Sort();
+                int runStart = positions[0];
+                int prev = positions[0];
+                for (int i = 1; i <= positions.Count; i++)
+                {
+                    int pos = i < positions.Count ? positions[i] : int.MinValue;
+                    if (i < positions.Count && pos == prev + 1)
+                    {
+                        prev = pos;
+                        continue;
+                    }
+
+                    float y = ScreenY(line);
+                    g.DrawLine(edgePen, ScreenX(runStart), y, ScreenX(prev + 1), y);
+
+                    if (i < positions.Count)
+                    {
+                        runStart = pos;
+                        prev = pos;
+                    }
+                }
+            }
+
+            foreach (var (line, positions) in vertical)
+            {
+                positions.Sort();
+                int runStart = positions[0];
+                int prev = positions[0];
+                for (int i = 1; i <= positions.Count; i++)
+                {
+                    int pos = i < positions.Count ? positions[i] : int.MinValue;
+                    if (i < positions.Count && pos == prev + 1)
+                    {
+                        prev = pos;
+                        continue;
+                    }
+
+                    float x = ScreenX(line);
+                    g.DrawLine(edgePen, x, ScreenY(runStart), x, ScreenY(prev + 1));
+
+                    if (i < positions.Count)
+                    {
+                        runStart = pos;
+                        prev = pos;
+                    }
+                }
+            }
         }
 
         foreach (var area in grid.DividerAreas)
         {
-            foreach (var r in area.AddRects) DrawRect(r, addFill, addPen);
-            foreach (var r in area.SubRects) DrawRect(r, subFill, subPen);
+            if (area.IsEmpty) continue;
+            FillArea(area);
+            StrokeArea(area);
         }
     }
 

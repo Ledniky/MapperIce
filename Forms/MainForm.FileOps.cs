@@ -113,7 +113,7 @@ public partial class MainForm
         // Одно-гридовый экспорт — только если слоёв один И нет областей разделения
         // (иначе область при экспорте должна уйти в отдельный грид).
         bool hasDividerAreas = _map.Grids.Any(g =>
-            g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => a.AddRects.Count > 0));
+            g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => !a.IsEmpty));
 
         var yaml = _map.Grids.Count <= 1 && !hasDividerAreas
             ? YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings)
@@ -293,13 +293,15 @@ public partial class MainForm
                 ReplaceExteriorWalls = g.ReplaceExteriorWalls
             };
 
-            // Области разделения («Разделитель гридов»)
+            // Области разделения («Разделитель гридов») — потайлово
             foreach (var area in g.DividerAreas)
             {
                 var areaData = new GridDividerAreaData
                 {
-                    AddRects = area.AddRects.Select(r => new GridDividerRectData { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList(),
-                    SubRects = area.SubRects.Select(r => new GridDividerRectData { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList()
+                    Cells = area.Cells
+                        .OrderBy(c => c.Y).ThenBy(c => c.X)
+                        .Select(c => new GridDividerCellData { X = c.X, Y = c.Y })
+                        .ToList()
                 };
                 gridData.DividerAreas.Add(areaData);
             }
@@ -509,15 +511,30 @@ public partial class MainForm
                     ReplaceExteriorWalls = gridData.ReplaceExteriorWalls
                 };
 
-                // Области разделения («Разделитель гридов»)
+                // Области разделения («Разделитель гридов»): новый потайловый
+                // формат Cells; старые проекты хранили AddRects/SubRects —
+                // разворачиваем их в клетки (union(Add) минус union(Sub)).
                 foreach (var areaData in gridData.DividerAreas)
                 {
-                    var area = new GridDividerArea
+                    var area = new GridDividerArea();
+
+                    if (areaData.Cells != null && areaData.Cells.Count > 0)
                     {
-                        AddRects = areaData.AddRects.Select(r => new GridDividerRect { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList(),
-                        SubRects = areaData.SubRects.Select(r => new GridDividerRect { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList()
-                    };
-                    grid.DividerAreas.Add(area);
+                        foreach (var cell in areaData.Cells)
+                            area.AddCell(cell.X, cell.Y);
+                    }
+                    else
+                    {
+                        if (areaData.AddRects != null)
+                            foreach (var r in areaData.AddRects)
+                                area.AddRect(r.X, r.Y, r.Width, r.Height);
+                        if (areaData.SubRects != null)
+                            foreach (var r in areaData.SubRects)
+                                area.RemoveRect(r.X, r.Y, r.Width, r.Height);
+                    }
+
+                    if (!area.IsEmpty)
+                        grid.DividerAreas.Add(area);
                 }
 
                 // Комнаты

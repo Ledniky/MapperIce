@@ -51,13 +51,30 @@ public class GridData
     public List<GridDividerAreaData> DividerAreas { get; set; } = new();
 }
 
-/// <summary>Сохранённая область разделения грида (инструмент «Разделитель гридов»).</summary>
+/// <summary>
+/// Сохранённая область разделения грида (инструмент «Разделитель гридов»).
+/// Новый формат — потайловый: Cells. AddRects/SubRects оставлены только для
+/// чтения старых .ice-проектов и при сохранении не пишутся (null).
+/// </summary>
 public class GridDividerAreaData
 {
-    public List<GridDividerRectData> AddRects { get; set; } = new();
-    public List<GridDividerRectData> SubRects { get; set; } = new();
+    public List<GridDividerCellData> Cells { get; set; } = new();
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<GridDividerRectData>? AddRects { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<GridDividerRectData>? SubRects { get; set; }
 }
 
+/// <summary>Одна выделенная клетка области разделения (формат проекта).</summary>
+public class GridDividerCellData
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+}
+
+/// <summary>Прямоугольник старого формата — только для чтения прежних проектов.</summary>
 public class GridDividerRectData
 {
     public int X { get; set; }

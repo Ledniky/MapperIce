@@ -1,8 +1,10 @@
 // Forms/ToastNotification.cs
 //
-// Универсальное всплывающее окно уведомлений: появляется в правом нижнем углу
-// (левее панели инструментов), плавно проявляется, держится заданное время и
-// плавно исчезает. Используется для коротких информационных сообщений юзеру.
+// Универсальное всплывающее уведомление. Рисуется ВНУТРИ главного окна —
+// это дочерний контрол, а не отдельное окно: он не вылезает за пределы формы,
+// не висит поверх других программ и перемещается вместе с окном.
+// Появляется в правом нижнем углу клиентской области, левее панели инструментов,
+// держится заданное время и исчезает.
 
 using System.Drawing.Drawing2D;
 
@@ -17,132 +19,121 @@ public static class ToastNotification
     internal const int ToolPanelWidth = 200;
 
     /// <summary>
-    /// Показать всплывающее уведомление в правом нижнем углу окна владельца.
+    /// Показать уведомление внутри окна владельца.
     /// </summary>
-    /// <param name="owner">Форма, относительно которой позиционируется уведомление (главное окно).</param>
+    /// <param name="owner">Главное окно, внутри которого показывается уведомление.</param>
     /// <param name="message">Текст уведомления.</param>
     /// <param name="title">Заголовок уведомления (необязательно).</param>
-    /// <param name="durationMs">Сколько миллисекунд уведомление видно (после плавного появления).</param>
+    /// <param name="durationMs">Сколько миллисекунд уведомление видно.</param>
     public static void Show(Form owner, string message, string? title = null, int durationMs = 3500)
     {
-        var toast = new ToastForm(owner, message, title, durationMs);
-        toast.Show();
+        if (owner == null || owner.IsDisposed || owner.Disposing) return;
+
+        var toast = new ToastControl(message, title);
+        owner.Controls.Add(toast);
+
+        const int margin = 14;
+        int x = Math.Max(0, owner.ClientSize.Width - ToolPanelWidth - margin - toast.Width);
+        int y = Math.Max(0, owner.ClientSize.Height - margin - toast.Height);
+        toast.Location = new Point(x, y);
+        toast.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        toast.BringToFront();
+        toast.Start(durationMs);
     }
 }
 
-internal class ToastForm : Form
+/// <summary>
+/// Дочерний контрол главного окна с сообщением. Скруглённый тёмный прямоугольник
+/// с заголовком и текстом; сам удаляет себя по истечении времени.
+/// </summary>
+internal sealed class ToastControl : Control
 {
-    private readonly System.Windows.Forms.Timer _timer;
-    private readonly int _holdMs;
-    private int _anim;
-
-    // Стадии анимации: 0 — появление (0..FADE_IN_STEPS), затем ожидание,
-    // затем исчезание (до 0), после чего форма закрывается.
-    private const int FadeInSteps = 8;   // шагов на появление
-    private const int FadeOutSteps = 12; // шагов на исчезание
-    private const int TickMs = 25;
     private const int CornerRadius = 14;
+    private const int PaddingX = 16;
+    private const int MaxTextWidth = 320;
 
-    internal ToastForm(Form owner, string message, string? title, int holdMs)
+    private static readonly Color BackColorValue = Color.FromArgb(38, 38, 42);
+    private static readonly Color TitleColor = Color.FromArgb(230, 230, 230);
+    private static readonly Color MessageColor = Color.FromArgb(215, 215, 215);
+
+    private static readonly Font TitleFont = new("Arial", 11, FontStyle.Bold);
+    private static readonly Font MessageFont = new("Arial", 10);
+
+    private readonly string _message;
+    private readonly string? _title;
+    private System.Windows.Forms.Timer? _timer;
+
+    internal ToastControl(string message, string? title)
     {
-        _holdMs = Math.Max(0, holdMs);
-        _anim = 0;
+        _message = message;
+        _title = title;
 
-        FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        TopMost = true;
-        Opacity = 0;
+        SetStyle(ControlStyles.UserPaint |
+                 ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.Selectable, false);
+        TabStop = false;
+        BackColor = BackColorValue;
+        ForeColor = MessageColor;
 
-        var lblTitle = new Label
-        {
-            AutoSize = false,
-            Text = title ?? "",
-            ForeColor = Color.FromArgb(230, 230, 230),
-            Font = new Font("Arial", 11, FontStyle.Bold),
-            Location = new Point(16, 10),
-            Size = new Size(0, 22),
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        Size msgSize = TextRenderer.MeasureText(
+            message, MessageFont, new Size(MaxTextWidth, 0), TextFormatFlags.WordBreak);
 
-        var lblMsg = new Label
-        {
-            Text = message,
-            ForeColor = Color.FromArgb(215, 215, 215),
-            Font = new Font("Arial", 10),
-            Location = new Point(16, title == null ? 10 : 34),
-            BackColor = Color.Transparent
-        };
-
-        // Пересчитываем размер по тексту
-        Size msgSize = TextRenderer.MeasureText(message, lblMsg.Font, new Size(320, 0), TextFormatFlags.WordBreak);
-        int textWidth = Math.Min(msgSize.Width, 320) + 32;
-        lblMsg.Size = new Size(textWidth - 32, msgSize.Height);
-
-        int width = textWidth;
+        int textWidth = Math.Min(msgSize.Width, MaxTextWidth);
+        int width = textWidth + PaddingX * 2;
         int height = (title == null ? 18 : 40) + msgSize.Height;
 
-        if (title != null)
-            lblTitle.Width = width - 32;
-
-        Controls.Add(lblMsg);
-        if (title != null)
-            Controls.Add(lblTitle);
-
-        ClientSize = new Size(width, height);
-        BackColor = Color.FromArgb(38, 38, 42);
+        Size = new Size(width, height);
         Region = CreateRoundedRegion(width, height, CornerRadius);
+    }
 
-        // Позиция: правый нижний угол клиентской области владельца,
-        // левее панели инструментов (ширина ToolPanelWidth) + отступы
-        if (owner != null && !owner.IsDisposed)
+    internal void Start(int durationMs)
+    {
+        _timer = new System.Windows.Forms.Timer { Interval = Math.Max(1, durationMs) };
+        _timer.Tick += (s, e) =>
         {
-            var screenRect = owner.RectangleToScreen(owner.ClientRectangle);
-            const int margin = 14;
-            int x = screenRect.Right - ToastNotification.ToolPanelWidth - margin - width;
-            int y = screenRect.Bottom - margin - height;
-            Location = new Point(x, y);
-        }
-
-        _timer = new System.Windows.Forms.Timer { Interval = TickMs };
-        _timer.Tick += Timer_Tick;
+            _timer?.Stop();
+            Parent?.Controls.Remove(this);
+            Dispose();
+        };
         _timer.Start();
     }
 
-    private void Timer_Tick(object? sender, EventArgs e)
+    protected override void OnPaint(PaintEventArgs e)
     {
-        // Появление
-        if (_anim < FadeInSteps)
+        base.OnPaint(e);
+
+        int textLeft = PaddingX;
+        int textWidth = Width - PaddingX * 2;
+
+        if (!string.IsNullOrEmpty(_title))
         {
-            _anim++;
-            Opacity = _anim / (double)FadeInSteps;
-            return;
+            var titleRect = new Rectangle(textLeft, 8, textWidth, 22);
+            TextRenderer.DrawText(e.Graphics, _title, TitleFont, titleRect, TitleColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 
-        // Ожидание
-        if (_anim < FadeInSteps + _holdMs / TickMs)
-        {
-            _anim++;
-            return;
-        }
+        int messageTop = string.IsNullOrEmpty(_title) ? 9 : 32;
+        var messageRect = new Rectangle(textLeft, messageTop, textWidth, Height - messageTop - 6);
+        TextRenderer.DrawText(e.Graphics, _message, MessageFont, messageRect, MessageColor,
+            TextFormatFlags.Left | TextFormatFlags.WordBreak);
+    }
 
-        // Исчезание
-        int fadeProgress = _anim - FadeInSteps - _holdMs / TickMs;
-        if (fadeProgress < FadeOutSteps)
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
         {
-            _anim++;
-            Opacity = 1.0 - fadeProgress / (double)FadeOutSteps;
-            return;
+            _timer?.Stop();
+            _timer?.Dispose();
+            _timer = null;
         }
-
-        _timer.Stop();
-        Close();
+        base.Dispose(disposing);
     }
 
     private static Region CreateRoundedRegion(int width, int height, int radius)
     {
         var path = new GraphicsPath();
-        int d = radius * 2;
+        int d = Math.Min(radius * 2, Math.Min(width, height));
         path.AddArc(0, 0, d, d, 180, 90);
         path.AddArc(width - d, 0, d, d, 270, 90);
         path.AddArc(width - d, height - d, d, d, 0, 90);
@@ -152,6 +143,4 @@ internal class ToastForm : Form
         path.Dispose();
         return region;
     }
-
-    protected override bool ShowWithoutActivation => true;
 }

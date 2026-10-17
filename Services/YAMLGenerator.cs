@@ -101,17 +101,7 @@ public static class YAMLGenerator
             sb.AppendLine("    - type: GridTree");
             sb.AppendLine("    - type: Broadphase");
             sb.AppendLine("    - type: OccluderTree");
-            sb.AppendLine("    - type: MapGrid");
-            sb.AppendLine("      chunks:");
-
-            var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
-            foreach (var chunk in chunks)
-            {
-                sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
-                sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
-                sb.AppendLine($"          tiles: {chunk.Value}");
-                sb.AppendLine($"          version: 7");
-            }
+            AppendMapGridChunks(sb, tileGrid, tileIdMap);
 
             sb.AppendLine("    - type: SpreaderGrid");
             sb.AppendLine("    - type: GridPathfinding");
@@ -203,17 +193,7 @@ public static class YAMLGenerator
             sb.AppendLine("    - type: Transform");
             sb.AppendLine("      pos: 0,0");
             sb.AppendLine("      parent: 1");
-            sb.AppendLine("    - type: MapGrid");
-            sb.AppendLine("      chunks:");
-
-            var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
-            foreach (var chunk in chunks)
-            {
-                sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
-                sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
-                sb.AppendLine($"          tiles: {chunk.Value}");
-                sb.AppendLine($"          version: 7");
-            }
+            AppendMapGridChunks(sb, tileGrid, tileIdMap);
 
             sb.AppendLine("    - type: Broadphase");
             sb.AppendLine("    - type: Physics");
@@ -343,7 +323,9 @@ public static class YAMLGenerator
     /// Экспортирует ВСЕ слои (гриды) карты в один YAML-файл: map entity (uid 1) +
     /// по одному grid-entity на каждый слой. Каждый объект получает parent = uid
     /// своего грида, чтобы разделённые инструментом «Разделитель гридов» слои в игре
-    /// не слипались, а остались отдельными физическими гридами.
+    /// не слипались, а остались отдельными физическими гридами. Каждая выделенная
+    /// область — отдельный грид, а остаток делится на связные куски (группы
+    /// соседних клеток), каждый кусок — тоже отдельный грид.
     /// </summary>
     public static string GenerateAll(
         List<Grid> grids,
@@ -357,17 +339,24 @@ public static class YAMLGenerator
             throw new ArgumentNullException(nameof(tileBuilder));
 
         // Раскладываем каждый грид с областями разделения на «остаток» + по гриду
-        // на каждую эффективную область. Исходные гриды при этом остаются нетронутыми.
+        // на каждый связный кусок каждой области. Остаток тоже делится по связности
+        // тайлов: каждая группа соседних тайлов — отдельный грид. Исходные гриды
+        // не меняются.
         var exportGrids = new List<Grid>();
         foreach (var g in grids)
         {
-            if (g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => a.AddRects.Count > 0))
+            if (g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => !a.IsEmpty))
             {
-                exportGrids.Add(GridDivider.ExtractRemainder(g, 0));
+                exportGrids.AddRange(GridDivider.ExtractRemainderParts(g, tileBuilder));
+
+                // Каждый связный кусок каждой области — отдельный грид.
+                int areaNumber = 0;
                 foreach (var area in g.DividerAreas)
                 {
-                    if (area.AddRects.Count == 0) continue;
-                    exportGrids.Add(GridDivider.ExtractArea(g, area, 0));
+                    if (area.IsEmpty) continue;
+                    var areaParts = GridDivider.ExtractAreaParts(g, area, areaNumber + 1);
+                    areaNumber += areaParts.Count;
+                    exportGrids.AddRange(areaParts);
                 }
             }
             else
@@ -375,6 +364,20 @@ public static class YAMLGenerator
                 exportGrids.Add(g);
             }
         }
+
+        var tileGrids = new List<TileGrid>();
+        foreach (var grid in exportGrids)
+            tileGrids.Add(tileBuilder.BuildFromRooms(grid));
+
+        var allFloorProtos = new HashSet<string>();
+        foreach (var tileGrid in tileGrids)
+        {
+            foreach (var t in tileGrid.GetTilesByContent(TileContent.Floor))
+            {
+                allFloorProtos.Add(string.IsNullOrEmpty(t.ProtoId) ? "Plating" : t.ProtoId);
+            }
+        }
+        allFloorProtos.Add("Plating");
 
         var sb = new StringBuilder();
 
@@ -386,7 +389,7 @@ public static class YAMLGenerator
         sb.AppendLine("  forkId: \"\"");
         sb.AppendLine("  forkVersion: \"\"");
         sb.AppendLine($"  time: {DateTime.Now:MM.dd.yyyy HH:mm:ss}");
-        sb.AppendLine($"  entityCount: {CalculateEntityCountAll(grids, tileBuilder)}");
+        sb.AppendLine($"  entityCount: {CalculateEntityCountAll(exportGrids, tileBuilder)}");
 
         // ==================== MAPS & GRIDS ====================
         int mapUid = 1;
@@ -399,18 +402,6 @@ public static class YAMLGenerator
         sb.AppendLine("nullspace: []");
 
         // ==================== TILEMAP (объединяем полы всех слоёв) ====================
-        var allFloorProtos = new HashSet<string>();
-        var tileGrids = new List<TileGrid>();
-        foreach (var grid in exportGrids)
-        {
-            var tileGrid = tileBuilder.BuildFromRooms(grid);
-            tileGrids.Add(tileGrid);
-            foreach (var t in tileGrid.GetTilesByContent(TileContent.Floor))
-            {
-                allFloorProtos.Add(string.IsNullOrEmpty(t.ProtoId) ? "Plating" : t.ProtoId);
-            }
-        }
-        allFloorProtos.Add("Plating");
         var sortedFloors = allFloorProtos.OrderBy(p => p, StringComparer.Ordinal).ToList();
 
         var tileIdMap = new Dictionary<string, int>();
@@ -441,8 +432,6 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: GridTree");
         sb.AppendLine("    - type: Broadphase");
         sb.AppendLine("    - type: OccluderTree");
-        sb.AppendLine("    - type: ChunkContainer");
-        sb.AppendLine("      chunkEntities: []");
 
         // Каждый грид — отдельный grid-entity uid = 2,3,4,...
         for (int i = 0; i < exportGrids.Count; i++)
@@ -523,10 +512,8 @@ public static class YAMLGenerator
         sb.AppendLine("    - type: Transform");
         sb.AppendLine($"      parent: {mapUid}");
         sb.AppendLine($"      pos: {grid.Position.X.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture)},{grid.Position.Y.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture)}");
-        sb.AppendLine("    - type: MapGrid");
-        sb.AppendLine("      chunks:");
 
-        AppendChunks(sb, tileGrid, tileIdMap);
+        AppendMapGridChunks(sb, tileGrid, tileIdMap);
 
         if (isStatic)
         {
@@ -592,9 +579,23 @@ public static class YAMLGenerator
         }
     }
 
-    private static void AppendChunks(StringBuilder sb, TileGrid tileGrid, Dictionary<string, int> tileIdMap)
+    /// <summary>
+    /// Пишет компонент MapGrid с чанками. Пустой набор чанков записывается как
+    /// <c>chunks: {}</c>: оставить просто <c>chunks:</c> нельзя — движок читает
+    /// это как null и падает с NullNotAllowedException (поле чанков не nullable).
+    /// </summary>
+    private static void AppendMapGridChunks(StringBuilder sb, TileGrid tileGrid, Dictionary<string, int> tileIdMap)
     {
         var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
+
+        sb.AppendLine("    - type: MapGrid");
+        if (chunks.Count == 0)
+        {
+            sb.AppendLine("      chunks: {}");
+            return;
+        }
+
+        sb.AppendLine("      chunks:");
         foreach (var chunk in chunks)
         {
             sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
