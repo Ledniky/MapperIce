@@ -223,18 +223,18 @@ public partial class Renderer
     /// </summary>
     private void DrawWireSprites(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
-        // Полный список нужен для маски соседей: кабель у края видимой области
-        // должен учитывать соседа, который в кадр не попал.
-        var allWires = grid.Entities.OfType<WireEntity>().ToList();
-        if (allWires.Count == 0) return;
-
-        var visibleWires = allWires
+        // Провода инструмента в экспорте PNG рисуются как раньше — обычным
+        // статическим спрайтом прототипа (без подбора стейта по соседям).
+        var wires = grid.Entities.OfType<WireEntity>()
             .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
-            .OrderBy(w => w.Y)
             .ToList();
+        if (wires.Count == 0) return;
 
-        // Тот же путь, что и в интерактивном рендере (спрайты CableVisualizer
-        // с маской соседей); линии-фолбэк в экспорт PNG не добавляем.
-        DrawWireSpritesOrFallback(g, visibleWires, allWires, tileSize, viewOffset, gridOffset, drawFallback: false);
+        foreach (var wire in wires)
+        {
+            string? proto = WireBuilder.GetCableProtoForWireType(wire.WireType);
+            if (proto == null) continue;
+            DrawSingleEntity(g, proto, wire.X, wire.Y, 0f, tileSize, viewOffset, gridOffset, cableSmoothing: false);
+        }
     }
 }

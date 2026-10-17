@@ -76,6 +76,9 @@ public partial class Renderer
         public string? ExtraLayerPrefix { get; init; }
         public string? Layer0Color { get; init; }
         public string? Layer1Color { get; init; }
+        /// <summary>NodeGroupID кабеля (HVPower/MVPower/Apc/ExCable) либо, если он
+        /// не задан, StatePrefix — ключ, по которому кабели считаются соседями.</summary>
+        public string ConnectivityKey { get; init; } = "";
     }
     private readonly Dictionary<string, CableRenderInfo?> _cableRenderInfoCache = new();
 
@@ -416,15 +419,16 @@ public partial class Renderer
                 // маркеров фильтра/стрелок утилизации
                 if (ShowWires)
                 {
-                    // Список ВСЕХ кабелей грида нужен для маски соседей: кабель у края
-                    // экрана обязан «видеть» соседа за кадром, иначе сегмент обрывался бы.
-                    var gridWires = _wireBuilder.GetWires(grid);
-                    var visibleWires = gridWires
+                    // Кабели, нарисованные ИНСТРУМЕНТОМ, остаются прежними линиями/точками.
+                    // Спрайтовая отрисовка по соседям — только для кабелей-сущностей,
+                    // поставленных из панели репозитория (см. DrawSingleEntity).
+                    var allWires = _wireBuilder.GetWires(grid)
                         .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
                         .OrderBy(w => w.Y)
                         .ToList();
-                    DrawLvCoverageOverlay(g, visibleWires, tileSize, viewOffset, gridOffset);
-                    DrawWireSpritesOrFallback(g, visibleWires, gridWires, tileSize, viewOffset, gridOffset);
+                    DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
+                    DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset); if (allWires.Count > 0)
+                        DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
 
                     if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
                     {
@@ -1166,75 +1170,29 @@ public partial class Renderer
     }
 
     /// <summary>
-    /// Рисует кабели настоящими RSI-спрайтами, выбирая стейт по соседям (как
-    /// CableVisualizerSystem в игре): маска WireVisDirFlags — North=1, South=2,
-    /// East=4, West=8 — от кардинальных соседей-кабелей ТОГО ЖЕ WireType
-    /// (в игре это NodeGroupID: HV/MV/LV не соединяются друг с другом).
+    /// Кабель-СУЩНОСТЬ из панели репозитория: стейт по маске соседей, как
+    /// CableVisualizerSystem в игре. Маска WireVisDirFlags: North=1, South=2,
+    /// East=4, West=8; соседи — кабели с тем же ConnectivityKey (NodeGroupID:
+    /// HVPower/MVPower/Apc/ExCable) в индексе _cableKeysByTile.
     /// Стейт слоя 0 = "{StatePrefix}{mask}", слоя 1 = "{ExtraLayerPrefix}{mask}".
-    /// Для типов/прототипов без CableVisualizer (или если спрайт не найден) —
-    /// прежний фолбэк линиями и точками.
+    /// Возвращает false, если базовый стейт не загрузился — тогда вызывающий
+    /// рисует обычный статический спрайт прототипа.
     /// </summary>
-    private void DrawWireSpritesOrFallback(Graphics g, List<WireEntity> visibleWires, List<WireEntity> allWires, int tileSize, PointF viewOffset, PointF gridOffset, bool drawFallback = true)
+    private bool DrawSingleCableEntity(Graphics g, string protoId, CableRenderInfo info, float worldX, float worldY, int tileSize, PointF viewOffset, PointF gridOffset)
     {
-        if (visibleWires.Count == 0) return;
+        int tx = (int)Math.Floor(worldX);
+        int ty = (int)Math.Floor(worldY);
 
-        // Клетки по типам — из ПОЛНОГО списка, чтобы сосед за краем экрана учитывался.
-        var cellsByType = new Dictionary<string, HashSet<(int x, int y)>>(StringComparer.Ordinal);
-        foreach (var wire in allWires)
-        {
-            if (!cellsByType.TryGetValue(wire.WireType, out var cells))
-            {
-                cells = new HashSet<(int x, int y)>();
-                cellsByType[wire.WireType] = cells;
-            }
-            cells.Add(((int)Math.Round(wire.X), (int)Math.Round(wire.Y)));
-        }
-
-        var fallback = new List<WireEntity>();
-
-        foreach (var wire in visibleWires)
-        {
-            string? protoId = WireBuilder.GetCableProtoForWireType(wire.WireType);
-            var info = protoId != null ? GetCableRenderInfo(protoId) : null;
-
-            bool drawn = info != null &&
-                         cellsByType.TryGetValue(wire.WireType, out var sameTypeCells) &&
-                         DrawCableSprite(g, wire, protoId!, info, sameTypeCells, tileSize, viewOffset, gridOffset);
-
-            if (!drawn)
-                fallback.Add(wire);
-        }
-
-        if (!drawFallback || fallback.Count == 0) return;
-
-        // Фолбэк — ровно прежняя отрисовка (линии между соседями + точки узлов).
-        DrawWireLinesBatch(g, fallback, tileSize, viewOffset, gridOffset);
-        DrawWireDotsBatch(g, fallback, tileSize, viewOffset, gridOffset);
-    }
-
-    /// <summary>
-    /// Один кабель: считает маску соседей и рисует слои CableVisualizer в клетке.
-    /// Возвращает false, если базовый спрайт не загрузился — тогда вызывающий
-    /// нарисует этот кабель линией/точкой.
-    /// </summary>
-    private bool DrawCableSprite(Graphics g, WireEntity wire, string protoId, CableRenderInfo info, HashSet<(int x, int y)> sameTypeCells, int tileSize, PointF viewOffset, PointF gridOffset)
-    {
-        int x = (int)Math.Round(wire.X);
-        int y = (int)Math.Round(wire.Y);
-
-        // WireVisDirFlags игры: (0,1)→North=1, (0,-1)→South=2, (1,0)→East=4, (-1,0)→West=8.
-        // В координатах редактора Y растёт вниз, поэтому север — это (x, y-1).
+        // Координаты редактора: Y растёт вниз, поэтому север — это (x, y-1).
         int mask = 0;
-        if (sameTypeCells.Contains((x, y - 1))) mask |= 1; // North
-        if (sameTypeCells.Contains((x, y + 1))) mask |= 2; // South
-        if (sameTypeCells.Contains((x + 1, y))) mask |= 4; // East
-        if (sameTypeCells.Contains((x - 1, y))) mask |= 8; // West
+        if (HasCableNeighbor(tx, ty - 1, info.ConnectivityKey)) mask |= 1; // North
+        if (HasCableNeighbor(tx, ty + 1, info.ConnectivityKey)) mask |= 2; // South
+        if (HasCableNeighbor(tx + 1, ty, info.ConnectivityKey)) mask |= 4; // East
+        if (HasCableNeighbor(tx - 1, ty, info.ConnectivityKey)) mask |= 8; // West
 
-        // Смещение по типу — то же, что у линий/точек (GetWireTypeOffset): разные
-        // кабели на одной клетке не наезжают друг на друга, а вся сеть типа
-        // сдвигается целиком, поэтому сегменты соседей по-прежнему стыкуются.
-        var (offX, offY) = GetWireTypeOffset(wire.WireType);
-        var rect = ToRect(wire.X + offX, wire.Y + offY, tileSize, viewOffset, gridOffset);
+        // Сущность репозитория стоит в центре клетки (X/Y = tile + 0.5);
+        // -0.5 переводит её в прямоугольник самой клетки, как у остальных сущностей.
+        var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
         if (!DrawCableState(g, protoId, info.StatePrefix, mask, info.Layer0Color, rect))
             return false;
@@ -1243,6 +1201,14 @@ public partial class Renderer
             DrawCableState(g, protoId, info.ExtraLayerPrefix!, mask, info.Layer1Color, rect);
 
         return true;
+    }
+
+    /// <summary>Есть ли на клетке (x,y) кабель-сущность с тем же ключом связи.</summary>
+    private bool HasCableNeighbor(int x, int y, string key)
+    {
+        return !string.IsNullOrEmpty(key) &&
+               _cableKeysByTile.TryGetValue((x, y), out var keys) &&
+               keys.Contains(key);
     }
 
     /// <summary>Рисует один слой CableVisualizer: стейт "{prefix}{mask}" с тонированием слоя.</summary>
@@ -1322,6 +1288,9 @@ public partial class Renderer
             {
                 StatePrefix = visualizer.StatePrefix!,
                 ExtraLayerPrefix = visualizer.ExtraLayerPrefix,
+                // Соседство — по NodeGroupID (как CableVisSystem в игре); если его
+                // нет в YAML, откатываемся на префикс спрайтов (одна семья кабелей).
+                ConnectivityKey = _indexer.GetCableNodeGroup(protoId) ?? visualizer.StatePrefix!,
                 // Слой 0 — тело кабеля; если у слоя нет своего цвета, берём цвет
                 // компонента Sprite. Слой 1 — доп. полосы (у MV они заданы своими
                 // цветами в слое, у LV слоя 1 нет вовсе).
@@ -2082,8 +2051,10 @@ public partial class Renderer
         // (тот же сигнал, что инвалидирует кэши рендера), а не на каждый кадр рендера
         // (индекс не зависит от области видимости, поэтому при панорамировании
         // переиспользуется без пересборки).
-        if (!_smoothIndexCache.TryGetValue(grid.Uid, out var smoothIndex) ||
-            _dirtyRenderCaches.Contains(grid.Uid))
+        bool rebuildRenderCaches = !_smoothIndexCache.TryGetValue(grid.Uid, out var smoothIndex) ||
+                                   _dirtyRenderCaches.Contains(grid.Uid);
+
+        if (rebuildRenderCaches)
         {
             smoothIndex = BuildIconSmoothIndex(grid, tileGrid);
             _smoothIndexCache[grid.Uid] = smoothIndex;
@@ -2091,10 +2062,22 @@ public partial class Renderer
             // Статичные чанки пола тоже зависят от содержимого грида — при структурном
             // изменении выкидываем их, чтобы не рисовать устаревший пол.
             ClearGridFloorChunks(grid.Uid);
-
-            _dirtyRenderCaches.Remove(grid.Uid);
         }
-        _smoothKeysByTile = smoothIndex;
+
+        // Индекс кабелей-сущностей зависит от тех же структурных изменений, что и
+        // сглаживание: пересобираем его в том же проходе, чтобы DrawSingleEntity
+        // мог посчитать маску соседей.
+        if (rebuildRenderCaches || !_cableIndexCache.TryGetValue(grid.Uid, out var cableIndex))
+        {
+            cableIndex = BuildCableIndex(grid);
+            _cableIndexCache[grid.Uid] = cableIndex;
+        }
+
+        if (rebuildRenderCaches)
+            _dirtyRenderCaches.Remove(grid.Uid);
+
+        _smoothKeysByTile = smoothIndex!;
+        _cableKeysByTile = cableIndex;
 
         // Пол — через чанковый кэш (инстанцирование для GDI+): тысячи одинаковых тайлов
         // выпекаются в битмапы по чанкам один раз на структурное изменение и выводятся
@@ -2545,6 +2528,16 @@ public partial class Renderer
     // через панель репозитория (сущности), и наоборот.
     private Dictionary<(int x, int y), HashSet<string>> _smoothKeysByTile = new();
 
+    // Индекс кабелей-СУЩНОСТЕЙ (поставленных из панели репозитория, а не инструментом
+    // проводов): "тайл (x,y) → множество ключей связи" (NodeGroupID кабеля: HVPower/
+    // MVPower/Apc/ExCable). По нему DrawSingleEntity считает маску соседей так же,
+    // как CableVisSystem в игре. Провода-инструмент (WireEntity) в этот индекс не входят.
+    private Dictionary<(int x, int y), HashSet<string>> _cableKeysByTile = new();
+
+    // Кэш индекса кабелей по гриду — пересобирается вместе с индексом сглаживания
+    // (на структурное изменение карты), а не на каждый кадр.
+    private readonly Dictionary<int, Dictionary<(int x, int y), HashSet<string>>> _cableIndexCache = new();
+
     // Кэш индекса сглаживания по гриду (gridUid -> индекс). Индекс зависит только от
     // содержимого карты (стены/двери тайлов + сущности), а не от области видимости,
     // поэтому строится ОДИН раз на структурное изменение грида (тот же флаг _dirtyTileGrids,
@@ -2634,6 +2627,35 @@ public partial class Renderer
             int tx = (int)Math.Floor(entity.X);
             int ty = (int)Math.Floor(entity.Y);
             foreach (var k in keys) AddKey(tx, ty, k);
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// Индекс кабелей-сущностей из репозитория: для каждого тайла собираем ключи
+    /// связи (NodeGroupID: HVPower/MVPower/Apc/ExCable). Кабели инструмента
+    /// (WireEntity, Proto пустой) сюда не попадают — у них своя отрисовка линиями.
+    /// </summary>
+    private Dictionary<(int x, int y), HashSet<string>> BuildCableIndex(Grid grid)
+    {
+        var index = new Dictionary<(int, int), HashSet<string>>();
+        if (_indexer == null) return index;
+
+        foreach (var entity in grid.Entities.OfType<Models.MapEntity>())
+        {
+            if (string.IsNullOrEmpty(entity.Proto)) continue;
+
+            var info = GetCableRenderInfo(entity.Proto);
+            if (info == null || string.IsNullOrEmpty(info.ConnectivityKey)) continue;
+
+            int tx = (int)Math.Floor(entity.X);
+            int ty = (int)Math.Floor(entity.Y);
+
+            if (index.TryGetValue((tx, ty), out var set))
+                set.Add(info.ConnectivityKey);
+            else
+                index[(tx, ty)] = new HashSet<string>(StringComparer.Ordinal) { info.ConnectivityKey };
         }
 
         return index;
@@ -2812,8 +2834,19 @@ public partial class Renderer
         }
     }
 
-    private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset)
+    private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, bool cableSmoothing = true)
     {
+        // Кабели-сущности из репозитория (CableHV/CableMV/CableApcExtension и их
+        // наследники) рисуются НЕ статическим стейтом *_0, а по маске соседей —
+        // как CableVisualizer в игре. Провода инструмента (WireEntity) сюда не
+        // попадают: у них своя отрисовка линиями/точками.
+        if (cableSmoothing && _indexer != null && GetCableRenderInfo(protoId) is { } cableInfo)
+        {
+            if (DrawSingleCableEntity(g, protoId, cableInfo, worldX, worldY, tileSize, viewOffset, gridOffset))
+                return;
+            // Стейт не загрузился — ниже нарисуем обычный статический спрайт.
+        }
+
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
         // IconSmooth: если у прототипа (или его предков) есть компонент IconSmooth —
@@ -3351,6 +3384,7 @@ public partial class Renderer
         _textureCache.Clear();
         _sourceRectCache.Clear();
         _smoothIndexCache.Clear();
+        _cableIndexCache.Clear();
         _cableRenderInfoCache.Clear();
         ClearFloorChunks();
 

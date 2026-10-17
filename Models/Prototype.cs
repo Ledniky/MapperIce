@@ -112,6 +112,14 @@ public class Prototype
     /// фолбэком — линиями/точками).
     /// </summary>
     public CableVisualizerSettings? CableVisualizer { get; set; }
+
+    /// <summary>
+    /// NodeGroupID кабельного узла из компонента NodeContainer (HVPower, MVPower,
+    /// Apc, ExCable). Определяет, какие кабели соединяются друг с другом: в игре
+    /// CableVisSystem считает соседями только CableNode из той же группы.
+    /// Null — у прототипа/родителей нет NodeContainer с nodeGroupID.
+    /// </summary>
+    public string? CableNodeGroup { get; set; }
 }
 
 /// <summary>

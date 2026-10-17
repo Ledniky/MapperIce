@@ -23,7 +23,11 @@ public partial class MainForm
             Width = _toolPanelCurrentWidth,
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.None,
-            Padding = new Padding(0)
+            Padding = new Padding(0),
+            // Высота содержимого панели фиксированная и на маленьком экране
+            // (ноутбук, виртуалка с 1024x768) в окно не влезает — включаем
+            // вертикальный автоскролл, см. контейнер content ниже.
+            AutoScroll = true
         };
         DragDropCursorHelper.SuppressForbiddenCursor(_toolPanel);
 
@@ -1073,13 +1077,40 @@ _roomTypeCombo.DrawItem += (s, e) =>
         });
 
 
-        // Все элементы правой панели (кроме докнутой серой линии) растягиваются
-        // по ширине вместе с ней; внутри строк пропорции держат их Resize-обработчики
-        foreach (Control c in _toolPanel.Controls)
+        // Содержимое правой панели собрано «абсолютной» вёрсткой по Y и по высоте
+        // заметно больше окна: на маленьком экране нижние кнопки просто обрезались.
+        // Складываем всё в один контейнер фиксированной высоты и отдаём скролл
+        // самой панели. Ширина контейнера следует за шириной панели (Anchor
+        // Left|Right) и никогда её не превышает, поэтому горизонтальный скролл
+        // не появляется — при сужении панели элементы сжимаются вместе с ней.
+        const int contentBottomPadding = 8;
+        int contentHeight = y + 45 + contentBottomPadding; // низ последней подсказки + отступ
+
+        var content = new Panel
         {
-            if (c.Dock == DockStyle.None)
-                c.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Location = new Point(0, 0),
+            Width = _toolPanel.ClientSize.Width,
+            Height = contentHeight,
+            BackColor = _toolPanel.BackColor,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+
+        // Переносим в контейнер все элементы, кроме докнутых (серая линия по левому
+        // краю панели остаётся на месте и в скролле не участвует). Все перенесённые
+        // элементы растягиваются по ширине контейнера; внутри строк пропорции держат
+        // их Resize-обработчики.
+        foreach (Control c in _toolPanel.Controls.Cast<Control>().ToList())
+        {
+            if (c.Dock != DockStyle.None) continue;
+            _toolPanel.Controls.Remove(c);
+            content.Controls.Add(c);
+            c.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         }
+
+        _toolPanel.Controls.Add(content);
+        // Явно задаём область прокрутки: без этого AutoScroll считает её по
+        // границам дочерних элементов и может включить горизонтальный скролл.
+        _toolPanel.AutoScrollMinSize = new Size(0, contentHeight);
 
         Controls.Add(_toolPanel);
     }

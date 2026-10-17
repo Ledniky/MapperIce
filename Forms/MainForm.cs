@@ -253,12 +253,15 @@ public partial class MainForm : Form
     // true — ширины панелей зафиксированы (по умолчанию); false — их можно менять
     // перетаскиванием за правый/левый край. Флажок и ширины кешируются между запусками.
     private bool _panelsLocked = true;
-    private const int _repoPanelDefaultWidth = 240;
-    private const int _toolPanelDefaultWidth = 200;
+    // Стартовые ширины панелей. Обязаны быть > 0: панели докнуты Left/Right, и при
+    // нулевой ширине они не видны вообще (на чистой машине, где ещё нет
+    // panel_settings.json, LoadPanelSettings() выходит по return и оставляет эти поля).
     private const int _panelMinWidth = 270; // минимальная ширина левой панели (репозиторий)
     private const int _toolPanelMinWidth = 200; // минимальная ширина правой панели (инструменты)
-    private int _repoPanelCurrentWidth;
-    private int _toolPanelCurrentWidth;
+    private const int _repoPanelDefaultWidth = _panelMinWidth;
+    private const int _toolPanelDefaultWidth = _toolPanelMinWidth;
+    private int _repoPanelCurrentWidth = _repoPanelDefaultWidth;
+    private int _toolPanelCurrentWidth = _toolPanelDefaultWidth;
     private bool _resizingLeftPanel = false;  // тащим правый край левой (репозиторий) панели
     private bool _resizingRightPanel = false; // тащим левый край правой (инструменты) панели
     private const int _resizeHandleWidth = 4;
@@ -998,8 +1001,8 @@ public partial class MainForm : Form
     private class PanelSettings
     {
         public bool PanelsLocked { get; set; } = true;
-        public int RepoPanelWidth { get; set; } = 240;
-        public int ToolPanelWidth { get; set; } = 200;
+        public int RepoPanelWidth { get; set; } = _panelMinWidth;
+        public int ToolPanelWidth { get; set; } = _toolPanelMinWidth;
     }
 
     private static string GetPanelSettingsPath()

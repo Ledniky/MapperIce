@@ -26,7 +26,10 @@ public partial class MainForm
             BackColor = Color.FromArgb(240, 240, 240),
             BorderStyle = BorderStyle.None,
             Padding = new Padding(0),
-            Visible = false
+            Visible = false,
+            // Содержимое панели (около 620 px) не влезает в низкое окно — включаем
+            // вертикальный автоскролл, см. контейнер contentPanel ниже.
+            AutoScroll = true
         };
         DragDropCursorHelper.SuppressForbiddenCursor(_linkedEntitiesPanel);
 
@@ -390,13 +393,41 @@ public partial class MainForm
         _linkedEntitiesPanel.Controls.Add(_btnPlaceFax);
         y += 40 + 2;
 
+        // Содержимое собрано абсолютной вёрсткой по Y и по высоте больше низкого окна:
+        // складываем его в один контейнер фиксированной высоты и отдаём скролл самой
+        // панели (та же схема, что в панели инструментов — MainForm.ToolPanel.cs).
+        // Ширина контейнера следует за шириной панели (Anchor Left|Right), поэтому
+        // горизонтальный скролл не появляется: контент сжимается вместе с панелью.
+        var contentPanel = new Panel
+        {
+            Location = new Point(0, 0),
+            Width = _linkedEntitiesPanel.ClientSize.Width,
+            Height = y + 6,
+            BackColor = _linkedEntitiesPanel.BackColor,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+
+        // Переносим всё, кроме докнутой серой линии по левому краю: она остаётся на
+        // панели и в прокрутке не участвует.
+        foreach (Control c in _linkedEntitiesPanel.Controls.Cast<Control>().ToList())
+        {
+            if (c.Dock != DockStyle.None) continue;
+            _linkedEntitiesPanel.Controls.Remove(c);
+            contentPanel.Controls.Add(c);
+        }
+
+        _linkedEntitiesPanel.Controls.Add(contentPanel);
+        // Явно задаём область прокрутки: иначе AutoScroll считает её по границам
+        // дочерних элементов и может включить ещё и горизонтальный скролл.
+        _linkedEntitiesPanel.AutoScrollMinSize = new Size(0, contentPanel.Height);
+
         // Ширина панели не постоянна: при открытии она берёт ширину панели инструментов
         // (см. ShowLinkedEntitiesPanel), а ту можно тянуть за границу. Поэтому содержимое
-        // растягиваем по текущей ширине на каждый Resize — так же, как ряды кнопок
-        // в панели инструментов, а не фиксируем размеры один раз при создании.
+        // растягиваем по актуальной ширине контейнера на каждый его Resize — она уже
+        // учитывает появившийся вертикальный скроллбар.
         void StretchContentToPanelWidth()
         {
-            int content = Math.Max(40, _linkedEntitiesPanel.Width - leftMargin - rightMargin);
+            int content = Math.Max(40, contentPanel.Width - leftMargin - rightMargin);
 
             backButton.Width = content;
             title.Width = content;
@@ -419,7 +450,7 @@ public partial class MainForm
             }
         }
 
-        _linkedEntitiesPanel.Resize += (s, e) => StretchContentToPanelWidth();
+        contentPanel.Resize += (s, e) => StretchContentToPanelWidth();
         StretchContentToPanelWidth();
     }
 

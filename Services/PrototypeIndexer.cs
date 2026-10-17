@@ -341,7 +341,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 30;
+    private const int CacheFormatVersion = 31;
 
     private class CacheEnvelope
     {
@@ -768,6 +768,16 @@ public class PrototypeIndexer
             if (mStatePrefix.Success) settings.StatePrefix = mStatePrefix.Groups[1].Value;
             if (mExtraPrefix.Success) settings.ExtraLayerPrefix = mExtraPrefix.Groups[1].Value;
             proto.CableVisualizer = settings;
+        }
+
+        // NodeGroupID кабельного узла (HVPower/MVPower/Apc/ExCable) — по нему в игре
+        // CableVisSystem решает, какие кабели считать соседями. Используется при
+        // отрисовке кабелей-сущностей из репозитория (см. Renderer).
+        var nodeContainerBlock = ExtractComponentBlock(block, "NodeContainer");
+        if (!string.IsNullOrWhiteSpace(nodeContainerBlock))
+        {
+            var mNodeGroup = Regex.Match(nodeContainerBlock, @"(?m)^\s*nodeGroupID:\s*([^\s#]+)");
+            if (mNodeGroup.Success) proto.CableNodeGroup = mNodeGroup.Groups[1].Value;
         }
 
         return proto;
@@ -1612,6 +1622,21 @@ public class PrototypeIndexer
             var proto = FindPrototype(nodeId);
             if (!string.IsNullOrEmpty(proto?.SpriteColor))
                 return proto.SpriteColor;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// NodeGroupID кабельного узла с учётом наследования от parent:.
+    /// Null — ни у прототипа, ни у родителей нет NodeContainer с nodeGroupID.
+    /// </summary>
+    public string? GetCableNodeGroup(string id)
+    {
+        foreach (var nodeId in BuildParentChain(id))
+        {
+            var proto = FindPrototype(nodeId);
+            if (!string.IsNullOrEmpty(proto?.CableNodeGroup))
+                return proto.CableNodeGroup;
         }
         return null;
     }
