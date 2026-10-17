@@ -9,6 +9,15 @@ public static class YAMLGenerator
 {
     private const int CHUNK_SIZE = 16;
 
+    /// <summary>
+    /// UID родительского grid-entity, которому принадлежат ВСЕ объекты текущей
+    /// группы (стены, двери, трубы и т.п.). В одно-гридовом экспорте всегда 2
+    /// (map entity 1 + грид 2). В много-гридовом (GenerateAll) выставляется на uid
+    /// конкретного грида перед генерацией его объектов, чтобы разделённые слои в
+    /// игре не слипались.
+    /// </summary>
+    private static int _exportParentUid = 2;
+
     public static string Generate(
         Grid grid,
         TileBuilder tileBuilder,
@@ -19,6 +28,10 @@ public static class YAMLGenerator
             throw new ArgumentNullException(nameof(grid));
         if (tileBuilder == null)
             throw new ArgumentNullException(nameof(tileBuilder));
+
+        // Одно-гридовый экспорт всегда привязывает объекты к grid uid 2. Сбрасываем
+        // статическое поле на случай, если до этого выполнялся GenerateAll.
+        _exportParentUid = 2;
 
         var tileGrid = tileBuilder.BuildFromRooms(grid);
         var isStatic = grid.IsStaticGrid;
@@ -326,6 +339,310 @@ public static class YAMLGenerator
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Экспортирует ВСЕ слои (гриды) карты в один YAML-файл: map entity (uid 1) +
+    /// по одному grid-entity на каждый слой. Каждый объект получает parent = uid
+    /// своего грида, чтобы разделённые инструментом «Разделитель гридов» слои в игре
+    /// не слипались, а остались отдельными физическими гридами.
+    /// </summary>
+    public static string GenerateAll(
+        List<Grid> grids,
+        TileBuilder tileBuilder,
+        Dictionary<string, PipeSettings>? pipeLayers,
+        Dictionary<string, AlarmSettings> alarmSettings)
+    {
+        if (grids == null || grids.Count == 0)
+            throw new ArgumentNullException(nameof(grids));
+        if (tileBuilder == null)
+            throw new ArgumentNullException(nameof(tileBuilder));
+
+        // Раскладываем каждый грид с областями разделения на «остаток» + по гриду
+        // на каждую эффективную область. Исходные гриды при этом остаются нетронутыми.
+        var exportGrids = new List<Grid>();
+        foreach (var g in grids)
+        {
+            if (g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => a.AddRects.Count > 0))
+            {
+                exportGrids.Add(GridDivider.ExtractRemainder(g, 0));
+                foreach (var area in g.DividerAreas)
+                {
+                    if (area.AddRects.Count == 0) continue;
+                    exportGrids.Add(GridDivider.ExtractArea(g, area, 0));
+                }
+            }
+            else
+            {
+                exportGrids.Add(g);
+            }
+        }
+
+        var sb = new StringBuilder();
+
+        // ==================== META ====================
+        sb.AppendLine("meta:");
+        sb.AppendLine("  format: 7");
+        sb.AppendLine("  category: Map");
+        sb.AppendLine("  engineVersion: 282.0.0");
+        sb.AppendLine("  forkId: \"\"");
+        sb.AppendLine("  forkVersion: \"\"");
+        sb.AppendLine($"  time: {DateTime.Now:MM.dd.yyyy HH:mm:ss}");
+        sb.AppendLine($"  entityCount: {CalculateEntityCountAll(grids, tileBuilder)}");
+
+        // ==================== MAPS & GRIDS ====================
+        int mapUid = 1;
+        sb.AppendLine("maps:");
+        sb.AppendLine($"- {mapUid}");
+        sb.AppendLine("grids:");
+        for (int i = 0; i < exportGrids.Count; i++)
+            sb.AppendLine($"- {mapUid + 1 + i}");
+        sb.AppendLine("orphans: []");
+        sb.AppendLine("nullspace: []");
+
+        // ==================== TILEMAP (объединяем полы всех слоёв) ====================
+        var allFloorProtos = new HashSet<string>();
+        var tileGrids = new List<TileGrid>();
+        foreach (var grid in exportGrids)
+        {
+            var tileGrid = tileBuilder.BuildFromRooms(grid);
+            tileGrids.Add(tileGrid);
+            foreach (var t in tileGrid.GetTilesByContent(TileContent.Floor))
+            {
+                allFloorProtos.Add(string.IsNullOrEmpty(t.ProtoId) ? "Plating" : t.ProtoId);
+            }
+        }
+        allFloorProtos.Add("Plating");
+        var sortedFloors = allFloorProtos.OrderBy(p => p, StringComparer.Ordinal).ToList();
+
+        var tileIdMap = new Dictionary<string, int>();
+        int nextTileId = 1;
+        foreach (var proto in sortedFloors)
+            tileIdMap[proto] = nextTileId++;
+
+        sb.AppendLine("tilemap:");
+        sb.AppendLine("  0: Space");
+        foreach (var kvp in tileIdMap.OrderBy(k => k.Value))
+        {
+            sb.AppendLine($"  {kvp.Value}: {kvp.Key}");
+        }
+
+        // ==================== ENTITIES ====================
+        sb.AppendLine("entities:");
+        sb.AppendLine("- proto: \"\"");
+        sb.AppendLine("  entities:");
+
+        // Map entity (первым, uid 1)
+        sb.AppendLine($"  - uid: {mapUid}");
+        sb.AppendLine("    components:");
+        sb.AppendLine("    - type: MetaData");
+        sb.AppendLine("      name: Map Entity");
+        sb.AppendLine("    - type: Transform");
+        sb.AppendLine("    - type: Map");
+        sb.AppendLine("      mapPaused: True");
+        sb.AppendLine("    - type: GridTree");
+        sb.AppendLine("    - type: Broadphase");
+        sb.AppendLine("    - type: OccluderTree");
+        sb.AppendLine("    - type: ChunkContainer");
+        sb.AppendLine("      chunkEntities: []");
+
+        // Каждый грид — отдельный grid-entity uid = 2,3,4,...
+        for (int i = 0; i < exportGrids.Count; i++)
+        {
+            GenerateGridEntityBlock(sb, exportGrids[i], tileGrids[i], tileIdMap, exportGrids[i].IsStaticGrid, mapUid + 1 + i, mapUid);
+        }
+
+        // Объекты начинаются ПОСЛЕ всех grid-entities.
+        int globalUid = mapUid + 1 + exportGrids.Count;
+
+        // === ГЕНЕРИРУЕМ ОБЪЕКТЫ КАЖДОГО ГРИДА С ГРУППИРОВКОЙ ===
+        for (int i = 0; i < exportGrids.Count; i++)
+        {
+            var grid = exportGrids[i];
+            var tileGrid = tileGrids[i];
+            _exportParentUid = mapUid + 1 + i;
+
+            var positionToUid = new Dictionary<(int x, int y), int>();
+
+            GenerateWallsGrouped(sb, tileGrid, tileBuilder, ref globalUid);
+            GenerateDoorsGrouped(sb, tileGrid, ref globalUid);
+            GeneratePipesGrouped(sb, grid, ref globalUid, pipeLayers, positionToUid);
+            GenerateFirelocksGrouped(sb, grid, ref globalUid, positionToUid);
+            GenerateAlarmsGrouped(sb, grid, ref globalUid, alarmSettings, positionToUid);
+            GenerateWiresGrouped(sb, grid, ref globalUid);
+            GenerateGenericEntitiesGrouped(sb, grid, ref globalUid);
+            GenerateHolopadsGrouped(sb, grid, ref globalUid);
+            GenerateLockersGrouped(sb, grid, ref globalUid);
+            GenerateSuitStoragesGrouped(sb, grid, ref globalUid);
+            GenerateBedsGrouped(sb, grid, ref globalUid);
+            GenerateCamerasGrouped(sb, grid, tileGrid, ref globalUid);
+            GenerateDressersGrouped(sb, grid, ref globalUid);
+            GenerateIntercomsGrouped(sb, grid, ref globalUid);
+            GenerateFaxMachinesGrouped(sb, grid, ref globalUid);
+        }
+
+        return sb.ToString();
+    }
+
+    private static int CalculateEntityCountAll(List<Grid> grids, TileBuilder tileBuilder)
+    {
+        int count = 1 + grids.Count; // map entity + grid entities
+        foreach (var grid in grids)
+        {
+            var tileGrid = tileBuilder.BuildFromRooms(grid);
+            count += tileGrid.GetTilesByContent(TileContent.Wall).Count();
+            count += tileGrid.GetTilesByContent(TileContent.Door).Count();
+            count += grid.Entities.OfType<PipeEntity>().Count();
+            count += grid.Entities.OfType<FirelockEntity>().Count();
+            count += grid.Entities.OfType<AirAlarmEntity>().Count();
+            count += grid.Entities.OfType<FireAlarmEntity>().Count();
+            count += grid.Entities
+                .Where(e => e is not PipeEntity && e is not FirelockEntity &&
+                            e is not AirAlarmEntity && e is not FireAlarmEntity)
+                .Count(e => !string.IsNullOrEmpty(e.Proto));
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Пишет отдельный grid-entity для много-гридового экспорта (GenerateAll).
+    /// Map entity (uid mapUid) уже выведен; здесь пишется ТОЛЬКО сам грид с
+    /// указанным gridUid, родителем mapUid и своим набором компонентов.
+    /// </summary>
+    private static void GenerateGridEntityBlock(
+        StringBuilder sb,
+        Grid grid,
+        TileGrid tileGrid,
+        Dictionary<string, int> tileIdMap,
+        bool isStatic,
+        int gridUid,
+        int mapUid)
+    {
+        sb.AppendLine($"  - uid: {gridUid}");
+        sb.AppendLine("    components:");
+        sb.AppendLine("    - type: MetaData");
+        sb.AppendLine("      name: " + (grid.Name ?? "grid"));
+        sb.AppendLine("    - type: Transform");
+        sb.AppendLine($"      parent: {mapUid}");
+        sb.AppendLine($"      pos: {grid.Position.X.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture)},{grid.Position.Y.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture)}");
+        sb.AppendLine("    - type: MapGrid");
+        sb.AppendLine("      chunks:");
+
+        AppendChunks(sb, tileGrid, tileIdMap);
+
+        if (isStatic)
+        {
+            sb.AppendLine("    - type: SpreaderGrid");
+            sb.AppendLine("    - type: GridPathfinding");
+            sb.AppendLine("    - type: Gravity");
+            sb.AppendLine("      inherent: True");
+            sb.AppendLine("      enabled: True");
+        }
+        else
+        {
+            sb.AppendLine("    - type: Broadphase");
+            sb.AppendLine("    - type: Physics");
+            sb.AppendLine("      bodyStatus: InAir");
+            sb.AppendLine("      fixedRotation: False");
+            sb.AppendLine("      bodyType: Dynamic");
+            sb.AppendLine("    - type: OccluderTree");
+            sb.AppendLine("    - type: SpreaderGrid");
+            sb.AppendLine("    - type: Shuttle");
+            sb.AppendLine("      dampingModifier: 0.25");
+            sb.AppendLine("    - type: ImplicitRoof");
+            sb.AppendLine("    - type: GridPathfinding");
+            sb.AppendLine("    - type: Gravity");
+            sb.AppendLine("      gravityShakeSound: !type:SoundPathSpecifier");
+            sb.AppendLine("        path: /Audio/Effects/alert.ogg");
+        }
+
+        sb.AppendLine("    - type: DecalGrid");
+        sb.AppendLine("      chunkCollection:");
+        sb.AppendLine("        version: 2");
+
+        if (grid.Decals != null && grid.Decals.Count > 0)
+        {
+            AppendDecalNodeGroups(sb, grid.Decals);
+        }
+        else
+        {
+            sb.AppendLine("        nodes: []");
+        }
+
+        if (isStatic)
+        {
+            sb.AppendLine("    - type: Roof");
+            sb.AppendLine("      data:");
+            sb.AppendLine("        0,1: 0");
+            sb.AppendLine("    - type: MapAtmosphere");
+            sb.AppendLine("      space: False");
+            sb.AppendLine("      mixture:");
+            sb.AppendLine("        volume: 2500");
+            sb.AppendLine("        immutable: True");
+            sb.AppendLine("        temperature: 293.15");
+            sb.AppendLine("        moles:");
+            sb.AppendLine("          Oxygen: 21.82478");
+            sb.AppendLine("          Nitrogen: 82.10312");
+        }
+        else
+        {
+            sb.AppendLine("    - type: GridAtmosphere");
+            sb.AppendLine("      version: 2");
+            sb.AppendLine("      data:");
+            sb.AppendLine("        chunkSize: 4");
+            sb.AppendLine("    - type: GasTileOverlay");
+        }
+    }
+
+    private static void AppendChunks(StringBuilder sb, TileGrid tileGrid, Dictionary<string, int> tileIdMap)
+    {
+        var chunks = GenerateChunksFromTileGrid(tileGrid, tileIdMap);
+        foreach (var chunk in chunks)
+        {
+            sb.AppendLine($"        {chunk.Key.x},{chunk.Key.y}:");
+            sb.AppendLine($"          ind: {chunk.Key.x},{chunk.Key.y}");
+            sb.AppendLine($"          tiles: {chunk.Value}");
+            sb.AppendLine($"          version: 7");
+        }
+    }
+
+    private static void AppendDecalNodeGroups(StringBuilder sb, List<PlacedDecal> decals)
+    {
+        sb.AppendLine("        nodes:");
+        var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
+        foreach (var decal in decals)
+        {
+            var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
+            if (!byProtoColorRotation.ContainsKey(key))
+                byProtoColorRotation[key] = new List<PlacedDecal>();
+            byProtoColorRotation[key].Add(decal);
+        }
+        foreach (var group in byProtoColorRotation)
+        {
+            sb.AppendLine("        - node:");
+            if (group.Key.rotation != 0)
+            {
+                float exportAngle = -group.Key.rotation;
+                float fullCircle = (float)(Math.PI * 2);
+                exportAngle %= fullCircle;
+                if (exportAngle < 0) exportAngle += fullCircle;
+                string angleStr = exportAngle.ToString("0.0000000000000000").Replace(',', '.');
+                sb.AppendLine($"            angle: {angleStr} rad");
+            }
+            if (group.Key.cleanable)
+                sb.AppendLine("            cleanable: True");
+            sb.AppendLine($"            color: '{group.Key.color}'");
+            sb.AppendLine($"            id: {group.Key.proto}");
+            sb.AppendLine("          decals:");
+            int localId = 0;
+            foreach (var decal in group.Value)
+            {
+                float posX = decal.X - 0.5f;
+                float posY = -(decal.Y - 0.5f);
+                sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
+                localId++;
+            }
+        }
+    }
+
     #region Группированная генерация
 
     private static void GenerateWallsGrouped(
@@ -363,7 +680,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 uid++;
             }
         }
@@ -403,7 +720,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 uid++;
             }
         }
@@ -526,7 +843,7 @@ public static class YAMLGenerator
                     }
 
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: 2");
+                    sb.AppendLine($"      parent: {_exportParentUid}");
 
                     // Цвет тела трубы — раньше эмитился только для вентиляций на конце,
                     // сами трубы всегда шли без AtmosPipeColor
@@ -585,7 +902,7 @@ public static class YAMLGenerator
                         }
 
                         sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                        sb.AppendLine($"      parent: 2");
+                        sb.AppendLine($"      parent: {_exportParentUid}");
 
                         if (pipeLayer != null)
                         {
@@ -688,7 +1005,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 // Тег фильтрации. У DisposalRouter/RouterFlipped это список tags —
                 // сущности, чьи теги совпадают с этим списком, роутер отправляет вбок
@@ -754,7 +1071,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 uid++;
             }
@@ -778,7 +1095,7 @@ public static class YAMLGenerator
                     sb.AppendLine($"    components:");
                     sb.AppendLine($"    - type: Transform");
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: 2");
+                    sb.AppendLine($"      parent: {_exportParentUid}");
 
                     uid++;
                 }
@@ -803,7 +1120,7 @@ public static class YAMLGenerator
                     sb.AppendLine($"    components:");
                     sb.AppendLine($"    - type: Transform");
                     sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                    sb.AppendLine($"      parent: 2");
+                    sb.AppendLine($"      parent: {_exportParentUid}");
 
                     // Пишем тег внутрь MailingUnit
                     if (!string.IsNullOrEmpty(endpoint.FilterLabel))
@@ -862,7 +1179,7 @@ public static class YAMLGenerator
         (-1, 0), // 3 = Запад
     };
 
-    private static string GetDisposalProto(List<(int dx, int dy)> neighbors, int utilArrowRotation, Color? customColor, out float rotation)
+    internal static string GetDisposalProto(List<(int dx, int dy)> neighbors, int utilArrowRotation, Color? customColor, out float rotation)
     {
         rotation = 0f;
 
@@ -1048,7 +1365,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 uid++;
             }
@@ -1091,7 +1408,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 // Находим устройства для привязки (по комнате)
                 var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
@@ -1139,7 +1456,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 // Находим устройства для привязки
                 var linkedDevices = FindDevicesForAlarm(grid, (int)alarm.X, (int)alarm.Y, alarm.Rotation, positionToUid);
@@ -1358,7 +1675,7 @@ public static class YAMLGenerator
         };
     }
 
-    private static List<(int dx, int dy)> GetNeighbors(List<PipeEntity> pipes, int x, int y)
+    internal static List<(int dx, int dy)> GetNeighbors(List<PipeEntity> pipes, int x, int y)
     {
         var neighbors = new List<(int dx, int dy)>();
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
@@ -1374,7 +1691,7 @@ public static class YAMLGenerator
         return neighbors;
     }
 
-    private static string GetPipeProto(string suffix, List<(int dx, int dy)> neighbors)
+    internal static string GetPipeProto(string suffix, List<(int dx, int dy)> neighbors)
     {
         int count = neighbors.Count;
 
@@ -1398,7 +1715,7 @@ public static class YAMLGenerator
         return (dx1 == -dx2 && dy1 == -dy2) || (dx1 == dx2 && dy1 == dy2);
     }
 
-    private static float GetPipeRotation(List<(int dx, int dy)> neighbors)
+    internal static float GetPipeRotation(List<(int dx, int dy)> neighbors)
     {
         if (neighbors.Count == 0) return 0;
 
@@ -1561,7 +1878,7 @@ public static class YAMLGenerator
 
         foreach (var group in wires.GroupBy(w => w.WireType))
         {
-            string? protoName = GetCableProtoForWireType(group.Key);
+            string? protoName = WireBuilder.GetCableProtoForWireType(group.Key);
             if (protoName == null) continue; // неизвестный/будущий WireType — пропускаем, а не падаем
 
             sb.AppendLine($"- proto: {protoName}");
@@ -1576,27 +1893,13 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.0").Replace(',', '.')},{posY.ToString("0.0").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 uid++;
             }
         }
     }
 
-    /// <summary>
-    /// WireEntity.WireType ("HV"/"MV"/"LV") -> id реального прототипа кабеля из
-    /// cables.yml. "LV" в редакторе — это НВ (низковольтный), в игре это же
-    /// физически CableApcExtension ("cable used to connect machines to an APC").
-    /// </summary>
-    private static string? GetCableProtoForWireType(string wireType)
-    {
-        return wireType switch
-        {
-            "HV" => "CableHV",
-            "MV" => "CableMV",
-            "LV" => "CableApcExtension",
-            _ => null
-        };
-    }
+
 
 
 
@@ -1650,7 +1953,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
 
                 // Связи беспроводной сети (для кнопок/рычагов): DeviceLinkSource.linkedPorts
                 if (entity.NetworkLinks != null && entity.NetworkLinks.Count > 0)
@@ -1711,7 +2014,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1754,7 +2057,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1797,7 +2100,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1843,7 +2146,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1871,7 +2174,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1925,7 +2228,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -1969,7 +2272,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -2021,7 +2324,7 @@ public static class YAMLGenerator
                 }
 
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: Fixtures");
                 sb.AppendLine($"      fixtures: {{}}");
             }
@@ -2057,7 +2360,7 @@ public static class YAMLGenerator
                 sb.AppendLine($"    components:");
                 sb.AppendLine($"    - type: Transform");
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
-                sb.AppendLine($"      parent: 2");
+                sb.AppendLine($"      parent: {_exportParentUid}");
                 sb.AppendLine($"    - type: FaxMachine");
                 sb.AppendLine($"      name: {FormatFaxAddress(fax.FaxName)}");
             }

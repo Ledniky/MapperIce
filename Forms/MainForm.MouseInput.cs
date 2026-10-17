@@ -267,7 +267,9 @@ public partial class MainForm
 
 
 
-            else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea)
+            else if (_toolManager.CurrentTool == ToolManager.Tool.DeleteArea ||
+                     _toolManager.CurrentTool == ToolManager.Tool.GridDividerAdd ||
+                     _toolManager.CurrentTool == ToolManager.Tool.GridDividerSubtract)
             {
                 _isDeletingArea = true;
                 _deleteStartPoint = new Point(tileX, tileY);
@@ -1778,6 +1780,52 @@ public partial class MainForm
             int maxX = Math.Max(start.X, end.X);
             int minY = Math.Min(start.Y, end.Y);
             int maxY = Math.Max(start.Y, end.Y);
+
+            if (_toolManager.CurrentTool == ToolManager.Tool.GridDividerAdd ||
+                _toolManager.CurrentTool == ToolManager.Tool.GridDividerSubtract)
+            {
+                // Разделитель гридов: выделенный прямоугольник накапливается в области
+                // активного грида. «Выделить» добавляет, «Вычесть» вырезает из области.
+                // Разделение выполняется при экспорте в .yml.
+                var area = _map.ActiveGrid.DividerAreas.LastOrDefault();
+                var rect = new GridDividerRect
+                {
+                    X = minX,
+                    Y = minY,
+                    Width = maxX - minX + 1,
+                    Height = maxY - minY + 1
+                };
+
+                if (_toolManager.CurrentTool == ToolManager.Tool.GridDividerAdd)
+                {
+                    if (area == null)
+                    {
+                        area = new GridDividerArea();
+                        _map.ActiveGrid.DividerAreas.Add(area);
+                    }
+                    area.AddRects.Add(rect);
+                }
+                else
+                {
+                    if (area != null)
+                        area.SubRects.Add(rect);
+                }
+
+                SaveState();
+                UpdateTileGrid();
+                Render();
+
+                ToastNotification.Show(this,
+                    _toolManager.CurrentTool == ToolManager.Tool.GridDividerAdd
+                        ? $"Выделено {minX},{minY} ({rect.Width}×{rect.Height})"
+                        : $"Вычтено {minX},{minY} ({rect.Width}×{rect.Height})",
+                    "Разделитель гридов", 2000);
+
+                _renderer.ClearDeleteAreaRect();
+                _isDeletingArea = false;
+                _deleteEndPoint = null;
+                return;
+            }
 
             var grid = _map.ActiveGrid;
             var toRemove = new List<MapEntity>();

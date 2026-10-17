@@ -95,6 +95,37 @@ public class Prototype
     /// PrototypeIndexer, аналогично Sprite/State/DrawDepth — см. GetIconSmoothInfo.
     /// </summary>
     public IconSmoothSettings? IconSmooth { get; set; }
+
+    /// <summary>
+    /// Цвет однослойного компонента Sprite ("color:" прямо в Sprite, не в layers).
+    /// В SS14 цвет может быть как hex ("#RRGGBB"), так и именем ("Green", "Yellow").
+    /// Для кабелей это цвет тонирования единственного слоя (например lvcable_*
+    /// у CableApcExtension красится в Green). Null — тонирования нет.
+    /// </summary>
+    public string? SpriteColor { get; set; }
+
+    /// <summary>
+    /// Компонент CableVisualizer (кабели HV/MV/LV/Det): в игре он сам выбирает
+    /// RSI-стейт по 4-битной маске соседей-кабелей той же NodeGroupID:
+    /// "{StatePrefix}{mask}" на слое 0 и "{ExtraLayerPrefix}{mask}" на слое 1.
+    /// Null — у прототипа и всех родителей компонента нет (кабель рисуется
+    /// фолбэком — линиями/точками).
+    /// </summary>
+    public CableVisualizerSettings? CableVisualizer { get; set; }
+}
+
+/// <summary>
+/// Настройки компонента CableVisualizer из YAML. Маска — WireVisDirFlags игры:
+/// North=1, South=2, East=4, West=8 (см. CableVisSystem). Стейт слоя 0 —
+/// StatePrefix + mask, слоя 1 — ExtraLayerPrefix + mask (если задан).
+/// </summary>
+public class CableVisualizerSettings
+{
+    /// <summary>YAML-поле "statePrefix:" (например "mvcable_").</summary>
+    public string? StatePrefix { get; set; }
+
+    /// <summary>YAML-поле "extraLayerPrefix:" (например "mvstripes_", у LV/HV null).</summary>
+    public string? ExtraLayerPrefix { get; set; }
 }
 
 /// <summary>

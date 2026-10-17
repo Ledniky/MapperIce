@@ -5,7 +5,7 @@ using System.Drawing.Imaging;
 
 namespace MapperIce.Services;
 
-public class Renderer
+public partial class Renderer
 {
     private Bitmap _buffer;
     private readonly object _lock = new();
@@ -66,6 +66,18 @@ public class Renderer
     // что у обычных текстур один кадр на стейт, а тут — 4, и лежат они под вменяемым
     // ключом (не конфликтуют с прототипом).
     private readonly Dictionary<string, Image> _iconSmoothStateCache = new();
+
+    // Резолвнутая визуальная информация кабеля (CableVisualizer + цвета слоёв) по protoId.
+    // Резолв идёт по цепочке parent:, поэтому кэшируем, чтобы не обходить её на каждый
+    // кабель каждый кадр. Сбрасывается в ClearCache вместе с остальными текстурами.
+    private sealed class CableRenderInfo
+    {
+        public string StatePrefix { get; init; } = "";
+        public string? ExtraLayerPrefix { get; init; }
+        public string? Layer0Color { get; init; }
+        public string? Layer1Color { get; init; }
+    }
+    private readonly Dictionary<string, CableRenderInfo?> _cableRenderInfoCache = new();
 
     // Размеры тайлов в пикселях для кэширования
     private int _cachedTileSize = 0;
@@ -404,13 +416,15 @@ public class Renderer
                 // маркеров фильтра/стрелок утилизации
                 if (ShowWires)
                 {
-                    var allWires = _wireBuilder.GetWires(grid)
+                    // Список ВСЕХ кабелей грида нужен для маски соседей: кабель у края
+                    // экрана обязан «видеть» соседа за кадром, иначе сегмент обрывался бы.
+                    var gridWires = _wireBuilder.GetWires(grid);
+                    var visibleWires = gridWires
                         .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
                         .OrderBy(w => w.Y)
                         .ToList();
-                    DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
-                    DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset); if (allWires.Count > 0)
-                        DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
+                    DrawLvCoverageOverlay(g, visibleWires, tileSize, viewOffset, gridOffset);
+                    DrawWireSpritesOrFallback(g, visibleWires, gridWires, tileSize, viewOffset, gridOffset);
 
                     if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
                     {
@@ -437,6 +451,7 @@ public class Renderer
             DrawSelectionHighlight(g, scale, viewOffset);
             DrawSelectionBox(g);
             DrawDeleteAreaOverlay(g, scale, viewOffset);
+            DrawDividerAreasOverlay(g, scale, viewOffset);
             DrawDecalAreaDrawOverlay(g, scale, viewOffset);
             DrawDecalAreaEditOverlay(g, scale, viewOffset);
 
@@ -1148,6 +1163,175 @@ public class Renderer
 
         foreach (var b in brushCache.Values)
             b.Dispose();
+    }
+
+    /// <summary>
+    /// Рисует кабели настоящими RSI-спрайтами, выбирая стейт по соседям (как
+    /// CableVisualizerSystem в игре): маска WireVisDirFlags — North=1, South=2,
+    /// East=4, West=8 — от кардинальных соседей-кабелей ТОГО ЖЕ WireType
+    /// (в игре это NodeGroupID: HV/MV/LV не соединяются друг с другом).
+    /// Стейт слоя 0 = "{StatePrefix}{mask}", слоя 1 = "{ExtraLayerPrefix}{mask}".
+    /// Для типов/прототипов без CableVisualizer (или если спрайт не найден) —
+    /// прежний фолбэк линиями и точками.
+    /// </summary>
+    private void DrawWireSpritesOrFallback(Graphics g, List<WireEntity> visibleWires, List<WireEntity> allWires, int tileSize, PointF viewOffset, PointF gridOffset, bool drawFallback = true)
+    {
+        if (visibleWires.Count == 0) return;
+
+        // Клетки по типам — из ПОЛНОГО списка, чтобы сосед за краем экрана учитывался.
+        var cellsByType = new Dictionary<string, HashSet<(int x, int y)>>(StringComparer.Ordinal);
+        foreach (var wire in allWires)
+        {
+            if (!cellsByType.TryGetValue(wire.WireType, out var cells))
+            {
+                cells = new HashSet<(int x, int y)>();
+                cellsByType[wire.WireType] = cells;
+            }
+            cells.Add(((int)Math.Round(wire.X), (int)Math.Round(wire.Y)));
+        }
+
+        var fallback = new List<WireEntity>();
+
+        foreach (var wire in visibleWires)
+        {
+            string? protoId = WireBuilder.GetCableProtoForWireType(wire.WireType);
+            var info = protoId != null ? GetCableRenderInfo(protoId) : null;
+
+            bool drawn = info != null &&
+                         cellsByType.TryGetValue(wire.WireType, out var sameTypeCells) &&
+                         DrawCableSprite(g, wire, protoId!, info, sameTypeCells, tileSize, viewOffset, gridOffset);
+
+            if (!drawn)
+                fallback.Add(wire);
+        }
+
+        if (!drawFallback || fallback.Count == 0) return;
+
+        // Фолбэк — ровно прежняя отрисовка (линии между соседями + точки узлов).
+        DrawWireLinesBatch(g, fallback, tileSize, viewOffset, gridOffset);
+        DrawWireDotsBatch(g, fallback, tileSize, viewOffset, gridOffset);
+    }
+
+    /// <summary>
+    /// Один кабель: считает маску соседей и рисует слои CableVisualizer в клетке.
+    /// Возвращает false, если базовый спрайт не загрузился — тогда вызывающий
+    /// нарисует этот кабель линией/точкой.
+    /// </summary>
+    private bool DrawCableSprite(Graphics g, WireEntity wire, string protoId, CableRenderInfo info, HashSet<(int x, int y)> sameTypeCells, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        int x = (int)Math.Round(wire.X);
+        int y = (int)Math.Round(wire.Y);
+
+        // WireVisDirFlags игры: (0,1)→North=1, (0,-1)→South=2, (1,0)→East=4, (-1,0)→West=8.
+        // В координатах редактора Y растёт вниз, поэтому север — это (x, y-1).
+        int mask = 0;
+        if (sameTypeCells.Contains((x, y - 1))) mask |= 1; // North
+        if (sameTypeCells.Contains((x, y + 1))) mask |= 2; // South
+        if (sameTypeCells.Contains((x + 1, y))) mask |= 4; // East
+        if (sameTypeCells.Contains((x - 1, y))) mask |= 8; // West
+
+        // Смещение по типу — то же, что у линий/точек (GetWireTypeOffset): разные
+        // кабели на одной клетке не наезжают друг на друга, а вся сеть типа
+        // сдвигается целиком, поэтому сегменты соседей по-прежнему стыкуются.
+        var (offX, offY) = GetWireTypeOffset(wire.WireType);
+        var rect = ToRect(wire.X + offX, wire.Y + offY, tileSize, viewOffset, gridOffset);
+
+        if (!DrawCableState(g, protoId, info.StatePrefix, mask, info.Layer0Color, rect))
+            return false;
+
+        if (!string.IsNullOrEmpty(info.ExtraLayerPrefix))
+            DrawCableState(g, protoId, info.ExtraLayerPrefix!, mask, info.Layer1Color, rect);
+
+        return true;
+    }
+
+    /// <summary>Рисует один слой CableVisualizer: стейт "{prefix}{mask}" с тонированием слоя.</summary>
+    private bool DrawCableState(Graphics g, string protoId, string prefix, int mask, string? color, Rectangle rect)
+    {
+        string state = prefix + mask;
+        string cacheKey = $"{protoId}||cable||{state}";
+
+        Image? texture = GetOrLoadCableStateTexture(cacheKey, protoId, state);
+        if (texture == null) return false;
+
+        var src = GetSourceRect(cacheKey, texture, 0f);
+        if (src.Width == 0 || src.Height == 0) return false;
+
+        // Цвет слоя из YAML (Yellow/Green/hex). GetDecalTintAttributes умеет и имена,
+        // и hex, и кэширует ImageAttributes по строке цвета.
+        var tint = !string.IsNullOrEmpty(color) ? GetDecalTintAttributes(color!) : null;
+
+        if (tint != null)
+            g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+        else
+            DrawPreservingAspect(g, texture, rect, src);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Загружает и кэширует точный стейт кабеля ("mvcable_7" и т.п.). В отличие от
+    /// обычных слоёв/прототипов здесь НЕЛЬЗЯ подставлять дефолтный state: иначе
+    /// отсутствующий "mvcable_7" молча рисовался бы как "mvcable_0" и ломал картинку.
+    /// </summary>
+    private Image? GetOrLoadCableStateTexture(string cacheKey, string protoId, string state)
+    {
+        if (_textureCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        Image? texture = null;
+        if (_indexer != null)
+        {
+            string? path = _indexer.GetRsiStatePath(protoId, state);
+            if (path != null && File.Exists(path))
+            {
+                try
+                {
+                    texture = Image.FromFile(path);
+                    _protoTextureDirCache[cacheKey] = Path.GetDirectoryName(path) ?? "";
+                    _protoStateNameCache[cacheKey] = state;
+                }
+                catch { texture = null; }
+            }
+        }
+
+        _textureCache[cacheKey] = texture;
+        return texture;
+    }
+
+    /// <summary>
+    /// Визуальная информация кабеля из прототипа (CableVisualizer + цвета слоёв),
+    /// с кэшем по protoId. Возвращает null, если компонента нет ни у прототипа, ни
+    /// у родителей — такой кабель рисуется фолбэком.
+    /// </summary>
+    private CableRenderInfo? GetCableRenderInfo(string protoId)
+    {
+        if (_indexer == null) return null;
+        if (_cableRenderInfoCache.TryGetValue(protoId, out var cached))
+            return cached;
+
+        CableRenderInfo? info = null;
+        var visualizer = _indexer.GetCableVisualizer(protoId);
+
+        if (visualizer != null && !string.IsNullOrEmpty(visualizer.StatePrefix))
+        {
+            var layers = _indexer.GetLayers(protoId);
+            string? componentColor = _indexer.GetSpriteColor(protoId);
+
+            info = new CableRenderInfo
+            {
+                StatePrefix = visualizer.StatePrefix!,
+                ExtraLayerPrefix = visualizer.ExtraLayerPrefix,
+                // Слой 0 — тело кабеля; если у слоя нет своего цвета, берём цвет
+                // компонента Sprite. Слой 1 — доп. полосы (у MV они заданы своими
+                // цветами в слое, у LV слоя 1 нет вовсе).
+                Layer0Color = layers.Count > 0 ? (layers[0].Color ?? componentColor) : componentColor,
+                Layer1Color = layers.Count > 1 ? (layers[1].Color ?? componentColor) : null
+            };
+        }
+
+        _cableRenderInfoCache[protoId] = info;
+        return info;
     }
 
     private Color GetWireColor(string wireType)
@@ -3082,28 +3266,46 @@ public class Renderer
     /// Парсит цвет декали в формате "#RRGGBBAA" (как хранится в PlacedDecal.Color
     /// и экспортируется в DecalGrid). При ошибке — непрозрачный белый (нет тонирования).
     /// </summary>
-    private static Color ParseDecalColor(string hex)
+    private static Color ParseDecalColor(string value)
     {
+        if (string.IsNullOrWhiteSpace(value)) return Color.White;
+        var v = value.Trim();
+
+        if (v.StartsWith('#'))
+        {
+            try
+            {
+                var h = v.TrimStart('#');
+                if (h.Length == 8)
+                {
+                    int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                    int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                    int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                    int a = Convert.ToInt32(h.Substring(6, 2), 16);
+                    return Color.FromArgb(a, r, g, b);
+                }
+                if (h.Length == 6)
+                {
+                    int r = Convert.ToInt32(h.Substring(0, 2), 16);
+                    int g = Convert.ToInt32(h.Substring(2, 2), 16);
+                    int b = Convert.ToInt32(h.Substring(4, 2), 16);
+                    return Color.FromArgb(255, r, g, b);
+                }
+            }
+            catch { }
+            return Color.White;
+        }
+
+        // Имя цвета как в YAML Sprite.color ("Yellow", "Green", ...). Color.FromName
+        // понимает стандартные имена без учёта регистра; для неизвестного имени
+        // возвращает A=0 — это и есть признак «не распознали» (не тонируем).
         try
         {
-            var h = hex.TrimStart('#');
-            if (h.Length == 8)
-            {
-                int r = Convert.ToInt32(h.Substring(0, 2), 16);
-                int g = Convert.ToInt32(h.Substring(2, 2), 16);
-                int b = Convert.ToInt32(h.Substring(4, 2), 16);
-                int a = Convert.ToInt32(h.Substring(6, 2), 16);
-                return Color.FromArgb(a, r, g, b);
-            }
-            if (h.Length == 6)
-            {
-                int r = Convert.ToInt32(h.Substring(0, 2), 16);
-                int g = Convert.ToInt32(h.Substring(2, 2), 16);
-                int b = Convert.ToInt32(h.Substring(4, 2), 16);
-                return Color.FromArgb(255, r, g, b);
-            }
+            var named = Color.FromName(v);
+            if (named.A != 0) return named;
         }
         catch { }
+
         return Color.White;
     }
 
@@ -3149,6 +3351,7 @@ public class Renderer
         _textureCache.Clear();
         _sourceRectCache.Clear();
         _smoothIndexCache.Clear();
+        _cableRenderInfoCache.Clear();
         ClearFloorChunks();
 
         foreach (var kvp in _decalTintCache)
@@ -3448,17 +3651,41 @@ public class Renderer
 
         if (!HideRoomOverlay && tileSize > 20 && opacity > 0.3f)
         {
-            float startX = (room.X + gridOffset.X) * tileSize - viewOffset.X + tileSize / 2f;
-            float startY = (room.Y + gridOffset.Y) * tileSize - viewOffset.Y + tileSize / 2f;
+            // Подпись размера ставим в тайл, ближайший к левому-верхнему углу
+            // ограничивающего прямоугольника и при этом находящийся ВНУТРИ
+            // периметра комнаты (Contains учитывает RemovedCells) — иначе у
+            // нерямоугольных комнат цифры оказывались бы вне стен, поверх пустоты.
+            int? labelX = null, labelY = null;
+            int bestDist = int.MaxValue;
+            for (int x = room.X; x < room.X + room.Width; x++)
+            {
+                for (int y = room.Y; y < room.Y + room.Height; y++)
+                {
+                    if (!room.Contains(x, y)) continue;
+                    int dist = (x - room.X) + (y - room.Y);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        labelX = x;
+                        labelY = y;
+                    }
+                }
+            }
 
-            using var font = new Font("Arial", Math.Min(10, tileSize / 3));
-            Color textColor = GetContrastColor(room.FillColor);
-            int alpha = (int)(200 * opacity);
-            using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
+            if (labelX.HasValue && labelY.HasValue)
+            {
+                float startX = (labelX.Value + gridOffset.X) * tileSize - viewOffset.X + tileSize / 2f;
+                float startY = (labelY.Value + gridOffset.Y) * tileSize - viewOffset.Y + tileSize / 2f;
 
-            int innerWidth = Math.Max(0, room.Width - 2);
-            int innerHeight = Math.Max(0, room.Height - 2);
-            g.DrawString($"{innerWidth}×{innerHeight}", font, brush, startX + 2, startY + 2);
+                using var font = new Font("Arial", Math.Min(10, tileSize / 3));
+                Color textColor = GetContrastColor(room.FillColor);
+                int alpha = (int)(200 * opacity);
+                using var brush = new SolidBrush(Color.FromArgb(alpha, textColor));
+
+                int innerWidth = Math.Max(0, room.Width - 2);
+                int innerHeight = Math.Max(0, room.Height - 2);
+                g.DrawString($"{innerWidth}×{innerHeight}", font, brush, startX + 2, startY + 2);
+            }
         }
     }
 
@@ -3807,6 +4034,52 @@ public class Renderer
         g.DrawRectangle(pen, left, top, width, height);
     }
 
+
+    /// <summary>
+    /// Рисует накопленные области разделения инструмента «Разделитель гридов»
+    /// активного слоя: "Выделить" — полупрозрачной зелёной заливкой, "Вычесть" —
+    /// красной (вырезаются из области). Отрисовывается постоянно, пока область
+    /// сохранена в активном гриде, а не только во время драга.
+    /// </summary>
+    private void DrawDividerAreasOverlay(Graphics g, float scale, PointF viewOffset)
+    {
+        if (_currentMap?.ActiveGrid == null) return;
+        var grid = _currentMap.ActiveGrid;
+        if (grid.DividerAreas == null || grid.DividerAreas.Count == 0) return;
+
+        int tileSize = (int)(Constants.TILE_SIZE * scale);
+        int activeIndex = _currentMap.Grids.IndexOf(grid);
+        float layerOffsetY = Grid.GetLayerOffsetY(activeIndex);
+        float gridOffsetX = grid.Position.X * tileSize;
+        float gridOffsetY = (grid.Position.Y + layerOffsetY) * tileSize;
+
+        using var addFill = new SolidBrush(Color.FromArgb(45, 70, 210, 90));
+        using var addPen = new Pen(Color.FromArgb(220, 60, 200, 90), 2f)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Solid
+        };
+        using var subFill = new SolidBrush(Color.FromArgb(45, 230, 70, 70));
+        using var subPen = new Pen(Color.FromArgb(220, 230, 60, 60), 2f)
+        {
+            DashStyle = System.Drawing.Drawing2D.DashStyle.Solid
+        };
+
+        void DrawRect(GridDividerRect r, Brush fill, Pen pen)
+        {
+            float left = r.X * tileSize + gridOffsetX - viewOffset.X;
+            float top = r.Y * tileSize + gridOffsetY - viewOffset.Y;
+            float w = r.Width * tileSize;
+            float h = r.Height * tileSize;
+            g.FillRectangle(fill, left, top, w, h);
+            g.DrawRectangle(pen, left, top, w, h);
+        }
+
+        foreach (var area in grid.DividerAreas)
+        {
+            foreach (var r in area.AddRects) DrawRect(r, addFill, addPen);
+            foreach (var r in area.SubRects) DrawRect(r, subFill, subPen);
+        }
+    }
 
     private void DrawDecalAreaDrawOverlay(Graphics g, float scale, PointF viewOffset)
     {

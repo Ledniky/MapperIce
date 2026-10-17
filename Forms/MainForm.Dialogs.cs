@@ -1405,7 +1405,11 @@ public partial class MainForm
             _alarmSettings,
             () =>
             {
-                // Применяем изменения: перерисовываем, обновляем tilegrid
+                // Применяем изменения: перерисовываем, обновляем tilegrid.
+                // Инвалидируем ВСЕ гриды, а не только активный — настройка наружной
+                // стены должна применяться к стенам любого слоя при пересборке.
+                foreach (var g in _map.Grids)
+                    _renderer.InvalidateTileGrid(g.Uid);
                 UpdateTileGrid();
                 Render();
                 SaveState();

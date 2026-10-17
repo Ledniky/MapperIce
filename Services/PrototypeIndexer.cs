@@ -13,6 +13,11 @@ public class PrototypeIndexer
     private string _rootPath = "";
     private Dictionary<string, Palette> _palettes = new();
 
+    // Кэш резолва CableVisualizer по цепочке parent: (id -> настройки или null).
+    // Пересобирается вместе с индексом прототипов, чтобы после «Обновить»
+    // не отдавать настройки старого репозитория.
+    private readonly Dictionary<string, CableVisualizerSettings?> _cableVisualizerCache = new();
+
     // Кэш результатов поиска прототипов: query -> список найденных ID
     private readonly Dictionary<string, List<string>> _searchCache = new(StringComparer.OrdinalIgnoreCase);
     private const int MaxSearchCacheSize = 512;
@@ -84,6 +89,7 @@ public class PrototypeIndexer
         _currentRepoPath = repo.Path;
         _prototypes.Clear();
         _palettes.Clear();
+        _cableVisualizerCache.Clear();
         ClearSearchCache();
 
         var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
@@ -335,7 +341,7 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 29;
+    private const int CacheFormatVersion = 30;
 
     private class CacheEnvelope
     {
@@ -393,6 +399,7 @@ public class PrototypeIndexer
             if (envelope.Prototypes == null || envelope.Prototypes.Count == 0) return false;
 
             _prototypes.Clear();
+            _cableVisualizerCache.Clear();
             foreach (var proto in envelope.Prototypes)
             {
                 if (!string.IsNullOrEmpty(proto.Id))
@@ -676,9 +683,15 @@ public class PrototypeIndexer
             proto.MaxSupply = float.Parse(maxSupplyMatch.Groups[1].Value, CultureInfo.InvariantCulture);
         }
 
-        // Многослойность (Sprite.layers) — сначала вычленяем сам подблок компонента        // Sprite по отступам (а не regex по всему block целиком, как sprite/state выше),
+        // Многослойность (Sprite.layers) — сначала вычленяем сам подблок компонента
+        // Sprite по отступам (а не regex по всему block целиком, как sprite/state выше),
         // потому что порядок и границы элементов списка layers: критичны для отступов
-        proto.Layers = ParseSpriteLayers(ExtractComponentBlock(block, "Sprite"));
+        var spriteComponentBlock = ExtractComponentBlock(block, "Sprite");
+        proto.Layers = ParseSpriteLayers(spriteComponentBlock);
+
+        // Цвет однослойного Sprite (color: Green у CableApcExtension и т.п.).
+        // У многослойных спрайтов цвет задаётся отдельно у каждого слоя (см. ParseSpriteLayers).
+        proto.SpriteColor = ParseTopLevelSpriteColor(spriteComponentBlock);
 
         // EntityStorageVisuals (шкафчики/локеры/ящики) — state имена закрытого хранения,
         // которые переопределяют state базовых слоёв спрайта (Base/Door). Пример:
@@ -737,6 +750,24 @@ public class PrototypeIndexer
             // наследуется от родителя/играет роль просто "маркера". Сохраняем настройки
             // (даже если поля пустые), чтобы GetIconSmoothInfo знал о наличии компонента.
             proto.IconSmooth = settings;
+        }
+
+        // CableVisualizer — сглаживание кабелей по соседям (не IconSmooth!):
+        //   - type: CableVisualizer
+        //     statePrefix: mvcable_
+        //     extraLayerPrefix: mvstripes_
+        // В игре CableVisualizerSystem сам ставит слою 0 стейт "{statePrefix}{mask}",
+        // а слою 1 — "{extraLayerPrefix}{mask}", где mask — WireVisDirFlags соседей
+        // (North=1, South=2, East=4, West=8). Резолвится по parent: через GetCableVisualizer.
+        var cableVisBlock = ExtractComponentBlock(block, "CableVisualizer");
+        if (!string.IsNullOrWhiteSpace(cableVisBlock))
+        {
+            var settings = new CableVisualizerSettings();
+            var mStatePrefix = Regex.Match(cableVisBlock, @"(?m)^\s*statePrefix:\s*([^\s#]+)");
+            var mExtraPrefix = Regex.Match(cableVisBlock, @"(?m)^\s*extraLayerPrefix:\s*([^\s#]+)");
+            if (mStatePrefix.Success) settings.StatePrefix = mStatePrefix.Groups[1].Value;
+            if (mExtraPrefix.Success) settings.ExtraLayerPrefix = mExtraPrefix.Groups[1].Value;
+            proto.CableVisualizer = settings;
         }
 
         return proto;
@@ -870,8 +901,10 @@ public class PrototypeIndexer
             var rsiMatch = Regex.Match(fieldLine, @"^rsi:\s*(\S+)");
             if (rsiMatch.Success) { current.RsiPath = NormalizeTexturePath(rsiMatch.Groups[1].Value); continue; }
 
-            var colorMatch = Regex.Match(fieldLine, "^color:\\s*\"?(#[0-9A-Fa-f]{6,8})\"?");
-            if (colorMatch.Success) { current.Color = colorMatch.Groups[1].Value; continue; }
+            // Цвет слоя: hex ("#FFAA00") ИЛИ имя ("Yellow", "Green") — движок принимает
+            // оба варианта, и именно именем задан цвет кабеля MV (layers[0].color: Yellow).
+            var colorMatch = Regex.Match(fieldLine, "^color:\\s*\"?'?([^\\s\"']+)'?\"?");
+            if (colorMatch.Success) { current.Color = colorMatch.Groups[1].Value.Trim(); continue; }
 
             var shaderMatch = Regex.Match(fieldLine, @"^shader:\s*(\S+)");
             if (shaderMatch.Success) { current.Shader = shaderMatch.Groups[1].Value; continue; }
@@ -894,6 +927,53 @@ public class PrototypeIndexer
         if (current != null) layers.Add(current);
 
         return layers;
+    }
+
+    /// <summary>
+    /// Цвет компонента Sprite, заданный ПРЯМО в нём (а не у элемента layers):
+    /// например "color: Green" у CableApcExtension. Ищем только строки на отступе
+    /// самого компонента и пропускаем содержимое блока "layers:", чтобы не спутать
+    /// с цветом конкретного слоя.
+    /// </summary>
+    private static string? ParseTopLevelSpriteColor(string spriteComponentBlock)
+    {
+        if (string.IsNullOrWhiteSpace(spriteComponentBlock)) return null;
+
+        var lines = spriteComponentBlock.Replace("\r\n", "\n").Split('\n');
+        int baseIndent = -1;
+        bool inLayers = false;
+        int layersIndent = -1;
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+            if (baseIndent < 0) baseIndent = indent;
+
+            if (trimmed.StartsWith("layers:"))
+            {
+                inLayers = true;
+                layersIndent = indent;
+                continue;
+            }
+
+            if (inLayers)
+            {
+                // Элементы списка layers в YAML часто стоят на том же отступе, что и
+                // сама строка "layers:" — поэтому выходим только при indent < layersIndent.
+                if (indent < layersIndent) inLayers = false;
+                else continue;
+            }
+
+            if (indent != baseIndent) continue;
+
+            var m = Regex.Match(trimmed, "^color:\\s*\"?'?([^\\s\"']+)'?\"?");
+            if (m.Success) return m.Groups[1].Value.Trim();
+        }
+
+        return null;
     }
 
     public Prototype? FindPrototype(string id)
@@ -1416,6 +1496,21 @@ public class PrototypeIndexer
     }
 
     /// <summary>
+    /// Точный путь к PNG-файлу произвольного стейта в RSI прототипа: "{state}.png".
+    /// В отличие от GetLayerTexturePath/GetFullTexturePath НЕ подставляет дефолтные
+    /// состояния ("icon"/"closed"/первый PNG) — для кабелей это критично: если
+    /// "mvcable_7.png" нет, нельзя молча рисовать "mvcable_0".
+    /// </summary>
+    public string? GetRsiStatePath(string id, string state)
+    {
+        if (string.IsNullOrEmpty(state)) return null;
+        string? dir = GetRsiDirectory(id);
+        if (string.IsNullOrEmpty(dir)) return null;
+        var p = Path.Combine(dir, state + ".png");
+        return File.Exists(p) ? p : null;
+    }
+
+    /// <summary>
     /// Настройки IconSmooth (сглаживание иконок) для прототипа с учётом наследования.
     /// Аналогично FindDrawDepthRecursive/FindOffsetRecursive: ищем ближайшего из предков
     /// (включая сам прототип), у которого ЗАДАН компонент IconSmooth (proto.IconSmooth !=
@@ -1472,6 +1567,55 @@ public class PrototypeIndexer
         }
         return result;
     }
+    /// <summary>
+    /// Настройки CableVisualizer с учётом наследования по цепочке parent:.
+    /// Поля, не заданные у ближайшего прототипа, добираются у предков (как
+    /// GetIconSmoothInfo для base/key). Возвращает null, если компонента нет нигде.
+    /// </summary>
+    public CableVisualizerSettings? GetCableVisualizer(string id)
+    {
+        lock (_cableVisualizerCache)
+        {
+            if (_cableVisualizerCache.TryGetValue(id, out var cached))
+                return cached;
+        }
+
+        CableVisualizerSettings? result = null;
+        foreach (var nodeId in BuildParentChain(id))
+        {
+            var proto = FindPrototype(nodeId);
+            var settings = proto?.CableVisualizer;
+            if (settings == null) continue;
+
+            result ??= new CableVisualizerSettings();
+            if (string.IsNullOrEmpty(result.StatePrefix) && !string.IsNullOrEmpty(settings.StatePrefix))
+                result.StatePrefix = settings.StatePrefix;
+            if (string.IsNullOrEmpty(result.ExtraLayerPrefix) && !string.IsNullOrEmpty(settings.ExtraLayerPrefix))
+                result.ExtraLayerPrefix = settings.ExtraLayerPrefix;
+        }
+
+        lock (_cableVisualizerCache)
+        {
+            _cableVisualizerCache[id] = result;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Цвет однослойного Sprite с учётом наследования от parent: (ближайший
+    /// непустой SpriteColor по цепочке). Null — цвет не задан.
+    /// </summary>
+    public string? GetSpriteColor(string id)
+    {
+        foreach (var nodeId in BuildParentChain(id))
+        {
+            var proto = FindPrototype(nodeId);
+            if (!string.IsNullOrEmpty(proto?.SpriteColor))
+                return proto.SpriteColor;
+        }
+        return null;
+    }
+
     public string? GetFullTexturePath(string id, string? stateOverride = null)
     {
         if (string.IsNullOrEmpty(_rootPath)) return null;

@@ -23,6 +23,24 @@ public class WireBuilder
         _wireTypeManager = wireTypeManager;
     }
 
+    /// <summary>
+    /// WireEntity.WireType ("HV"/"MV"/"LV") -> id реального прототипа кабеля из
+    /// cables.yml. "LV" в редакторе — это НВ (низковольтный), в игре это же
+    /// физически CableApcExtension ("cable used to connect machines to an APC").
+    /// Используется и экспортом (YAMLGenerator), и отрисовкой спрайтов кабелей
+    /// (Renderer), чтобы оба всегда выбирали ОДИН и тот же прототип.
+    /// </summary>
+    public static string? GetCableProtoForWireType(string wireType)
+    {
+        return wireType switch
+        {
+            "HV" => "CableHV",
+            "MV" => "CableMV",
+            "LV" => "CableApcExtension",
+            _ => null
+        };
+    }
+
     public bool IsDrawing => _isDrawingWire;
     public (int x, int y)? StartPoint => _wireStartPoint;
     public (int x, int y)? EndPoint => _wireEndPoint;

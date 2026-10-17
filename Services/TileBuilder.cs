@@ -54,6 +54,52 @@ private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int 
         return isBoundary ? wall : null;
     }
 
+    private bool IsEmptyTile(int nx, int ny, List<Room> allRooms, TileGrid tileGrid)
+    {
+        var tile = tileGrid.GetTile(nx, ny);
+        bool hasSolidTile = tile != null && tile.Content != TileContent.Empty &&
+                            tile.Content != TileContent.Pipe;
+        if (hasSolidTile) return false; // пол/стена/дверь — не «пустой тайл»
+
+        bool coveredByRoom = GetRoomAt(allRooms, nx, ny) != null;
+        if (coveredByRoom) return false; // у соседа есть комната — не «пустой тайл»
+
+        return true;
+    }
+
+    /// <summary>
+    /// Проверяет, выходит ли клетка на ПОЛНОСТЬЮ пустой тайл. Проверяются 4 ближних
+    /// и 4 диагональных тайла. Диагональ считается «пустотой» только если сам
+    /// диагональный тайл пуст И хотя бы один из двух ортогональных соседей этого угла
+    /// тоже выходит на пустоту — так общая стена между двумя смежными комнатами не
+    /// ошибочно распознаётся как наружная из-за случайного пустого угла.
+    /// </summary>
+    private bool FacesEmptyTile(Room room, List<Room> allRooms, TileGrid tileGrid, int x, int y)
+    {
+        foreach (var (dx, dy) in _wallDirs)
+        {
+            int nx = x + dx, ny = y + dy;
+            if (room.Contains(nx, ny)) continue; // внутренняя сторона
+            if (IsEmptyTile(nx, ny, allRooms, tileGrid)) return true;
+        }
+
+        foreach (var (dx, dy) in new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) })
+        {
+            int nx = x + dx, ny = y + dy;
+            if (room.Contains(nx, ny)) continue;
+            if (!IsEmptyTile(nx, ny, allRooms, tileGrid)) continue;
+
+            // Диагональ годится, если хотя бы один из двух ортогональных соседей
+            // угла выходит на пустоту (глубоко наружу), а не примыкает к этой же
+            // комнате — иначе внешний угол комнаты ложно стал бы «наружной стеной».
+            bool northOrWest = IsEmptyTile(x + dx, y, allRooms, tileGrid);
+            bool eastOrSouth = IsEmptyTile(x, y + dy, allRooms, tileGrid);
+            if (northOrWest || eastOrSouth) return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Клетка-"пинч" во внутреннем (вогнутом) углу выемки: сама клетка ортогонально
     /// окружена комнатой с обеих сторон (поэтому GetBoundaryWallProto её пропускает
@@ -195,7 +241,20 @@ foreach (var room in allRooms)
 
                     string? wall = GetBoundaryWallProto(room, allRooms, x, y);
                     if (wall != null)
+                    {
+                        // «Наружная стена»: если на слое задан прототип наружной стены
+                        // (настройки проекта), и данная клетка граничит с полностью
+                        // пустым тайлом (нет ни пола, ни стены, ни другой комнаты;
+                        // сущности из левого меню тайл «не занимают») — используем его
+                        // вместо обычной стены комнаты.
+                        if (grid.ReplaceExteriorWalls &&
+                            !string.IsNullOrEmpty(grid.ExteriorWallProto) &&
+                            FacesEmptyTile(room, allRooms, tileGrid, x, y))
+                        {
+                            wall = grid.ExteriorWallProto;
+                        }
                         tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
+                    }
                 }
             }
         }

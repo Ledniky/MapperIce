@@ -839,6 +839,69 @@ _roomTypeCombo.DrawItem += (s, e) =>
         _toolPanel.Controls.Add(_btnNetworkConfigurator);
         y += 34 + 2;
 
+        // === Инструмент «Разделитель гридов» ===
+        // Заголовок секции
+        _toolPanel.Controls.Add(new Label
+        {
+            Text = "Разделитель гридов",
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Arial", 9, FontStyle.Bold),
+            ForeColor = Color.DimGray
+        });
+        y += 20 + 2;
+
+        var gridDividerPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 34,
+            BackColor = Color.Transparent
+        };
+
+        int dividerHalf = gridDividerPanel.Width / 2;
+
+        _btnGridDividerAdd = new Button
+        {
+            Text = "Выделить",
+            Location = new Point(0, 0),
+            Width = dividerHalf - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnGridDividerAdd.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.GridDividerAdd);
+        gridDividerPanel.Controls.Add(_btnGridDividerAdd);
+
+        _btnGridDividerSubtract = new Button
+        {
+            Text = "Вычесть",
+            Location = new Point(dividerHalf + 1, 0),
+            Width = dividerHalf - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 9),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _btnGridDividerSubtract.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.GridDividerSubtract);
+        gridDividerPanel.Controls.Add(_btnGridDividerSubtract);
+
+        gridDividerPanel.Resize += (s, e) =>
+        {
+            int halfW = gridDividerPanel.Width / 2;
+            _btnGridDividerAdd.Width = halfW - 1;
+            _btnGridDividerSubtract.Location = new Point(halfW + 1, 0);
+            _btnGridDividerSubtract.Width = halfW - 1;
+        };
+
+        _toolPanel.Controls.Add(gridDividerPanel);
+        y += 34 + 2;
+
         var decalRuleLabel = new Label
         {
             Text = "Decal Rule:",

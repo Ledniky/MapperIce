@@ -46,7 +46,9 @@ public class ToolManager
         WireLV,
         PlaceSubstation,
         PlaceApc,
-        ReplaceWallWithWindow
+        ReplaceWallWithWindow,
+        GridDividerAdd,
+        GridDividerSubtract
     }
 
     private Tool _currentTool = Tool.None;

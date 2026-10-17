@@ -46,6 +46,24 @@ public class GridData
     public bool IsVisible { get; set; } = true;
     public string Color { get; set; } = "255,0,0,255";
     public bool IsStaticGrid { get; set; } = false;
+    public string ExteriorWallProto { get; set; } = "";
+    public bool ReplaceExteriorWalls { get; set; } = true;
+    public List<GridDividerAreaData> DividerAreas { get; set; } = new();
+}
+
+/// <summary>Сохранённая область разделения грида (инструмент «Разделитель гридов»).</summary>
+public class GridDividerAreaData
+{
+    public List<GridDividerRectData> AddRects { get; set; } = new();
+    public List<GridDividerRectData> SubRects { get; set; } = new();
+}
+
+public class GridDividerRectData
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
 }
 
 public class RoomGridData

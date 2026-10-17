@@ -230,6 +230,8 @@ public partial class MainForm : Form
     private Form? _spyCapabilitiesForm;
     private Button? _btnNetworkConfigurator;
     private Form? _networkConfiguratorForm;
+    private Button? _btnGridDividerAdd;
+    private Button? _btnGridDividerSubtract;
     // Режим выбора объекта на канвасе (кнопка «Выделить» в конфигураторе сетей)
     private bool _networkPickMode = false;
     // ===== Настройки внешнего вида =====
@@ -376,6 +378,7 @@ public partial class MainForm : Form
     public MainForm()
     {
         Text = "MapperIce";
+        Icon = AppIcon.Value;
         Size = new Size(1024, 768);
         WindowState = FormWindowState.Maximized;
 
@@ -451,9 +454,19 @@ public partial class MainForm : Form
         // ApplyTheme подменяет цвета фона/сетки на набор нужной темы и перекрашивает окна.
         ApplyTheme();
         Render();
-        // Приветственное уведомление при запуске — плавно появляется и исчезает
-        ToastNotification.Show(this, "Добро пожаловать в MapperIce!", "MapperIce", 4000);
+        // Подсказка при запуске (случайная из списка) — плавно появляется и исчезает
+        ToastNotification.Show(this, StartupTips[Random.Shared.Next(StartupTips.Length)], "Подсказка", 8000);
     }
+
+    // Короткие подсказки по возможностям редактора — при запуске показывается
+    // одна случайная. Держим их здесь, рядом с местом показа, чтобы текст не
+    // расходился с реальным поведением хоткеев и инструментов.
+    private static readonly string[] StartupTips =
+    {
+        "Ctrl+Z — отменить действие, Ctrl+Y — вернуть отменённое.",
+        "Ctrl+S — быстро сохранить проект в текущий файл.",
+        "В окне «Лупа» нажмите левой кнопкой мыши по id прототипа — он выберется как прототип для установки в проект."
+    };
 
 
     // === UNDO/REDO ===
@@ -710,8 +723,10 @@ public partial class MainForm : Form
         fileMenu.DropDownItems.Add("Сохранить проект", null, (s, e) => SaveProject());
         fileMenu.DropDownItems.Add("Загрузить проект", null, (s, e) => LoadProject());
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add("Экспорт в YAML", null, (s, e) => ExportToYAML());
-        fileMenu.DropDownItems.Add("Загрузить карту (YAML)", null, (s, e) => LoadMapFromYAML());
+        fileMenu.DropDownItems.Add("Сохранить в YML", null, (s, e) => ExportToYAML());
+        fileMenu.DropDownItems.Add("Загрузить из YML", null, (s, e) => LoadMapFromYAML());
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
+        fileMenu.DropDownItems.Add("Рендер в PNG", null, (s, e) => RenderToPng());
         menu.Items.Add(fileMenu);
 
         var settingsBtn = new ToolStripMenuItem("⚙ Настройки", null, (s, e) => ShowSettingsMenu());
@@ -967,6 +982,7 @@ public partial class MainForm : Form
             if (_themedForms.Contains(f)) continue;
 
             AppTheme.ApplyToForm(f);
+            AppIcon.ApplyToForm(f);
             _themedForms.Add(f);
         }
     }
@@ -1266,6 +1282,8 @@ public partial class MainForm : Form
             _decalInheritanceForm.Close();
         if (_btnDecalRule != null) _btnDecalRule.BackColor = AppTheme.ButtonBack;
         if (_btnNetworkConfigurator != null) _btnNetworkConfigurator.BackColor = AppTheme.ButtonBack;
+        if (_btnGridDividerAdd != null) _btnGridDividerAdd.BackColor = AppTheme.ButtonBack;
+        if (_btnGridDividerSubtract != null) _btnGridDividerSubtract.BackColor = AppTheme.ButtonBack;
         if (_btnAirAlarm != null) _btnAirAlarm.BackColor = AppTheme.ButtonBack;
         if (_btnFireAlarm != null) _btnFireAlarm.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceHolopad != null) _btnPlaceHolopad.BackColor = AppTheme.ButtonBack;
@@ -1432,6 +1450,12 @@ public partial class MainForm : Form
                 break;
             case ToolManager.Tool.NetworkConfigurator:
                 if (_btnNetworkConfigurator != null) _btnNetworkConfigurator.BackColor = AppTheme.SelectedBack;
+                break;
+            case ToolManager.Tool.GridDividerAdd:
+                if (_btnGridDividerAdd != null) _btnGridDividerAdd.BackColor = AppTheme.SelectedBack;
+                break;
+            case ToolManager.Tool.GridDividerSubtract:
+                if (_btnGridDividerSubtract != null) _btnGridDividerSubtract.BackColor = AppTheme.SelectedBack;
                 break;
             case ToolManager.Tool.Magnifier:
                 if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.SelectedBack;

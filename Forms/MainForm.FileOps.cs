@@ -110,13 +110,68 @@ public partial class MainForm
     /// </summary>
     private void ExportToYamlPath(string filePath)
     {
-        var yaml = YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings);
+        // Одно-гридовый экспорт — только если слоёв один И нет областей разделения
+        // (иначе область при экспорте должна уйти в отдельный грид).
+        bool hasDividerAreas = _map.Grids.Any(g =>
+            g.DividerAreas != null && g.DividerAreas.Count > 0 && g.DividerAreas.Any(a => a.AddRects.Count > 0));
+
+        var yaml = _map.Grids.Count <= 1 && !hasDividerAreas
+            ? YAMLGenerator.Generate(_map.ActiveGrid, _tileBuilder, _pipeLayers, _alarmSettings)
+            : YAMLGenerator.GenerateAll(_map.Grids, _tileBuilder, _pipeLayers, _alarmSettings);
         File.WriteAllText(filePath, yaml);
         _currentYamlPath = filePath;
 
         // Экспорт в YAML-источник — это сохранение работы, а не создание нового
         // проекта: сбрасываем привязку к .ice, чтобы Ctrl+S не уводило обратно туда
         ToastNotification.Show(this, $"Сохранено в YAML: {Path.GetFileName(filePath)}", "MapperIce", 2500);
+    }
+
+    /// <summary>
+    /// Рендерит всю карту (все видимые слои) в PNG-«скриншот» без интерфейса:
+    /// пол, стены, двери, декали и сущности, трубы/провода как реальные спрайты.
+    /// Аналитические оверлеи (цвет комнат, связи, обзор камер) в картинку не попадают.
+    /// </summary>
+    private void RenderToPng()
+    {
+        if (_map.Grids.Count == 0)
+        {
+            MessageBox.Show("Нет слоёв для рендера");
+            return;
+        }
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            DefaultExt = "png",
+            FileName = "map.png"
+        };
+
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            Cursor = Cursors.WaitCursor;
+            try
+            {
+                using var bitmap = _renderer.RenderFullMapPng(_map);
+                if (bitmap == null)
+                {
+                    MessageBox.Show("На карте нет содержимого для рендера");
+                    return;
+                }
+                bitmap.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
+
+            ToastNotification.Show(this, $"Рендер сохранён: {Path.GetFileName(dialog.FileName)}", "MapperIce", 2500);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка рендера: {ex.Message}");
+        }
     }
 
 
@@ -233,8 +288,21 @@ public partial class MainForm
                 PositionY = g.Position.Y,
                 IsVisible = g.IsVisible,
                 Color = $"{g.Color.A},{g.Color.R},{g.Color.G},{g.Color.B}",
-                IsStaticGrid = g.IsStaticGrid
+                IsStaticGrid = g.IsStaticGrid,
+                ExteriorWallProto = g.ExteriorWallProto,
+                ReplaceExteriorWalls = g.ReplaceExteriorWalls
             };
+
+            // Области разделения («Разделитель гридов»)
+            foreach (var area in g.DividerAreas)
+            {
+                var areaData = new GridDividerAreaData
+                {
+                    AddRects = area.AddRects.Select(r => new GridDividerRectData { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList(),
+                    SubRects = area.SubRects.Select(r => new GridDividerRectData { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList()
+                };
+                gridData.DividerAreas.Add(areaData);
+            }
 
             // Комнаты и двери
             foreach (var room in g.Rooms)
@@ -436,8 +504,21 @@ public partial class MainForm
                     Position = new PointF(gridData.PositionX, gridData.PositionY),
                     IsVisible = gridData.IsVisible,
                     Color = ParseColor(gridData.Color),
-                    IsStaticGrid = gridData.IsStaticGrid
+                    IsStaticGrid = gridData.IsStaticGrid,
+                    ExteriorWallProto = gridData.ExteriorWallProto,
+                    ReplaceExteriorWalls = gridData.ReplaceExteriorWalls
                 };
+
+                // Области разделения («Разделитель гридов»)
+                foreach (var areaData in gridData.DividerAreas)
+                {
+                    var area = new GridDividerArea
+                    {
+                        AddRects = areaData.AddRects.Select(r => new GridDividerRect { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList(),
+                        SubRects = areaData.SubRects.Select(r => new GridDividerRect { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }).ToList()
+                    };
+                    grid.DividerAreas.Add(area);
+                }
 
                 // Комнаты
                 foreach (var roomData in gridData.Rooms)
