@@ -28,7 +28,7 @@ public class Interrogation : SecurityPlusRoomType
 public class Permabrig : SecurityPlusRoomType
 {
     public override string Name => "Permabrig";
-    public override string? FaxName => "Perma";
+    public override string? FaxName => "Перма-бриг";
     public override string DisplayName => "Перма-бриг";
     public override string DoorProto => "AirlockSecurityLocked";
     public override string GlassDoorProto => "AirlockSecurityGlassLocked";

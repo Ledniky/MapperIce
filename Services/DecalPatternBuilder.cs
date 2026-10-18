@@ -73,6 +73,18 @@ public class DecalPatternBuilder
         return false;
     }
 
+    // Клетка вычтена из ФОРМЫ ручной области («➖ Вычесть» -> RemovedCells, либо
+    // прямоугольник Subtractions): лежит внутри габаритного прямоугольника области, но
+    // частью области уже не является. В режиме «Вокруг стен» такая клетка считается стеной:
+    // узор обводит получившийся вырез так же, как обводил бы настоящую стену комнаты.
+    // Сама клетка при этом остаётся пустой — декалей она не получает.
+    private static bool IsAreaHoleCell(ManualDecalArea? area, int x, int y)
+    {
+        if (area == null) return false;
+        if (x < area.X || x >= area.X + area.Width || y < area.Y || y >= area.Y + area.Height) return false;
+        return !area.Contains(x, y);
+    }
+
     // Клетка-проход стеной не считается: инструмент «Проход» сносит на ней стену
     // (TileBuilder пропускает её в стадии 2, а пол под ней уже лежит со стадии 1),
     // поэтому для узора это обычная клетка пола, а не клетка периметра.
@@ -126,6 +138,30 @@ private static bool IsPassageAnywhereInGrid(Grid grid, int x, int y)
         return false;
     }
 
+/// <summary>Есть ли за краем комнаты настоящий проходимый тайл: пол любой комнаты
+/// (не её стеновое кольцо), ручной тайл-пол или дверь. Нужен только для клетки-прохода:
+/// на ней край комнаты — не край узора, если за ним продолжается пол (коридор или
+/// соседняя комната). Пустота и чужое стеновое кольцо сторону НЕ открывают, иначе узор
+/// заезжал бы под чужую стену. Считается по модели грида, а не по TileGrid: пересчёт
+/// декалей идёт ДО UpdateTileGrid, и тайловый грид в этот момент ещё устаревший.</summary>
+private static bool HasWalkableTileBeyond(Grid grid, int x, int y)
+    {
+        // Дверь (в т.ч. стоящая на стеновом кольце) — проход, а не стена.
+        if (IsDoorAnywhereInGrid(grid, x, y)) return true;
+
+        foreach (var r in grid.Rooms)
+        {
+            if (r.Contains(x, y) && !IsWallCell(grid, r, x, y)) return true;
+        }
+
+        foreach (var tile in grid.Tiles)
+        {
+            if (tile.X == x && tile.Y == y) return true;
+        }
+
+        return false;
+    }
+
     private struct NeighborMask
     {
         public bool N, S, E, W, NE, NW, SE, SW;
@@ -133,14 +169,25 @@ private static bool IsPassageAnywhereInGrid(Grid grid, int x, int y)
     }
 
 
-private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, bool treatDoorAsWall)
+private static NeighborMask GetNeighborMask(Grid grid, Room room, int x, int y, bool treatDoorAsWall, ManualDecalArea? holeArea = null)
 {
     bool currentIsDoor = IsDoorAnywhereInGrid(grid, x, y);
+    // Проход — дыра в стене комнаты: край комнаты на нём узором не считается краем.
+    // Сторону закрывают только пустота за краем и чужая стена, а не прямоугольник комнаты.
+    bool currentIsPassage = !currentIsDoor && IsPassageAnywhereInGrid(grid, x, y);
 
     bool Obstacle(int nx, int ny)
     {
+        // Вычтенная из формы области клетка — виртуальная стена: узор ставится по её
+        // краю (Side/Corner/DeadEnd) точно так же, как у настоящей стены комнаты.
+        if (IsAreaHoleCell(holeArea, nx, ny))
+            return true;
+
         if (currentIsDoor && !room.Contains(nx, ny))
             return !IsFloorOfAnyRoom(grid, nx, ny);
+
+        if (currentIsPassage && !room.Contains(nx, ny))
+            return !HasWalkableTileBeyond(grid, nx, ny);
 
         return treatDoorAsWall
             ? IsObstacleSide(grid, room, nx, ny)
@@ -302,7 +349,7 @@ private List<PlacedDecal> BuildAutoPatternForLayer(Grid grid, Room room, DecalLa
 
                 var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
                 AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
-                PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, ownerId, result);
+                PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, IsPassageAnywhereInGrid(grid, x, y), ownerId, result);
             }
         }
 
@@ -394,7 +441,9 @@ private List<PlacedDecal> BuildWallRegionPattern(Grid grid, Room room, ManualDec
     }
 
     /// <summary>Режим 2 «Вокруг стен»: обычный узор вдоль настоящих стен комнаты, но выводятся
-    /// только декали, попадающие внутрь области (без виртуальной стены по границе области).</summary>
+    /// только декали, попадающие внутрь области (без виртуальной стены по границе области).
+    /// Клетки, вычтенные из формы области («➖ Вычесть», RemovedCells, и прямоугольники
+    /// Subtractions), считаются стеной: узор обводит вырез, а не просто пропускает клетку.</summary>
 private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDecalArea area, DecalLayer layer, int layerIndex, int ownerId)
 {
     var result = new List<PlacedDecal>();
@@ -413,9 +462,10 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
             // свою декаль, не перестраивая форму области.
             if (area.CutCells.Contains((x, y))) continue;
 
-            var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall);
+            // holeArea: вычтенная из формы клетка выступает стеной для маски соседей.
+            var mask = GetNeighborMask(grid, room, x, y, layer.TreatDoorAsWall, area);
             AddDoorFrameDecals(grid, layer, layerIndex, room, x, y, ownerId, result);
-            PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, ownerId, result);
+            PlacePatternDecals(grid, layer, layerIndex, room, x, y, mask, IsPassageAnywhereInGrid(grid, x, y), ownerId, result);
         }
     }
 
@@ -439,9 +489,9 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
     }
 
     /// <summary>Расстановка декалей по классификации маски соседей (Side/Corner/DeadEnd/Inner).</summary>
-    private void PlacePatternDecals(Grid grid, DecalLayer layer, int layerIndex, Room room, int x, int y, NeighborMask mask, int ownerId, List<PlacedDecal> result)
+    private void PlacePatternDecals(Grid grid, DecalLayer layer, int layerIndex, Room room, int x, int y, NeighborMask mask, bool isPassage, int ownerId, List<PlacedDecal> result)
     {
-        foreach (var (position, cornerDir) in ClassifyPositions(mask))
+        foreach (var (position, cornerDir) in ClassifyPositions(mask, isPassage))
         {
             if (position is DecalPosition.InnerCornerNE or DecalPosition.InnerCornerNW
                 or DecalPosition.InnerCornerSE or DecalPosition.InnerCornerSW)
@@ -480,7 +530,11 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
     /// в 1 тайл — стены сразу с двух ПРОТИВОПОЛОЖНЫХ сторон, N+S или E+W — возвращает
     /// два элемента).
     /// </summary>
-    private static List<(DecalPosition position, (int dx, int dy) cornerDir)> ClassifyPositions(NeighborMask m)
+    /// <param name="suppressDeadEnd">true для клетки-прохода: тупиковую заглушку
+    /// (DeadEnd) на проходе не ставим никогда — проход по определению не тупик, и в
+    /// проходе шириной 1 тайл заглушка ставилась из-за того, что край комнаты считался
+    /// концом узора.</param>
+    private static List<(DecalPosition position, (int dx, int dy) cornerDir)> ClassifyPositions(NeighborMask m, bool suppressDeadEnd = false)
     {
         var result = new List<(DecalPosition, (int dx, int dy))>();
         int ortho = m.OrthoCount;
@@ -500,6 +554,10 @@ private List<PlacedDecal> BuildWallsOnlyPattern(Grid grid, Room room, ManualDeca
         switch (ortho)
         {
             case 3:
+                // На проходе тупиковую заглушку не ставим вовсе: если после открытия
+                // стороны за краем комнаты ortho всё равно 3, лучшей позиции нет —
+                // пусть клетка останется без декали, а не с «тупиком».
+                if (suppressDeadEnd) break;
                 if (!m.N) result.Add((DecalPosition.DeadEndS, (0, 0)));
                 else if (!m.S) result.Add((DecalPosition.DeadEndN, (0, 0)));
                 else if (!m.E) result.Add((DecalPosition.DeadEndW, (0, 0)));

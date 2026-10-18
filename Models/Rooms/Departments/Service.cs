@@ -19,7 +19,7 @@ public abstract class ServiceRoomType : RoomType
 public class Service : ServiceRoomType
 {
     public override string Name => "Service";
-    public override string? FaxName => "Service";
+    public override string? FaxName => "Сервис";
     public override string DisplayName => "Сервис";
     public override string Description => "Комната сервиса. Базовое помещение для обслуживания и бытовых нужд экипажа.";
     public override string DoorProto => "AirlockServiceLocked";
@@ -89,7 +89,7 @@ public class Hydroponics : ServiceRoomType
 public class Chapel : ServiceRoomType
 {
     public override string Name => "Chapel";
-    public override string? FaxName => "Chapel";
+    public override string? FaxName => "Церковь";
     public override string DisplayName => "Церковь";
     public override string Description => "Церковь. Место для молитв и духовных размышлений с тёплым интерьером.";
     public override string DoorProto => "AirlockChapelLocked";
@@ -117,7 +117,7 @@ public class Theatre : ServiceRoomType
 public class Lawyer : ServiceRoomType
 {
     public override string Name => "Lawyer";
-    public override string? FaxName => "Lawyer";
+    public override string? FaxName => "Офис адвоката";
     public override string DisplayName => "Офис адвокат";
     public override string Description => "Кабинет адвоката. Офис для юридических консультаций и представительства.";
     public override string DoorProto => "AirlockLawyerLocked";

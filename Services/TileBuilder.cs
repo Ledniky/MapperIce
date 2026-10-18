@@ -29,29 +29,22 @@ public class TileBuilder
 
     private int GetPriority(string wall) => _wallPriority.GetValueOrDefault(wall, 2);
     private string BestWall(string a, string b) => GetPriority(a) >= GetPriority(b) ? a : b;
-private Room? GetRoomAt(List<Room> rooms, int x, int y) => 
+
+    private Room? GetRoomAt(List<Room> rooms, int x, int y) => 
         rooms.FirstOrDefault(r => r.Contains(x, y));
 
 
-private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int y)
+private string? GetBoundaryWallProto(Room room, int x, int y)
     {
         var directions = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-        bool isBoundary = false;
-        string wall = room.WallProto;
 
         foreach (var (dx, dy) in directions)
         {
-            int nx = x + dx, ny = y + dy;
-            if (room.Contains(nx, ny)) continue; // сосед - та же комната, внутренняя сторона
-
-            isBoundary = true;
-
-            var neighborRoom = GetRoomAt(allRooms, nx, ny);
-            if (neighborRoom != null && neighborRoom != room)
-                wall = BestWall(wall, neighborRoom.WallProto);
+            if (!room.Contains(x + dx, y + dy))
+                return room.WallProto; // стена всегда своя — прототип комнаты-владельца клетки
         }
 
-        return isBoundary ? wall : null;
+        return null;
     }
 
     private bool IsEmptyTile(int nx, int ny, List<Room> allRooms, TileGrid tileGrid)
@@ -111,7 +104,7 @@ private string? GetBoundaryWallProto(Room room, List<Room> allRooms, int x, int 
     /// не является таким углом. Тот же диагональный признак уже используется в
     /// Renderer.DrawConcaveCornerConnectors и DecalPatternBuilder.TryAddInnerCorner.
     /// </summary>
-private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x, int y)
+private string? GetConcaveCornerWallProto(Room room, int x, int y)
     {
         var diagonals = new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) };
 
@@ -133,12 +126,7 @@ private string? GetConcaveCornerWallProto(Room room, List<Room> allRooms, int x,
                                          dyi >= room.Y && dyi < room.Y + room.Height;
             if (!diagonalInsideBounds) continue; // естественная внешняя граница — не пинч
 
-            string wall = room.WallProto;
-            var neighborRoom = GetRoomAt(allRooms, dxi, dyi);
-            if (neighborRoom != null && neighborRoom != room)
-                wall = BestWall(wall, neighborRoom.WallProto);
-
-            return wall; // одной подходящей диагонали (реально вырезанной) достаточно
+            return room.WallProto; // одной подходящей диагонали (реально вырезанной) достаточно
         }
 
         return null;
@@ -239,7 +227,7 @@ foreach (var room in allRooms)
                     if (!hasAnyBoundary) continue;                       // не граница вообще
                     if (allBoundariesCovered) continue;                  // общая стена — не дублируем
 
-                    string? wall = GetBoundaryWallProto(room, allRooms, x, y);
+                    string? wall = GetBoundaryWallProto(room, x, y);
                     if (wall != null)
                     {
                         // «Наружная стена»: если на слое задан прототип наружной стены
@@ -277,7 +265,7 @@ foreach (var room in allRooms)
 
                     var existing = tileGrid.GetTile(x, y);
                     if (existing != null && existing.Content == TileContent.Wall) continue; // уже стена из прямого прохода
-                    string? wall = GetConcaveCornerWallProto(room, allRooms, x, y);
+                    string? wall = GetConcaveCornerWallProto(room, x, y);
                     if (wall != null)
                         tileGrid.SetTile(x, y, TileContent.Wall, wall, room.RoomType, roomUid);
                 }
@@ -286,41 +274,32 @@ foreach (var room in allRooms)
 
 
 
-        // 2в. РАЗРЕШЕНИЕ ЛУЧШЕЙ СТЕНЫ НА СТЫКЕ КОМНАТ (когда стены двух разных комнат
-        // физически соприкасаются друг с другом, а не через клетку пола) — раньше это
-        // пересчитывалось Renderer'ом и YAMLGenerator'ом заново на КАЖДЫЙ кадр рендера
-        // (4 соседских Dictionary-просмотра на каждую стеновую клетку), хотя результат
-        // зависит только от геометрии комнат и не меняется между кадрами. Считаем один раз
-        // здесь при пересборке TileGrid и сразу перезаписываем ProtoId — рендер и экспорт
-        // просто читают готовое значение.
-        var wallTilesSnapshot = tileGrid.GetTilesByContent(TileContent.Wall).ToList();
-        var originalWallProto = wallTilesSnapshot.ToDictionary(t => (t.X, t.Y), t => t.ProtoId ?? "WallSolid");
-
-        foreach (var tile in wallTilesSnapshot)
+        // 2в. ОБЩАЯ СТЕНА — по приоритету, но строго в пределах одного тайла от
+        // территории комнаты: клетка стены принимает прототип соседней комнаты
+        // только если та комната граничит с клеткой ПОЛОМ. Клетка стены соседа,
+        // примыкающая к стене же, не учитывается — иначе прототип приоритетной
+        // комнаты расползался бы на 2 тайла от её территории.
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall).ToList())
         {
-            string currentWall = originalWallProto[(tile.X, tile.Y)];
-            string bestWall = currentWall;
-            int bestPriority = GetPriority(currentWall);
+            string ownWall = tile.ProtoId ?? "WallSolid";
+            string bestWall = ownWall;
 
-            var neighborOffsets = new[] { (0, -1), (0, 1), (-1, 0), (1, 0) };
-            foreach (var (dx, dy) in neighborOffsets)
+            foreach (var (dx, dy) in _wallDirs)
             {
                 var neighborTile = tileGrid.GetTile(tile.X + dx, tile.Y + dy);
-                if (neighborTile == null || neighborTile.Content != TileContent.Wall) continue;
-                if (neighborTile.RoomUid == tile.RoomUid || neighborTile.RoomUid == -1) continue;
+                if (neighborTile == null || neighborTile.Content != TileContent.Floor) continue;
+                if (doorPositions.Contains((neighborTile.X, neighborTile.Y))) continue;
+                if (passagePositions.Contains((neighborTile.X, neighborTile.Y))) continue;
+                if (windowPositions.Contains((neighborTile.X, neighborTile.Y))) continue;
 
-                if (!originalWallProto.TryGetValue((neighborTile.X, neighborTile.Y), out var neighborWall))
-                    neighborWall = neighborTile.ProtoId ?? "WallSolid";
+                var neighborRoom = allRooms.FirstOrDefault(r => r.GetHashCode() == neighborTile.RoomUid)
+                                   ?? GetRoomAt(allRooms, neighborTile.X, neighborTile.Y);
+                if (neighborRoom == null || neighborRoom.GetHashCode() == tile.RoomUid) continue;
 
-                int neighborPriority = GetPriority(neighborWall);
-                if (neighborPriority > bestPriority)
-                {
-                    bestPriority = neighborPriority;
-                    bestWall = neighborWall;
-                }
+                bestWall = BestWall(bestWall, neighborRoom.WallProto);
             }
 
-            if (bestWall != currentWall)
+            if (bestWall != ownWall)
                 tile.ProtoId = bestWall;
         }
 
@@ -415,48 +394,6 @@ private void ApplyDoorTile(TileGrid tileGrid, List<Room> allRooms, Door door, st
 }
 
 
-
-    // Этот метод больше не используется, но оставляем для совместимости
-    private string GetBestWallForExistingTile(TileGrid tileGrid, int x, int y)
-    {
-        var tile = tileGrid.GetTile(x, y);
-        if (tile == null || tile.Content != TileContent.Wall)
-            return "WallSolid";
-
-        string currentWall = tile.ProtoId ?? "WallSolid";
-        int currentPriority = GetPriority(currentWall);
-
-        var neighbors = new[]
-        {
-            (x, y - 1),
-            (x, y + 1),
-            (x - 1, y),
-            (x + 1, y)
-        };
-
-        string bestWall = currentWall;
-        int bestPriority = currentPriority;
-
-        foreach (var (nx, ny) in neighbors)
-        {
-            var neighbor = tileGrid.GetTile(nx, ny);
-            if (neighbor != null && 
-                neighbor.Content == TileContent.Wall && 
-                neighbor.RoomUid != tile.RoomUid &&
-                neighbor.RoomUid != -1)
-            {
-                string neighborWall = neighbor.ProtoId ?? "WallSolid";
-                int neighborPriority = GetPriority(neighborWall);
-                if (neighborPriority > bestPriority)
-                {
-                    bestPriority = neighborPriority;
-                    bestWall = neighborWall;
-                }
-            }
-        }
-
-        return bestWall;
-    }
 
     public string GetBestWallAt(TileGrid tileGrid, int x, int y)
     {

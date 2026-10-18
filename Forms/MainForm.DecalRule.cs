@@ -493,7 +493,20 @@ public partial class MainForm
                 };
                 row.Controls.Add(btnDown);
 
-                var btnDel = new Button { Text = "🗑", Location = new Point(384, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
+                var btnDuplicate = new Button { Text = "➕", Location = new Point(384, 2), Width = 24, Height = 24, FlatStyle = FlatStyle.Flat };
+                var duplicateTip = new ToolTip();
+                duplicateTip.SetToolTip(btnDuplicate, "Дублировать слой (копия пака, цвета, режима и всех ручных областей)");
+                btnDuplicate.Click += (s, e) =>
+                {
+                    var copy = layer.Clone();
+                    copy.Name = MakeUniqueLayerName(room.AutoDecalRule, layer.Name);
+                    room.AutoDecalRule.Layers.Insert(idx + 1, copy);
+                    RebuildList();
+                    ApplyLiveChanges();
+                };
+                row.Controls.Add(btnDuplicate);
+
+                var btnDel = new Button { Text = "🗑", Location = new Point(412, 2), Width = 22, Height = 24, FlatStyle = FlatStyle.Flat };
                 btnDel.Click += (s, e) =>
                 {
                     room.AutoDecalRule.Layers.RemoveAt(idx);
@@ -579,6 +592,16 @@ public partial class MainForm
             if (start < 0) return 0;
             int.TryParse(name.Substring(start + 1), out int num);
             return num;
+        }
+
+        // Имя для копии слоя: "(копия)", затем "(копия 2)", "(копия 3)"… — без дублей имён
+        string MakeUniqueLayerName(DecalRuleSet rule, string baseName)
+        {
+            string candidate = $"{baseName} (копия)";
+            int n = 2;
+            while (rule.Layers.Any(l => l.Name == candidate))
+                candidate = $"{baseName} (копия {n++})";
+            return candidate;
         }
 
         btnInherit.Click += (s, e) =>

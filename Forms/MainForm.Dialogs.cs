@@ -468,6 +468,123 @@ public partial class MainForm
         _filterLabelForm.Show(this);
     }
 
+    /// <summary>
+    /// Окно адреса факса — по виду и поведению то же, что «Настройка маркера фильтра»
+    /// у труб утилизации: поле с автодополнением по известным адресам и OK/Отмена.
+    /// Возвращает введённый адрес или null при отмене/пустом вводе. Вызывается и при
+    /// установке факса в комнате без адреса, и при повторном клике инструментом по
+    /// уже стоящему факсу (перезапись адреса).
+    /// </summary>
+    private string? ShowFaxAddressDialog(string? currentAddress, string faxProto)
+    {
+        using var form = new Form
+        {
+            Text = "Адрес факса",
+            Size = new Size(400, 215),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ShowInTaskbar = false,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            Owner = this
+        };
+
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            RowCount = 3,
+            ColumnCount = 1,
+            AutoSize = true
+        };
+
+        panel.Controls.Add(new Label
+        {
+            Text = $"Адрес факса (name компонента FaxMachine), прототип: {faxProto}",
+            Font = new Font("Arial", 9),
+            AutoSize = true
+        }, 0, 0);
+
+        // ComboBox как основное поле ввода с автоподсказками — как у тега фильтра
+        var addressCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDown,
+            Text = currentAddress ?? "",
+            Font = new Font("Arial", 10),
+            Height = 28,
+            Width = 340,
+            DropDownHeight = 250
+        };
+
+        // Подсказки: адреса из свойств типов комнат + уже стоящие на карте факсы
+        var knownAddresses = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var type in _roomTypeManager.GetAllRoomTypes())
+            if (!string.IsNullOrWhiteSpace(type.FaxName)) knownAddresses.Add(type.FaxName!.Trim());
+
+        var grid = _map.ActiveGrid;
+        if (grid != null)
+            foreach (var fax in grid.Entities.OfType<FaxMachineEntity>())
+                if (!string.IsNullOrWhiteSpace(fax.FaxName)) knownAddresses.Add(fax.FaxName.Trim());
+
+        foreach (var address in knownAddresses)
+            addressCombo.Items.Add(address);
+
+        panel.Controls.Add(addressCombo, 0, 1);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "Введите адрес или выберите из подсказок",
+            Font = new Font("Arial", 7),
+            ForeColor = Color.Gray,
+            AutoSize = true
+        }, 0, 2);
+
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(10) };
+
+        var btnOk = new Button
+        {
+            Text = "OK",
+            Location = new Point(btnPanel.Width - 100, 10),
+            Width = 80,
+            Height = 28,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Enabled = !string.IsNullOrWhiteSpace(currentAddress)
+        };
+        btnOk.Click += (s, e) =>
+        {
+            // Пустой адрес не принимаем: без него факс не попадает в экспорт
+            if (string.IsNullOrWhiteSpace(addressCombo.Text)) return;
+            form.DialogResult = DialogResult.OK;
+            form.Close();
+        };
+        btnPanel.Controls.Add(btnOk);
+
+        var btnCancel = new Button
+        {
+            Text = "Отмена",
+            Location = new Point(btnPanel.Width - 190, 10),
+            Width = 80,
+            Height = 28,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            DialogResult = DialogResult.Cancel
+        };
+        btnPanel.Controls.Add(btnCancel);
+
+        addressCombo.TextChanged += (s, e) =>
+            btnOk.Enabled = !string.IsNullOrWhiteSpace(addressCombo.Text);
+
+        form.AcceptButton = btnOk;
+        form.CancelButton = btnCancel;
+
+        form.Controls.Add(panel);
+        form.Controls.Add(btnPanel);
+
+        addressCombo.SelectAll();
+        addressCombo.Focus();
+
+        return form.ShowDialog(this) == DialogResult.OK ? addressCombo.Text.Trim() : null;
+    }
+
     private void ShowUtilSettingsDialog()
     {
         if (_utilSettingsForm != null && !_utilSettingsForm.IsDisposed)

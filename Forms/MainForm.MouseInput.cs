@@ -1199,10 +1199,25 @@ public partial class MainForm
             // Факс ставится по центру клетки комнаты, как комод. Прототип берётся из
             // свойств комнаты (FaxProto — у капитана свой), а адрес (FaxName) запекается
             // в привязку отдельным полем: он же уходит в компонент FaxMachine при экспорте.
+            // Пустой адрес у комнаты установку больше не блокирует — адрес вводится
+            // вручную в окне при установке (см. PlaceOrEditFax). По уже стоящему факсу
+            // инструмент открывает то же окно для перезаписи адреса, поэтому превью
+            // показывает сам факс, а не красную рамку.
             case ToolManager.Tool.PlaceFax:
-                if (room == null || string.IsNullOrEmpty(room.FaxName) || LinkedEntityCellBusy<FaxMachineEntity>(grid, tileX, tileY))
+            {
+                if (room == null)
                     return ("", tileX + 0.5f, tileY + 0.5f, 0f);
+
+                var existingFax = grid.Entities.OfType<FaxMachineEntity>()
+                    .FirstOrDefault(f => (int)f.X == tileX && (int)f.Y == tileY);
+                if (existingFax != null)
+                {
+                    string existingProto = string.IsNullOrEmpty(existingFax.FaxProto) ? "FaxMachineBase" : existingFax.FaxProto;
+                    return (existingProto, existingFax.X, existingFax.Y, existingFax.Rotation);
+                }
+
                 return (string.IsNullOrEmpty(room.FaxProto) ? "FaxMachineBase" : room.FaxProto, tileX + 0.5f, tileY + 0.5f, 0f);
+            }
 
             default:
                 return ("", tileX + 0.5f, tileY + 0.5f, 0f);
@@ -1219,6 +1234,14 @@ public partial class MainForm
         var grid = _map.ActiveGrid;
         if (grid == null) return;
 
+        // Факс — особый случай: адрес может отсутствовать в свойствах комнаты и
+        // вводится в окне, а клик по уже стоящему факсу открывает то же окно.
+        if (tool == ToolManager.Tool.PlaceFax)
+        {
+            PlaceOrEditFax(tileX, tileY);
+            return;
+        }
+
         var (proto, x, y, rotation) = ResolveLinkedEntityPlacement(tool, tileX, tileY);
         if (string.IsNullOrEmpty(proto)) return;
 
@@ -1234,8 +1257,6 @@ public partial class MainForm
             ToolManager.Tool.PlaceCamera => new CameraEntity { Proto = proto, CameraProto = proto },
             ToolManager.Tool.PlaceDresser => new DresserEntity { Proto = proto, DresserProto = proto },
             ToolManager.Tool.PlaceIntercom => new IntercomEntity { Proto = proto, IntercomProto = proto },
-            // Адрес факса запекается при установке — из свойств комнаты, в которой стоит клетка
-            ToolManager.Tool.PlaceFax => new FaxMachineEntity { Proto = proto, FaxProto = proto, FaxName = room?.FaxName ?? "" },
             _ => new MapEntity { Proto = proto }
         };
 
@@ -1244,6 +1265,63 @@ public partial class MainForm
         entity.Rotation = rotation;
 
         grid.Entities.Add(entity);
+        SaveState();
+        UpdateTileGrid();
+        Render();
+    }
+
+    /// <summary>
+    /// Установка или переадресация факса. Адрес по умолчанию берётся из свойств
+    /// комнаты (Room.FaxName) и запекается в привязку; если там пусто — открывается
+    /// окно ввода адреса (как тег фильтра у труб утилизации), и факс ставится с
+    /// введённой строкой. Повторный клик инструментом по уже стоящему факсу открывает
+    /// то же окно с текущим адресом и позволяет перезаписать его. Отмена (или пустой
+    /// адрес) не ставит и не меняет ничего.
+    /// </summary>
+    private void PlaceOrEditFax(int tileX, int tileY)
+    {
+        var grid = _map.ActiveGrid;
+        if (grid == null) return;
+
+        // По уже стоящему факсу — перезапись адреса.
+        var existing = grid.Entities.OfType<FaxMachineEntity>()
+            .FirstOrDefault(f => (int)f.X == tileX && (int)f.Y == tileY);
+
+        if (existing != null)
+        {
+            string? newAddress = ShowFaxAddressDialog(existing.FaxName, existing.FaxProto);
+            if (string.IsNullOrEmpty(newAddress) || newAddress == existing.FaxName) return;
+
+            existing.FaxName = newAddress;
+            SaveState();
+            UpdateTileGrid();
+            Render();
+            return;
+        }
+
+        var (proto, x, y, rotation) = ResolveLinkedEntityPlacement(ToolManager.Tool.PlaceFax, tileX, tileY);
+        if (string.IsNullOrEmpty(proto)) return;
+
+        var room = grid.Rooms.FirstOrDefault(r => r.Contains(tileX, tileY));
+
+        // В комнате адрес может быть не задан — тогда спрашиваем его вручную.
+        string? faxName = room?.FaxName?.Trim();
+        if (string.IsNullOrEmpty(faxName))
+        {
+            faxName = ShowFaxAddressDialog("", proto);
+            if (string.IsNullOrEmpty(faxName)) return;
+        }
+
+        grid.Entities.Add(new FaxMachineEntity
+        {
+            Proto = proto,
+            FaxProto = proto,
+            FaxName = faxName,
+            X = x,
+            Y = y,
+            Rotation = rotation
+        });
+
         SaveState();
         UpdateTileGrid();
         Render();

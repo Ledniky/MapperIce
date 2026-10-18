@@ -15,7 +15,7 @@ public abstract class ServicePlusRoomType : RoomType
 public class Library : ServicePlusRoomType
 {
     public override string Name => "Library";
-    public override string? FaxName => "Library";
+    public override string? FaxName => "Библиотека";
     public override string DisplayName => "Библиотека";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";
@@ -142,7 +142,7 @@ public class GameRoom : ServicePlusRoomType
 public class Newsroom : ServicePlusRoomType
 {
     public override string Name => "Newsroom";
-    public override string? FaxName => "Newsroom";
+    public override string? FaxName => "Новостная студия";
     public override string DisplayName => "Новостная студия";
     public override string DoorProto => "AirlockServiceLocked";
     public override string GlassDoorProto => "AirlockServiceGlassLocked";

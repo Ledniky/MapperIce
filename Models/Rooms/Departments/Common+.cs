@@ -43,6 +43,7 @@ public class Cryo : CommonPlusRoomType
     public override string Name => "Cryo";
     public override string DisplayName => "Криосон";
     public override string? HolopadProto => "HolopadGeneralCryosleep";
+    public override string? BedProto => "CryogenicSleepUnitSpawnerLateJoin";
     public override int Priority => 10;
 }
 

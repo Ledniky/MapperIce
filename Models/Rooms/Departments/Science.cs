@@ -21,7 +21,7 @@ public abstract class ScienceRoomType : RoomType
 public class Science : ScienceRoomType
 {
     public override string Name => "Science";
-    public override string? FaxName => "Science";
+    public override string? FaxName => "Научный отсек";
     public override string DisplayName => "Научный отсек";
     public override string Description => "Научная комната. Основной лабораторный отсек для научных исследований и экспериментов.";
     public override string DoorProto => "AirlockScienceLocked";

@@ -3,6 +3,7 @@
 using MapperIce.Models;
 using MapperIce.Services;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MapperIce.Forms;
 
@@ -204,8 +205,8 @@ public partial class MainForm
 
     /// <summary>
     /// Быстрое сохранение по Ctrl+S. Если карта открыта из YAML — пишет в тот же
-    /// .yml/.yaml. Если открыт .ice — создаёт новый файл с префиксом даты
-    /// «день_месяц_год_» рядом с исходным. Если файла ещё нет — диалог «Сохранить как».
+    /// .yml/.yaml. Если открыт .ice — пишет файл рядом с исходным, заменяя префикс
+    /// даты «день_месяц_год_» на сегодняшний. Если файла ещё нет — диалог «Сохранить как».
     /// </summary>
     private void QuickSaveProject()
     {
@@ -238,17 +239,20 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Возвращает путь к файлу рядом с исходным, но с префиксом текущей даты
-    /// «день_месяц_год_» перед именем: C:\...\16_10_2026_map.ice. Если имя уже
-    /// начинается с сегодняшнего префикса, дополнительную дату не добавляем —
-    /// повторный Ctrl+S в тот же день просто перезаписывает тот же файл.
+    /// Возвращает путь к файлу рядом с исходным, где префикс даты «день_месяц_год_»
+    /// заменён на сегодняшний: C:\...\16_10_2026_map.ice → C:\...\18_10_2026_map.ice.
+    /// Старый префикс снимается, поэтому дата не накапливается в имени. Если дата
+    /// уже сегодняшняя — путь не меняется и Ctrl+S перезаписывает тот же файл.
     /// </summary>
+    private static readonly Regex DatePrefixRegex = new(@"^\d{2}_\d{2}_\d{4}_", RegexOptions.Compiled);
+
     private static string GetDatePrefixedPath(string path)
     {
         var dir = Path.GetDirectoryName(path);
         var name = Path.GetFileName(path);
-        var prefix = $"{DateTime.Now:dd_MM_yyyy}_";
-        var newName = name.StartsWith(prefix) ? name : prefix + name;
+        var bareName = DatePrefixRegex.Replace(name, "");
+        if (bareName.Length == 0) bareName = name;
+        var newName = $"{DateTime.Now:dd_MM_yyyy}_{bareName}";
         return string.IsNullOrEmpty(dir) ? newName : Path.Combine(dir, newName);
     }
 
@@ -780,7 +784,11 @@ public partial class MainForm
 
             if (_map.Grids.Count > 0 && _map.ActiveGrid != null)
             {
-                _doorUpdater.UpdateAllDoors(_map.ActiveGrid);
+                // Пересчитываем владельцев и прототипы дверей по актуальным
+                // приоритетам типов: в файле могли сохраниться двери, посчитанные
+                // ещё до изменения приоритета, и без этого они оставались бы
+                // «чужими» до первого редактирования комнаты
+                _doorUpdater.RecalculateAllDoors(_map.ActiveGrid);
                 RecalculateDecalPatterns();
                 UpdateTileGrid();
                 SaveState();

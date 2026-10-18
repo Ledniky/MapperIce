@@ -68,18 +68,36 @@ public class DoorUpdater
 
     /// <summary>
     /// Комната с наивысшим приоритетом среди тех, что содержат клетку (x, y).
-    /// При равном приоритете побеждает последняя добавленная (обычно "верхняя" по отрисовке).
+    /// Комнаты, лишь примыкающие к клетке через сторону, не участвуют: иначе
+    /// приоритетная комната навязывала бы свой тип шлюзам на тайл вне своей
+    /// территории. Общая стена учитывается сама собой — клетка общей стены
+    /// принадлежит обеим комнатам, и приоритет сравнивается между ними.
+    /// При равном приоритете побеждает последняя добавленная.
     /// </summary>
     private Room? GetBestRoomAt(Grid grid, int x, int y)
     {
-        var candidates = grid.Rooms
+        var owners = grid.Rooms
             .Where(r => r.Contains(x, y))
             .ToList();
 
-        if (candidates.Count == 0) return null;
+        // Дверь вне всех комнат (снят магнит) не привязывается к соседней
+        if (owners.Count == 0) return null;
 
-        int maxPriority = candidates.Max(r => r.Priority);
-        return candidates.Last(r => r.Priority == maxPriority);
+        int maxPriority = owners.Max(GetRoomPriority);
+        return owners.Last(r => GetRoomPriority(r) == maxPriority);
+    }
+
+    /// <summary>
+    /// Актуальный приоритет комнаты: берём из типа, чтобы правки приоритета
+    /// применялись сразу, а старые проекты с Priority = 0 не проигрывали всем.
+    /// Если тип удалён — откатываемся к значению, сохранённому в комнате.
+    /// </summary>
+    private int GetRoomPriority(Room room)
+    {
+        if (_roomTypeManager.TypeExists(room.RoomType))
+            return _roomTypeManager.GetPriorityForType(room.RoomType);
+
+        return room.Priority;
     }
 
     private void AddFirelock(Grid grid, int x, int y, string doorType)

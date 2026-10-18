@@ -19,7 +19,7 @@ public abstract class MedicalRoomType : RoomType
 public class Medical : MedicalRoomType
 {
     public override string Name => "Medical";
-    public override string? FaxName => "Medical";
+    public override string? FaxName => "Медицинский отсек";
     public override string DisplayName => "Медицинский отсек";
     public override string Description => "Медицинская комната. Основной медицинский отсек для лечения и диагностики.";
     public override string DoorProto => "AirlockMedicalLocked";
@@ -82,7 +82,7 @@ public class Morgue : MedicalRoomType
 public class ChiefMedicalOfficer : MedicalRoomType
 {
     public override string Name => "ChiefMedicalOfficer";
-    public override string? FaxName => "CMO's Office";
+    public override string? FaxName => "Кабинет главного врача";
     public override string DisplayName => "Главный врач";
     public override string Description => "Кабинет главного врача. Офис руководителя медицинского отдела станции.";
     public override string DoorProto => "AirlockChiefMedicalOfficerLocked";

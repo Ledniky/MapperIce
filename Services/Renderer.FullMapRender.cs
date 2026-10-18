@@ -222,12 +222,12 @@ public partial class Renderer
 
     /// <summary>
     /// Рисует все провода грида реальными спрайтами кабелей (CableHV/CableMV/
-    /// CableApcExtension) — как сущности, а не линии-оверлеи.
+    /// CableApcExtension) — как сущности, а не линии-оверлеи. Соединение по соседям
+    /// (CableVisualizer) считается и с кабелями-сущностями: индекс кабелей уже собран
+    /// в DrawRenderLayer по всему гриду.
     /// </summary>
     private void DrawWireSprites(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
-        // Провода инструмента в экспорте PNG рисуются как раньше — обычным
-        // статическим спрайтом прототипа (без подбора стейта по соседям).
         var wires = grid.Entities.OfType<WireEntity>()
             .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
             .ToList();
@@ -237,7 +237,9 @@ public partial class Renderer
         {
             string? proto = WireBuilder.GetCableProtoForWireType(wire.WireType);
             if (proto == null) continue;
-            DrawSingleEntity(g, proto, wire.X, wire.Y, 0f, tileSize, viewOffset, gridOffset, cableSmoothing: false);
+            // Провод хранится в целых координатах клетки, а кабель-сущность — в её центре
+            // (X/Y = tile + 0.5): +0.5 ставит спрайт ровно на свой тайл.
+            DrawSingleEntity(g, proto, wire.X + 0.5f, wire.Y + 0.5f, 0f, tileSize, viewOffset, gridOffset);
         }
     }
 }

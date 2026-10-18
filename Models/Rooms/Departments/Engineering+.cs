@@ -59,7 +59,7 @@ public class Solars : EngineeringPlusRoomType
 public class Telecoms : EngineeringPlusRoomType
 {
     public override string Name => "Telecoms";
-    public override string? FaxName => "Telecomms";
+    public override string? FaxName => "Телекоммуникации";
     public override string DisplayName => "Телекоммуникации";
     public override string DoorProto => "AirlockEngineeringLocked";
     public override string GlassDoorProto => "AirlockEngineeringGlassLocked";

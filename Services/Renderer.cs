@@ -421,21 +421,26 @@ public partial class Renderer
                 if (ShowCameraAreas)
                     DrawCameraCoverageOverlay(g, grid, tileGrid, tileSize, viewOffset, gridOffset, visibleRect);
 
-                // Электросеть — отдельный слой поверх труб, та же идея (линии между
-                // соседями одного типа + точки узлов), без специфичных для труб
-                // маркеров фильтра/стрелок утилизации
+                // Электросеть — отдельный слой поверх труб: провода инструмента рисуются
+                // теми же спрайтами кабелей, что и сущности из репозитория (с подбором
+                // стейта по соседям), а линии/точки остаются только фолбэком.
                 if (ShowWires)
                 {
-                    // Кабели, нарисованные ИНСТРУМЕНТОМ, остаются прежними линиями/точками.
-                    // Спрайтовая отрисовка по соседям — только для кабелей-сущностей,
-                    // поставленных из панели репозитория (см. DrawSingleEntity).
+                    // Кабели, нарисованные ИНСТРУМЕНТОМ, рисуются теми же спрайтами и с тем
+                    // же соединением по соседям, что и кабели-сущности из репозитория
+                    // (CableVisualizer). Линии/точки остаются только фолбэком — если для
+                    // типа провода нет прототипа кабеля или не загрузился стейт спрайта.
                     var allWires = _wireBuilder.GetWires(grid)
                         .Where(w => IsPointVisible(w.X, w.Y, visibleRect))
                         .OrderBy(w => w.Y)
                         .ToList();
                     DrawLvCoverageOverlay(g, allWires, tileSize, viewOffset, gridOffset);
-                    DrawWireLinesBatch(g, allWires, tileSize, viewOffset, gridOffset); if (allWires.Count > 0)
-                        DrawWireDotsBatch(g, allWires, tileSize, viewOffset, gridOffset);
+                    var unrenderedWires = DrawWireCableSprites(g, allWires, tileSize, viewOffset, gridOffset);
+                    if (unrenderedWires.Count > 0)
+                    {
+                        DrawWireLinesBatch(g, unrenderedWires, tileSize, viewOffset, gridOffset);
+                        DrawWireDotsBatch(g, unrenderedWires, tileSize, viewOffset, gridOffset);
+                    }
 
                     if (_wireBuilder.IsDrawing && _wireBuilder.StartPoint.HasValue)
                     {
@@ -446,7 +451,10 @@ public partial class Renderer
                     }
                 }
 
-                if (ShowAlarmConnections && ShowPipeOverlay && _currentNetwork != null)
+                // Связи атмо-сигнализаций — независимый слой: флаг «🔧 Трубы» на них
+                // не влияет (раньше из-за лишнего условия ShowPipeOverlay кнопка 🔗
+                // ничего не показывала при выключенных трубах).
+                if (ShowAlarmConnections && _currentNetwork != null)
                 {
                     DrawAlarmConnections(g, _currentNetwork, tileSize, viewOffset, gridOffset, visibleRect);
                 }
@@ -1211,7 +1219,39 @@ public partial class Renderer
         return true;
     }
 
-    /// <summary>Есть ли на клетке (x,y) кабель-сущность с тем же ключом связи.</summary>
+    /// <summary>
+    /// Провода, поставленные инструментом «Электросеть», рисуются теми же спрайтами и с
+    /// тем же подбором стейта по соседям, что и кабели-сущности из репозитория
+    /// (CableVisualizer): стейт "{StatePrefix}{mask}", маска — соседи с тем же ключом
+    /// связи (HV→HVPower, MV→MVPower, LV→Apc) в индексе _cableKeysByTile, куда входят
+    /// и кабели-сущности, и провода инструмента. Возвращает провода, для которых спрайт
+    /// нарисовать не удалось (нет прототипа кабеля/стейта) — их вызывающий рисует
+    /// прежними линиями и точками.
+    /// </summary>
+    private List<WireEntity> DrawWireCableSprites(Graphics g, List<WireEntity> wires, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var failed = new List<WireEntity>();
+        if (wires.Count == 0) return failed;
+
+        foreach (var wire in wires)
+        {
+            string? proto = WireBuilder.GetCableProtoForWireType(wire.WireType);
+            var info = proto != null ? GetCableRenderInfo(proto) : null;
+
+            // WireEntity хранится в целых координатах клетки, а кабель-сущность — в её
+            // центре (X/Y = tile + 0.5): +0.5 переводит провод в ту же систему координат,
+            // иначе спрайт съехал бы на полтайла.
+            if (proto == null || info == null ||
+                !DrawSingleCableEntity(g, proto, info, wire.X + 0.5f, wire.Y + 0.5f, tileSize, viewOffset, gridOffset))
+            {
+                failed.Add(wire);
+            }
+        }
+
+        return failed;
+    }
+
+    /// <summary>Есть ли на клетке (x,y) кабель с тем же ключом связи (сущность или провод).</summary>
     private bool HasCableNeighbor(int x, int y, string key)
     {
         return !string.IsNullOrEmpty(key) &&
@@ -2725,10 +2765,10 @@ public partial class Renderer
     // через панель репозитория (сущности), и наоборот.
     private Dictionary<(int x, int y), HashSet<string>> _smoothKeysByTile = new();
 
-    // Индекс кабелей-СУЩНОСТЕЙ (поставленных из панели репозитория, а не инструментом
-    // проводов): "тайл (x,y) → множество ключей связи" (NodeGroupID кабеля: HVPower/
-    // MVPower/Apc/ExCable). По нему DrawSingleEntity считает маску соседей так же,
-    // как CableVisSystem в игре. Провода-инструмент (WireEntity) в этот индекс не входят.
+    // Индекс кабелей: "тайл (x,y) → множество ключей связи" (NodeGroupID кабеля:
+    // HVPower/MVPower/Apc/ExCable). Включает И кабели-сущности из панели репозитория,
+    // И провода инструмента (WireEntity), поэтому маска соседей считается одинаково
+    // и для тех, и для других — провода соединяются с кабелями-сущностями.
     private Dictionary<(int x, int y), HashSet<string>> _cableKeysByTile = new();
 
     // Кэш индекса кабелей по гриду — пересобирается вместе с индексом сглаживания
@@ -2830,14 +2870,23 @@ public partial class Renderer
     }
 
     /// <summary>
-    /// Индекс кабелей-сущностей из репозитория: для каждого тайла собираем ключи
-    /// связи (NodeGroupID: HVPower/MVPower/Apc/ExCable). Кабели инструмента
-    /// (WireEntity, Proto пустой) сюда не попадают — у них своя отрисовка линиями.
+    /// Индекс кабелей: для каждого тайла собираем ключи связи (NodeGroupID: HVPower/
+    /// MVPower/Apc/ExCable). Источники — И кабели-сущности из репозитория, И провода,
+    /// поставленные инструментом «Электросеть» (WireEntity → CableHV/CableMV/
+    /// CableApcExtension), чтобы они соединялись друг с другом так же, как в игре.
     /// </summary>
     private Dictionary<(int x, int y), HashSet<string>> BuildCableIndex(Grid grid)
     {
         var index = new Dictionary<(int, int), HashSet<string>>();
         if (_indexer == null) return index;
+
+        void AddKey(int tx, int ty, string key)
+        {
+            if (index.TryGetValue((tx, ty), out var set))
+                set.Add(key);
+            else
+                index[(tx, ty)] = new HashSet<string>(StringComparer.Ordinal) { key };
+        }
 
         foreach (var entity in grid.Entities.OfType<Models.MapEntity>())
         {
@@ -2846,13 +2895,17 @@ public partial class Renderer
             var info = GetCableRenderInfo(entity.Proto);
             if (info == null || string.IsNullOrEmpty(info.ConnectivityKey)) continue;
 
-            int tx = (int)Math.Floor(entity.X);
-            int ty = (int)Math.Floor(entity.Y);
+            AddKey((int)Math.Floor(entity.X), (int)Math.Floor(entity.Y), info.ConnectivityKey);
+        }
 
-            if (index.TryGetValue((tx, ty), out var set))
-                set.Add(info.ConnectivityKey);
-            else
-                index[(tx, ty)] = new HashSet<string>(StringComparer.Ordinal) { info.ConnectivityKey };
+        // Провода инструмента — тот же ключ связи, что у соответствующего прототипа кабеля.
+        foreach (var wire in grid.Entities.OfType<WireEntity>())
+        {
+            string? proto = WireBuilder.GetCableProtoForWireType(wire.WireType);
+            var info = proto != null ? GetCableRenderInfo(proto) : null;
+            if (info == null || string.IsNullOrEmpty(info.ConnectivityKey)) continue;
+
+            AddKey((int)Math.Floor(wire.X), (int)Math.Floor(wire.Y), info.ConnectivityKey);
         }
 
         return index;
@@ -3033,10 +3086,9 @@ public partial class Renderer
 
     private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, bool cableSmoothing = true)
     {
-        // Кабели-сущности из репозитория (CableHV/CableMV/CableApcExtension и их
-        // наследники) рисуются НЕ статическим стейтом *_0, а по маске соседей —
-        // как CableVisualizer в игре. Провода инструмента (WireEntity) сюда не
-        // попадают: у них своя отрисовка линиями/точками.
+        // Кабели (CableHV/CableMV/CableApcExtension и их наследники) рисуются НЕ
+        // статическим стейтом *_0, а по маске соседей — как CableVisualizer в игре.
+        // Сюда же приходят и провода инструмента «Электросеть» (см. DrawWireCableSprites).
         if (cableSmoothing && _indexer != null && GetCableRenderInfo(protoId) is { } cableInfo)
         {
             if (DrawSingleCableEntity(g, protoId, cableInfo, worldX, worldY, tileSize, viewOffset, gridOffset))

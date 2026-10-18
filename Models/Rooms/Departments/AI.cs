@@ -47,7 +47,7 @@ public class AIMain : AIRoomType
 public class AIUpload : AIRoomType
 {
     public override string Name => "AIUpload";
-    public override string? FaxName => "AI Upload";
+    public override string? FaxName => "Загрузка ИИ";
     public override string DisplayName => "Загрузка ИИ";
     public override string DoorProto => "AirlockAI";
     public override string GlassDoorProto => "AirlockAIGlass";

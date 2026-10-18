@@ -184,30 +184,58 @@ private bool IsInsideRoom(float x, float y, Room room)
 }
     
     /// <summary>
-    /// Находит концы труб (скрубберы и вентиляции)
+    /// Слой утилизации («U»): это не атмосферная сеть, а отдельная труба с
+    /// приёмниками (DisposalUnit/MailingUnit) — сигнализации к ней не привязываются.
+    /// </summary>
+    private const string UtilPipeType = "Util";
+
+    /// <summary>
+    /// Находит концы труб (скрубберы и вентиляции). Утилизация и концы без
+    /// законцовки («Ничего (прямая труба)») в сеть сигнализаций не попадают:
+    /// связь рисуется только к реальному атмосферному устройству на конце.
     /// </summary>
     private List<PipeEntity> GetPipeEndpoints(List<PipeEntity> pipes)
     {
         var endpoints = new List<PipeEntity>();
-        var grouped = pipes.GroupBy(p => p.PipeType);
-        
+        var grouped = pipes
+            .Where(p => p.PipeType != UtilPipeType)
+            .GroupBy(p => p.PipeType);
+
         foreach (var group in grouped)
         {
             var pipeList = group.ToList();
-            
+
             foreach (var pipe in pipeList)
             {
                 int neighbors = GetNeighbors(pipeList, (int)pipe.X, (int)pipe.Y).Count;
-                
-                // Если у трубы 1 сосед - это конец (скруббер или вентиляция)
-                if (neighbors == 1)
+
+                // Если у трубы 1 сосед - это конец. Законцовка «None» — обычная
+                // прямая труба без вентиляции/скруббера: привязывать не к чему.
+                if (neighbors == 1 && ResolveVentProto(pipe) != "None")
                 {
                     endpoints.Add(pipe);
                 }
             }
         }
-        
+
         return endpoints;
+    }
+
+    /// <summary>
+    /// Тип вентиляции на конце узла: запечённый в самом узле либо дефолт слоя —
+    /// та же логика, что в Renderer и YAMLGenerator (старые карты без VentProto).
+    /// </summary>
+    private static string ResolveVentProto(PipeEntity pipe)
+    {
+        if (!string.IsNullOrEmpty(pipe.VentProto))
+            return pipe.VentProto!;
+
+        return pipe.PipeType switch
+        {
+            "Distra" => "GasVentPump",
+            "Normal" => "None",
+            _ => "GasVentScrubber"
+        };
     }
     
     /// <summary>
