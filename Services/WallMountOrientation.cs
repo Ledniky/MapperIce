@@ -13,11 +13,15 @@ namespace MapperIce.Services;
 /// поэтому спрайт сам выбирает нужный кадр направления.
 ///
 /// Отсюда два случая использования:
-///  * камера стоит в клетке комнаты и висит на соседней стене — поворот берётся по
-///    стороне, на которой эта стена (FindNearestWall/ResolveRotation);
+///  * камера стоит в клетке комнаты и висит на стене, примыкающей к этой клетке —
+///    поворот берётся по стороне стены (FindAdjacentWalls; если стен несколько,
+///    редактор перебирает их колёсиком), а при отсутствии примыкающих стен —
+///    по ближайшей стене (FindNearestWall). Стены, поставленные сущностями из
+///    панели репозитория (WallSolid, Window…), тоже учитываются — их клетки
+///    передаются предикатом extraWall;
 ///  * интерком стоит прямо В тайле-стене и висит на его грани, обращённой в комнату —
 ///    поворот берётся по стороне комнаты относительно самого тайла
-///    (FindNearestWallTile/ResolveIntercomRotation).
+///    (FindNearestWallTile).
 /// </summary>
 public static class WallMountOrientation
 {
@@ -58,9 +62,11 @@ public static class WallMountOrientation
     /// камеры до кромки стены. Если несколько стен одинаково близко (например,
     /// камера в одноклеточном коридоре), выигрывает сторона preferred — сторона
     /// уже сохранённого поворота камеры, чтобы направление не «прыгало».
+    /// extraWall — дополнительные клетки-стены (стены и окна, поставленные
+    /// сущностями из панели репозитория: в тайл-сетке их нет).
     /// </summary>
     public static WallSide FindNearestWall(Grid? grid, TileGrid? tileGrid, float worldX, float worldY,
-        WallSide preferred = WallSide.None)
+        WallSide preferred = WallSide.None, Func<int, int, bool>? extraWall = null)
     {
         int cellX = (int)Math.Floor(worldX);
         int cellY = (int)Math.Floor(worldY);
@@ -88,28 +94,28 @@ public static class WallMountOrientation
 
         for (int step = 1; step <= MaxWallSteps; step++)
         {
-            if (!IsWallCell(grid, tileGrid, cellX, cellY - step)) continue;
+            if (!IsWallCell(grid, tileGrid, extraWall, cellX, cellY - step)) continue;
             Consider(WallSide.North, fracY + step - 1);
             break;
         }
 
         for (int step = 1; step <= MaxWallSteps; step++)
         {
-            if (!IsWallCell(grid, tileGrid, cellX, cellY + step)) continue;
+            if (!IsWallCell(grid, tileGrid, extraWall, cellX, cellY + step)) continue;
             Consider(WallSide.South, step - fracY);
             break;
         }
 
         for (int step = 1; step <= MaxWallSteps; step++)
         {
-            if (!IsWallCell(grid, tileGrid, cellX - step, cellY)) continue;
+            if (!IsWallCell(grid, tileGrid, extraWall, cellX - step, cellY)) continue;
             Consider(WallSide.West, fracX + step - 1);
             break;
         }
 
         for (int step = 1; step <= MaxWallSteps; step++)
         {
-            if (!IsWallCell(grid, tileGrid, cellX + step, cellY)) continue;
+            if (!IsWallCell(grid, tileGrid, extraWall, cellX + step, cellY)) continue;
             Consider(WallSide.East, step - fracX);
             break;
         }
@@ -118,14 +124,21 @@ public static class WallMountOrientation
     }
 
     /// <summary>
-    /// Поворот камеры по ближайшей стене. Если стены вокруг нет, возвращается
-    /// fallbackRotation (сохранённый в привязке поворот); при равноудалённых стенах
-    /// предпочтение отдаётся стороне, соответствующей fallbackRotation.
+    /// Стены, примыкающие к клетке вплотную (4 стороны) — из них камера выбирает,
+    /// на какой висит. Порядок фиксированный: юг → восток → север → запад, то есть
+    /// 0°, 90°, 180°, -90° — так колёсико перебирает стороны предсказуемо.
     /// </summary>
-    public static float ResolveRotation(Grid? grid, TileGrid? tileGrid, float worldX, float worldY, float fallbackRotation)
+    public static List<WallSide> FindAdjacentWalls(Grid? grid, TileGrid? tileGrid, int cellX, int cellY,
+        Func<int, int, bool>? extraWall = null)
     {
-        var side = FindNearestWall(grid, tileGrid, worldX, worldY, SideForRotation(fallbackRotation));
-        return side == WallSide.None ? fallbackRotation : RotationForSide(side);
+        var sides = new List<WallSide>(4);
+
+        if (IsWallCell(grid, tileGrid, extraWall, cellX, cellY + 1)) sides.Add(WallSide.South);
+        if (IsWallCell(grid, tileGrid, extraWall, cellX + 1, cellY)) sides.Add(WallSide.East);
+        if (IsWallCell(grid, tileGrid, extraWall, cellX, cellY - 1)) sides.Add(WallSide.North);
+        if (IsWallCell(grid, tileGrid, extraWall, cellX - 1, cellY)) sides.Add(WallSide.West);
+
+        return sides;
     }
 
     /// <summary>Сторона стены, которой соответствует поворот камеры.</summary>
@@ -145,14 +158,21 @@ public static class WallMountOrientation
     }
 
     /// <summary>
-    /// Клетка считается стеной, если в ней реальный тайл-стена. Если тайлы ещё не
-    /// построены (TileGrid недоступен), стеной считается всё, что лежит вне комнат —
-    /// так камера всё равно привяжется к границе своей комнаты.
+    /// Клетка считается стеной, если в ней реальный тайл-стена или стена/окно,
+    /// поставленные сущностью (extraWall). Если тайлы ещё не построены (TileGrid
+    /// недоступен), стеной считается всё, что лежит вне комнат — так камера всё
+    /// равно привяжется к границе своей комнаты.
     /// </summary>
-    private static bool IsWallCell(Grid? grid, TileGrid? tileGrid, int x, int y)
+    private static bool IsWallCell(Grid? grid, TileGrid? tileGrid, Func<int, int, bool>? extraWall, int x, int y)
     {
+        if (tileGrid != null && tileGrid.IsWall(x, y))
+            return true;
+
+        if (extraWall != null && extraWall(x, y))
+            return true;
+
         if (tileGrid != null)
-            return tileGrid.IsWall(x, y);
+            return false;
 
         return grid != null && !grid.Rooms.Any(r => r.Contains(x, y));
     }
@@ -168,15 +188,16 @@ public static class WallMountOrientation
     /// у внутренней стены между двумя комнатами соседей-комнат два, и поиск по
     /// соседям мог бы развернуть интерком в чужую комнату.
     /// </summary>
-    public static (int X, int Y, WallSide Facing)? FindNearestWallTile(Grid? grid, TileGrid? tileGrid, int cellX, int cellY)
+    public static (int X, int Y, WallSide Facing)? FindNearestWallTile(Grid? grid, TileGrid? tileGrid, int cellX, int cellY,
+        Func<int, int, bool>? extraWall = null)
     {
         for (int step = 1; step <= MaxWallSteps; step++)
         {
             // Стена выше клетки — комната (исходная клетка) лежит с юга от неё.
-            if (IsWallCell(grid, tileGrid, cellX, cellY - step)) return (cellX, cellY - step, WallSide.South);
-            if (IsWallCell(grid, tileGrid, cellX, cellY + step)) return (cellX, cellY + step, WallSide.North);
-            if (IsWallCell(grid, tileGrid, cellX - step, cellY)) return (cellX - step, cellY, WallSide.East);
-            if (IsWallCell(grid, tileGrid, cellX + step, cellY)) return (cellX + step, cellY, WallSide.West);
+            if (IsWallCell(grid, tileGrid, extraWall, cellX, cellY - step)) return (cellX, cellY - step, WallSide.South);
+            if (IsWallCell(grid, tileGrid, extraWall, cellX, cellY + step)) return (cellX, cellY + step, WallSide.North);
+            if (IsWallCell(grid, tileGrid, extraWall, cellX - step, cellY)) return (cellX - step, cellY, WallSide.East);
+            if (IsWallCell(grid, tileGrid, extraWall, cellX + step, cellY)) return (cellX + step, cellY, WallSide.West);
         }
 
         return null;

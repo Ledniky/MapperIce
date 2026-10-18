@@ -136,6 +136,7 @@ public partial class MainForm : Form
     private bool _showPipeOverlay = true;
     private bool _showWires = true;
     private bool _showCameraAreas = true;
+    private bool _showDividerAreas = true;
     private bool _showNetworkLinks = false;
     // Рабочие настройки слоёв труб — копии встроенных (PipeSettings.DefaultLayers),
     // а не те же самые объекты: иначе сброс слоя и «Отмена» присваивали значения
@@ -194,6 +195,14 @@ public partial class MainForm : Form
     // автоматическое направление вовнутрь комнаты, у ЛКП задаёт поворот самой сущности.
     private float _placeRotation = 0f;
     private bool _placeRotationManual = false;
+
+    // Выбранная колёсиком стена для камеры: индекс в списке стен, примыкающих
+    // к клетке (юг → восток → север → запад). Сбрасывается при смене инструмента.
+    private int _cameraWallChoice = 0;
+
+    // Кэш «этот прототип — стена» (стены/окна, поставленные из панели репозитория,
+    // в тайл-сетку не попадают, но камера должна к ним крепиться).
+    private readonly Dictionary<string, bool> _wallLikeProtoCache = new();
 
     // ===== Инструмент "Перемещение" =====
     private Button? _btnMove;
@@ -1305,6 +1314,7 @@ public partial class MainForm : Form
         // только пока выбран её инструмент.
         _placeRotationManual = false;
         _placeRotation = 0f;
+        _cameraWallChoice = 0;
         if (!IsPlacementPreviewTool(tool)) _renderer.ClearEntityPreview();
 
         if (tool != ToolManager.Tool.Move)
@@ -1561,6 +1571,7 @@ public partial class MainForm : Form
         _renderer.ShowAlarmConnections = _showAlarmConnections;
         _renderer.ShowWires = _showWires;
         _renderer.ShowCameraAreas = _showCameraAreas;
+        _renderer.ShowDividerAreas = _showDividerAreas;
         _renderer.ShowNetworkLinks = _showNetworkLinks;
         _renderer.NetworkHighlightPositions = _networkHighlightPositions;
         _renderer.BackgroundColor = _renderBackground;

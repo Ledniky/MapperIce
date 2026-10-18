@@ -2216,7 +2216,9 @@ public static class YAMLGenerator
 
                 float posX = camera.X;
                 float posY = -camera.Y + 1.0f;
-                float rotation = WallMountOrientation.ResolveRotation(grid, tileGrid, camera.X, camera.Y, camera.Rotation);
+                // Поворот — ровно тот, что выбран в редакторе при установке камеры
+                // (по стене, к которой она примыкает; колёсико перебирает стены).
+                float rotation = camera.Rotation;
 
                 sb.AppendLine($"  - uid: {thisUid}");
                 sb.AppendLine($"    components:");

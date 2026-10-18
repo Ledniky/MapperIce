@@ -23,6 +23,9 @@ public partial class Renderer
     /// <summary>Показывать область обзора камер (как зона покрытия НВ-кабеля).</summary>
     public bool ShowCameraAreas { get; set; } = true;
 
+    /// <summary>Показывать области, выделенные инструментом «Разделитель гридов».</summary>
+    public bool ShowDividerAreas { get; set; } = true;
+
     // Кэш текстур для ускорения рендеринга
     // Кэш текстур для ускорения рендеринга
     private readonly Dictionary<string, Image?> _textureCache = new();
@@ -416,7 +419,7 @@ public partial class Renderer
                 // камер-«привязок» из свойств комнаты, и для камер, поставленных
                 // обычным прототипом из панели репозитория.
                 if (ShowCameraAreas)
-                    DrawCameraCoverageOverlay(g, grid, tileSize, viewOffset, gridOffset, visibleRect);
+                    DrawCameraCoverageOverlay(g, grid, tileGrid, tileSize, viewOffset, gridOffset, visibleRect);
 
                 // Электросеть — отдельный слой поверх труб, та же идея (линии между
                 // соседями одного типа + точки узлов), без специфичных для труб
@@ -459,7 +462,8 @@ public partial class Renderer
             DrawSelectionHighlight(g, scale, viewOffset);
             DrawSelectionBox(g);
             DrawDeleteAreaOverlay(g, scale, viewOffset);
-            DrawDividerAreasOverlay(g, scale, viewOffset);
+            if (ShowDividerAreas)
+                DrawDividerAreasOverlay(g, scale, viewOffset);
             DrawDecalAreaDrawOverlay(g, scale, viewOffset);
             DrawDecalAreaEditOverlay(g, scale, viewOffset);
 
@@ -1398,51 +1402,59 @@ public partial class Renderer
     /// а не круглая и не ромб, как у НВ-кабеля). Охвачены все камеры: и «привязки»
     /// из свойств комнаты (CameraEntity), и камеры, поставленные обычным прототипом
     /// из панели репозитория (MapEntity с прототипом SurveillanceCamera*).
+    /// Камера НЕ видит сквозь стены: сначала собирается карта непрозрачных клеток
+    /// (см. CollectCameraOccluders), а затем считается видимость ровно так же, как
+    /// StationAiVisionSystem.ViewJob в игре (GetCameraVisibleTiles): две волны по
+    /// глубине — диагональная (по Чебышёву) и прямая (по манхэттенскому расстоянию),
+    /// плюс отдельный проход по углам стен. Именно такой расчёт даёт в игре раскрытие
+    /// обзора под 45° (1 клетка в сторону на 1 клетку вглубь), а не узкий конус
+    /// рейкаста в центр клетки (~22.5°).
     /// Пересекающиеся зоны не дают двойной альфы — все покрытые тайлы собираются
     /// в один HashSet, а за экран области не считаются вовсе (IsTileVisible).
     /// </summary>
-    private void DrawCameraCoverageOverlay(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
+    private void DrawCameraCoverageOverlay(Graphics g, Grid grid, TileGrid tileGrid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
         // Половина стороны квадрата: 6.5 клетки дают 13×13 тайлов (тайлы с шагом
         // до 6 от клетки камеры включительно).
         const float halfSideTiles = 6.5f;
 
         // Не один цикл по сущностям с фильтрацией по прототипу: «привязка»-камера
-        // хранит прототип в CameraProto, обычная сущность — в Proto.
+        // хранит прототип в CameraProto, обычная сущность — в Proto. В том же проходе
+        // собираем сущности-перекрытия (Occluder), чтобы не обходить список дважды.
         var cameras = new List<(float X, float Y)>();
+        var entityOccluders = new HashSet<(int x, int y)>();
+        var protoOccluderCache = new Dictionary<string, bool>();
         foreach (var entity in grid.Entities)
         {
             string proto = entity is CameraEntity camera ? camera.CameraProto : entity.Proto;
-            if (!IsCameraProto(proto)) continue;
-            cameras.Add((entity.X, entity.Y));
+            if (IsCameraProto(proto))
+                cameras.Add((entity.X, entity.Y));
+
+            if (string.IsNullOrEmpty(proto) || _indexer == null) continue;
+
+            // Кэш по прототипу: обход цепочки parent: на каждую сущность был бы дорогим —
+            // на карте тысячи одинаковых прототипов (шкафы, кусты, кресла).
+            if (!protoOccluderCache.TryGetValue(proto, out bool blocks))
+            {
+                blocks = _indexer.HasComponent(proto, "Occluder");
+                protoOccluderCache[proto] = blocks;
+            }
+
+            if (blocks)
+                entityOccluders.Add(((int)Math.Floor(entity.X), (int)Math.Floor(entity.Y)));
         }
 
         if (cameras.Count == 0) return;
 
-        int scanRadius = (int)Math.Ceiling(halfSideTiles);
+        var occluders = CollectCameraOccluders(grid, tileGrid, cameras, entityOccluders);
         var covered = new HashSet<(int x, int y)>();
 
         foreach (var (camX, camY) in cameras)
         {
-            int cx = (int)Math.Floor(camX);
-            int cy = (int)Math.Floor(camY);
-
-            for (int dx = -scanRadius; dx <= scanRadius; dx++)
+            foreach (var (tx, ty) in GetCameraVisibleTiles(occluders, camX, camY, halfSideTiles))
             {
-                int tx = cx + dx;
-                for (int dy = -scanRadius; dy <= scanRadius; dy++)
-                {
-                    int ty = cy + dy;
-                    if (!IsTileVisible(tx, ty, visibleRect)) continue;
-
-                    // Расстояние по Чебышёву — max(|dx|,|dy|): одинаковый шаг по любой
-                    // оси, поэтому область получается квадратом, а не кругом.
-                    float ndx = Math.Abs(tx + 0.5f - camX);
-                    float ndy = Math.Abs(ty + 0.5f - camY);
-                    if (ndx > halfSideTiles || ndy > halfSideTiles) continue;
-
-                    covered.Add((tx, ty));
-                }
+                if (!IsTileVisible(tx, ty, visibleRect)) continue;
+                covered.Add((tx, ty));
             }
         }
 
@@ -1454,6 +1466,186 @@ public partial class Renderer
             var rect = ToRect(tx, ty, tileSize, viewOffset, gridOffset);
             g.FillRectangle(brush, rect);
         }
+    }
+
+    /// <summary>
+    /// Видимые клетки для одной камеры — порт StationAiVisionSystem.ViewJob (игра):
+    ///  1) диагональная волна vis2: клетка на расстоянии d+1 по Чебышёву видна,
+    ///     если виден любой из 8 её соседей на глубине d; непрозрачная клетка
+    ///     помечается -1 (сама видна, но дальше не пропускает);
+    ///  2) прямая волна vis1: клетка на манхэттенском расстоянии d+1 видна, если
+    ///     виден сосед на глубине d и клетка есть в vis2 — это и обрезает
+    ///     «затекание» обзора за стены, сохраняя раскрытие под 45°;
+    ///  3) углы: непрозрачные клетки на стыке двух стен добавляются в видимые,
+    ///     чтобы за диагональными стыками не оставалось дыр.
+    /// Клетки вне квадрата обзора (viewport) в результат не попадают — как и в игре.
+    /// </summary>
+    private static HashSet<(int x, int y)> GetCameraVisibleTiles(HashSet<(int x, int y)> occluders,
+        float camX, float camY, float halfSideTiles)
+    {
+        int eyeX = (int)Math.Floor(camX);
+        int eyeY = (int)Math.Floor(camY);
+
+        // Квадрат обзора: те же 6.5 клетки по Чебышёву (тайлы с шагом до 6).
+        const int maxScan = 8;
+        var seedTiles = new HashSet<(int x, int y)>();
+        int maxDepth = 0;
+        int maxSum = 0;
+
+        for (int dx = -maxScan; dx <= maxScan; dx++)
+        {
+            int tx = eyeX + dx;
+            if (Math.Abs(tx + 0.5f - camX) > halfSideTiles) continue;
+
+            for (int dy = -maxScan; dy <= maxScan; dy++)
+            {
+                int ty = eyeY + dy;
+                if (Math.Abs(ty + 0.5f - camY) > halfSideTiles) continue;
+
+                seedTiles.Add((tx, ty));
+                maxDepth = Math.Max(maxDepth, Math.Max(Math.Abs(dx), Math.Abs(dy)));
+                maxSum = Math.Max(maxSum, Math.Abs(dx) + Math.Abs(dy));
+            }
+        }
+
+        var vis1 = new Dictionary<(int x, int y), int>();
+        var vis2 = new Dictionary<(int x, int y), int>();
+
+        // Шаг 1: диагональная теневая волна (глубина — Чебышёв).
+        for (int d = 0; d < maxDepth; d++)
+        {
+            foreach (var tile in seedTiles)
+            {
+                int depth = Math.Max(Math.Abs(tile.x - eyeX), Math.Abs(tile.y - eyeY));
+                if (depth != d + 1) continue;
+                if (!HasVisibleCameraNeighbor(vis2, tile, d)) continue;
+
+                vis2[tile] = occluders.Contains(tile) ? -1 : d + 1;
+            }
+        }
+
+        // Шаг 2: прямая теневая волна (глубина — манхэттенское расстояние).
+        for (int d = 0; d < maxSum; d++)
+        {
+            foreach (var tile in seedTiles)
+            {
+                int depth = Math.Abs(tile.x - eyeX) + Math.Abs(tile.y - eyeY);
+                if (depth != d + 1) continue;
+                if (!HasVisibleCameraNeighbor(vis1, tile, d)) continue;
+
+                if (occluders.Contains(tile))
+                    vis1[tile] = -1;
+                else if (vis2.GetValueOrDefault(tile) != 0)
+                    vis1[tile] = d + 1;
+            }
+        }
+
+        vis1[(eyeX, eyeY)] = 1;
+
+        // Шаг 3: углы стен — иначе за диагональными стыками остаются дыры.
+        foreach (var tile in seedTiles)
+        {
+            if (!occluders.Contains(tile)) continue;
+            if (vis1.GetValueOrDefault(tile) != 0) continue;
+
+            if (IsCameraVisionCorner(seedTiles, occluders, vis1, tile, (1, 1)) ||
+                IsCameraVisionCorner(seedTiles, occluders, vis1, tile, (1, -1)) ||
+                IsCameraVisionCorner(seedTiles, occluders, vis1, tile, (-1, -1)) ||
+                IsCameraVisionCorner(seedTiles, occluders, vis1, tile, (-1, 1)))
+            {
+                vis1[tile] = -1;
+            }
+        }
+
+        var visible = new HashSet<(int x, int y)>();
+        foreach (var tile in seedTiles)
+        {
+            if (vis1.GetValueOrDefault(tile) != 0)
+                visible.Add(tile);
+        }
+
+        return visible;
+    }
+
+    /// <summary>
+    /// Есть ли у клетки сосед (из 8) с ровно такой глубиной в карте видимости.
+    /// Непроставленные значения считаются нулём — на этом держится первый шаг
+    /// волны (d = 0): в игре это тоже GetValueOrDefault == 0.
+    /// </summary>
+    private static bool HasVisibleCameraNeighbor(Dictionary<(int x, int y), int> vis, (int x, int y) tile, int depth)
+    {
+        for (int ox = -1; ox <= 1; ox++)
+        {
+            for (int oy = -1; oy <= 1; oy++)
+            {
+                if (ox == 0 && oy == 0) continue;
+                if (vis.GetValueOrDefault((tile.x + ox, tile.y + oy), 0) == depth) return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// «Угол» по терминологии StationAiVisionSystem: непрозрачная клетка, у которой
+    /// диагональ (delta) видна, обе смежные с ней по стороне клетки — тоже видимые
+    /// стены, а сама диагональ не перекрыта. Такой стык добавляется в видимые тайлы.
+    /// </summary>
+    private static bool IsCameraVisionCorner(HashSet<(int x, int y)> tiles, HashSet<(int x, int y)> blocked,
+        Dictionary<(int x, int y), int> vis1, (int x, int y) index, (int dx, int dy) delta)
+    {
+        var diagonal = (x: index.x + delta.dx, y: index.y + delta.dy);
+        if (!tiles.Contains(diagonal)) return false;
+
+        var cardinal1 = (x: index.x, y: diagonal.y);
+        var cardinal2 = (x: diagonal.x, y: index.y);
+
+        return vis1.GetValueOrDefault(diagonal) != 0 &&
+               vis1.GetValueOrDefault(cardinal1) != 0 &&
+               vis1.GetValueOrDefault(cardinal2) != 0 &&
+               blocked.Contains(cardinal1) &&
+               blocked.Contains(cardinal2) &&
+               !blocked.Contains(diagonal);
+    }
+
+    /// <summary>
+    /// Клетки, непрозрачные для камер (аналог _opaque из StationAiVisionSystem):
+    /// тайлы-стены и окна (TileContent.Wall), закрытые двери (TileContent.Door и
+    /// свободные двери вне комнат) и сущности с OccluderComponent — шторы, книжные
+    /// шкафы, кустарник, болты, надувные стены и т.п. (см. DrawCameraCoverageOverlay).
+    /// Открытое состояние двери в редакторе не моделируется — экспортируемый шлюз
+    /// всегда закрыт, поэтому дверь считается перекрывающей.
+    /// </summary>
+    private static HashSet<(int x, int y)> CollectCameraOccluders(Grid grid, TileGrid tileGrid,
+        List<(float X, float Y)> cameras, HashSet<(int x, int y)> entityOccluders)
+    {
+        var occluders = new HashSet<(int x, int y)>(entityOccluders);
+
+        // Тайлы-стены/окна и двери собираем только вокруг камер: полный перебор тайлов
+        // карты на каждый кадр оверлею не нужен — дальше края обзора они не влияют.
+        const int margin = 8; // 6.5 клетки обзора + запас под соседей на границе
+        foreach (var (camX, camY) in cameras)
+        {
+            int cx = (int)Math.Floor(camX);
+            int cy = (int)Math.Floor(camY);
+
+            for (int dx = -margin; dx <= margin; dx++)
+            {
+                for (int dy = -margin; dy <= margin; dy++)
+                {
+                    var tile = tileGrid.GetTile(cx + dx, cy + dy);
+                    if (tile == null) continue;
+                    if (tile.Content != TileContent.Wall && tile.Content != TileContent.Door) continue;
+                    occluders.Add((tile.X, tile.Y));
+                }
+            }
+        }
+
+        // Двери вне комнат в тайл-сетку не попадают: TileBuilder строит её из комнат.
+        foreach (var door in grid.LooseDoors)
+            occluders.Add((door.X, door.Y));
+
+        return occluders;
     }
 
     /// <summary>
@@ -2271,14 +2463,15 @@ public partial class Renderer
         }
 
         // Камеры — отдельный слой «привязок» поверх остальных объектов. Поворот
-        // определяется автоматически по ближайшей стене (0 = стена с юга от тайла).
+        // хранится в самой привязке: при установке он выбирается по стене, к которой
+        // камера примыкает (колёсико мыши перебирает стены, если их несколько), в том
+        // числе по стене-сущности из панели репозитория.
         foreach (var camera in grid.Entities.OfType<CameraEntity>())
         {
             if (!IsPointVisible(camera.X, camera.Y, visibleRect)) continue;
             int dd = _drawDepthManager.GetOffset("Objects") + 1;
             var c = camera;
-            float rotation = WallMountOrientation.ResolveRotation(grid, tileGrid, c.X, c.Y, c.Rotation);
-            renderQueue.Add((c.Y, dd, 0, _insertCounter++, () => DrawSingleCamera(g, c.CameraProto, rotation, c.X, c.Y, tileSize, viewOffset, gridOffset)));
+            renderQueue.Add((c.Y, dd, 0, _insertCounter++, () => DrawSingleCamera(g, c.CameraProto, c.Rotation, c.X, c.Y, tileSize, viewOffset, gridOffset)));
         }
 
         // Комоды — отдельный слой «привязок» поверх остальных объектов

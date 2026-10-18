@@ -958,8 +958,8 @@ public partial class MainForm
 
     /// <summary>
     /// У этой привязки направление можно задать вручную колёсиком мыши.
-    /// Пока только интерком: у остальных направление либо не нужно, либо
-    /// (как у камеры) считается по стене автоматически.
+    /// Пока только интерком: у камеры колёсико перебирает примыкающие стены
+    /// (отдельная ветка в OnMouseWheel), у остальных направление не нужно.
     /// </summary>
     private static bool LinkedEntityToolSupportsRotation(ToolManager.Tool tool) =>
         tool == ToolManager.Tool.PlaceIntercom;
@@ -982,6 +982,39 @@ public partial class MainForm
     /// <summary>В клетке уже стоит привязка этого типа.</summary>
     private static bool LinkedEntityCellBusy<T>(Grid grid, int tileX, int tileY) where T : MapEntity =>
         grid.Entities.OfType<T>().Any(e => (int)e.X == tileX && (int)e.Y == tileY);
+
+    /// <summary>
+    /// Стены и окна, поставленные сущностями из панели репозитория (WallSolid,
+    /// Window…), в тайл-сетку не попадают — для крепления камеры их нужно собрать
+    /// отдельно. Возвращает предикат «в клетке есть такая стена».
+    /// </summary>
+    private Func<int, int, bool> BuildWallEntityPredicate(Grid grid)
+    {
+        var cells = new HashSet<(int x, int y)>();
+        foreach (var entity in grid.Entities)
+        {
+            if (string.IsNullOrEmpty(entity.Proto) || !IsWallLikeProto(entity.Proto)) continue;
+            cells.Add(((int)Math.Floor(entity.X), (int)Math.Floor(entity.Y)));
+        }
+
+        return (x, y) => cells.Contains((x, y));
+    }
+
+    /// <summary>
+    /// Прототип — стена или окно, то есть то, на что вешается камера. Настенные
+    /// устройства (Wallmount*) стенами не считаются.
+    /// </summary>
+    private bool IsWallLikeProto(string proto)
+    {
+        if (_wallLikeProtoCache.TryGetValue(proto, out bool cached)) return cached;
+
+        bool isWall = (proto.StartsWith("Wall", StringComparison.Ordinal) &&
+                       !proto.StartsWith("Wallmount", StringComparison.Ordinal)) ||
+                      proto.StartsWith("Window", StringComparison.Ordinal);
+
+        _wallLikeProtoCache[proto] = isWall;
+        return isWall;
+    }
 
     /// <summary>
     /// Грань, которой интерком смотрит в комнату, для клетки-стены (автоматический
@@ -1106,8 +1139,13 @@ public partial class MainForm
                 return (owner.IntercomProto, wallX + 0.5f, wallY + 0.5f, WallMountOrientation.RotationForSide(facing));
             }
 
-            // Камера ставится по центру клетки, но разворачивается в сторону
-            // ближайшей стены (поворот 0 = стена с юга от клетки).
+            // Камера висит на стене, примыкающей к её клетке: ставится по центру
+            // клетки и разворачивается в сторону этой стены (0 = стена с юга от клетки).
+            // Если вплотную стен несколько (угол, коридор), колёсико мыши перебирает
+            // их (см. _cameraWallChoice и OnMouseWheel); если вплотную стены нет —
+            // по-прежнему берётся ближайшая. Стены, поставленные сущностями из панели
+            // репозитория (WallSolid, Window…), в тайл-сетке не лежат, поэтому идут
+            // отдельным предикатом.
             case ToolManager.Tool.PlaceCamera:
             {
                 if (room == null || string.IsNullOrEmpty(room.CameraProto))
@@ -1115,7 +1153,21 @@ public partial class MainForm
                 if (LinkedEntityCellBusy<CameraEntity>(grid, tileX, tileY))
                     return ("", tileX + 0.5f, tileY + 0.5f, 0f);
 
-                var wallSide = WallMountOrientation.FindNearestWall(grid, _tileGrid, tileX + 0.5f, tileY + 0.5f);
+                var wallEntity = BuildWallEntityPredicate(grid);
+                var adjacentWalls = WallMountOrientation.FindAdjacentWalls(grid, _tileGrid, tileX, tileY, wallEntity);
+
+                WallMountOrientation.WallSide wallSide;
+                if (adjacentWalls.Count > 0)
+                {
+                    int index = ((_cameraWallChoice % adjacentWalls.Count) + adjacentWalls.Count) % adjacentWalls.Count;
+                    wallSide = adjacentWalls[index];
+                }
+                else
+                {
+                    wallSide = WallMountOrientation.FindNearestWall(grid, _tileGrid, tileX + 0.5f, tileY + 0.5f,
+                        WallMountOrientation.WallSide.None, wallEntity);
+                }
+
                 return (room.CameraProto, tileX + 0.5f, tileY + 0.5f, WallMountOrientation.RotationForSide(wallSide));
             }
 
@@ -1333,6 +1385,17 @@ public partial class MainForm
 
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
+        // Камера: колёсико перебирает стены, примыкающие к клетке под курсором, —
+        // разворот камеры сразу виден в превью (см. ResolveLinkedEntityPlacement).
+        if (_toolManager.CurrentTool == ToolManager.Tool.PlaceCamera && !ModifierKeys.HasFlag(Keys.Control))
+        {
+            _cameraWallChoice += e.Delta > 0 ? 1 : -1;
+
+            UpdatePlacementPreview();
+            Render();
+            return;
+        }
+
         // Поворот размещаемого объекта колёсиком — как поворот прототипа при спавне
         // из левого меню: шаг 90°. Работает у интеркома (переопределяет автонаправление
         // «вовнутрь комнаты»), у ЛКП и у сигнализаций; результат сразу видно в превью.

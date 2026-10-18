@@ -103,6 +103,13 @@ public class GridSnapshot
     public List<PlacedTile> Tiles { get; set; } = new();
     public List<PlacedDecal> Decals { get; set; } = new();
 
+    /// <summary>
+    /// Области инструмента «Разделитель гридов». Хранятся отдельно от комнат,
+    /// потому что это самостоятельный слой выделения: без них Ctrl+Z не отменял
+    /// добавление/вычитание клеток области.
+    /// </summary>
+    public List<GridDividerArea> DividerAreas { get; set; } = new();
+
 
     public GridSnapshot() { }
 
@@ -161,6 +168,8 @@ public class GridSnapshot
 
         Tiles = grid.Tiles.Select(t => new PlacedTile { X = t.X, Y = t.Y, Proto = t.Proto }).ToList();
 
+        DividerAreas = grid.DividerAreas.Select(a => a.Clone()).ToList();
+
         Decals = grid.Decals.Select(d => new PlacedDecal
         {
             X = d.X,
@@ -183,6 +192,10 @@ public class GridSnapshot
         grid.Tiles.Clear();
         grid.LooseDoors.Clear();
         grid.Decals.Clear();
+        grid.DividerAreas.Clear();
+
+        foreach (var area in DividerAreas)
+            grid.DividerAreas.Add(area.Clone());
 
         foreach (var room in Rooms)
         {

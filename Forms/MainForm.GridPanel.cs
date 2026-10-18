@@ -64,7 +64,7 @@ public partial class MainForm
         _flagsPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 336, // 10 + 7×40 (кнопки) + 6×6 (зазоры) + 10
+            Width = 382, // 10 + 8×40 (кнопки) + 7×6 (зазоры) + 10
             Height = 55,
             BackColor = Color.FromArgb(220, 220, 220),
             Margin = new Padding(4, 0, 14, 0)
@@ -180,6 +180,17 @@ public partial class MainForm
             Render();
         });
         parentPanel.Controls.Add(btnCameraAreas);
+        xPos += 46;
+
+        // 🟩 Области «Разделителя гридов» (зелёная подсветка выделенных клеток)
+        if (_uiToggleSettings.DividerAreasOn.HasValue) _showDividerAreas = _uiToggleSettings.DividerAreasOn.Value;
+        var btnDividerAreas = CreateToggleBtn("🟩", "❌", "области разделения гридов", xPos, yPos, _uiToggleSettings.DividerAreasOn ?? true, v =>
+        {
+            _showDividerAreas = v;
+            SaveUiToggleSettings(s => s.DividerAreasOn = v);
+            Render();
+        });
+        parentPanel.Controls.Add(btnDividerAreas);
     }
     private Button CreateToggleBtn(string onIcon, string offIcon, string tooltip, int x, int y, bool initialState, Action<bool> onToggle)
     {
@@ -692,6 +703,7 @@ public partial class MainForm
         public bool? WiresOn { get; set; }
         public bool? NetworkLinksOn { get; set; }
         public bool? CameraAreasOn { get; set; }
+        public bool? DividerAreasOn { get; set; }
     }
 
     private static string GetUiSettingsPath()

@@ -79,12 +79,14 @@ public partial class Renderer
             bool savedAlarm = ShowAlarmConnections;
             bool savedCamera = ShowCameraAreas;
             bool savedLinks = ShowNetworkLinks;
+            bool savedDivider = ShowDividerAreas;
             HideRoomOverlay = true;
             ShowPipeOverlay = false;   // концы труб к нам придём вручную как спрайты
             ShowWires = false;
             ShowAlarmConnections = false;
             ShowCameraAreas = false;
             ShowNetworkLinks = false;
+            ShowDividerAreas = false;
             NetworkHighlightPositions = new HashSet<(int x, int y)>();
 
             try
@@ -118,6 +120,7 @@ public partial class Renderer
                 ShowAlarmConnections = savedAlarm;
                 ShowCameraAreas = savedCamera;
                 ShowNetworkLinks = savedLinks;
+                ShowDividerAreas = savedDivider;
                 NetworkHighlightPositions = new HashSet<(int x, int y)>();
             }
         }

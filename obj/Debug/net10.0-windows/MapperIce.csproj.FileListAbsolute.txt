@@ -319,3 +319,8 @@ C:\Users\Администратор\AppData\Local\Temp\mapperice_final_check\Map
 C:\Users\Администратор\AppData\Local\Temp\mapperice_final_check\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\mapperice_final_check\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\mapperice_final_check\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.pdb
