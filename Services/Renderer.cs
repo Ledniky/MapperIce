@@ -1,4 +1,4 @@
-// Services/Renderer.cs
+﻿// Services/Renderer.cs
 using MapperIce.Models;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -29,7 +29,10 @@ public partial class Renderer
     // Кэш текстур для ускорения рендеринга
     // Кэш текстур для ускорения рендеринга
     private readonly Dictionary<string, Image?> _textureCache = new();
-    private readonly Dictionary<string, Rectangle> _sourceRectCache = new();
+    // Ключ — (идентификатор спрайта, четверть оборота): строка собиралась на каждый
+    // вызов, а вызывается это на каждый объект каждый кадр. Для кадров без направлений
+    // четверть всегда 0, т.е. ключ остаётся по одному на спрайт.
+    private readonly Dictionary<(string key, int quarter), Rectangle> _sourceRectCache = new();
     private readonly Dictionary<string, string> _protoTextureDirCache = new();
     private readonly Dictionary<string, Size> _rsiFrameSizeCache = new();
     private readonly Dictionary<string, string> _protoStateNameCache = new();
@@ -63,12 +66,81 @@ public partial class Renderer
     private readonly HashSet<(int gridUid, int cx, int cy)> _emptyFloorChunks = new();
     private int _floorChunkTileSize = 0;
 
-    // Кэш кадров IconSmooth-стейтов: ключ "прототип|имя файла стейта" -> Image.
+    // Кэш кадров IconSmooth-стейтов: ключ (прототип, номер стейта) -> Image.
     // Один state_N.png (например state_3.png, 64×64) содержит 4 кадра-фриза по 32×32 —
     // по одному на каждый угол (SE/NW/NE/SW). Отдельный кэш от _textureCache, потому
     // что у обычных текстур один кадр на стейт, а тут — 4, и лежат они под вменяемым
-    // ключом (не конфликтуют с прототипом).
-    private readonly Dictionary<string, Image> _iconSmoothStateCache = new();
+    // ключом (не конфликтуют с прототипом). Ключ-кортеж вместо строки: на каждый
+    // сглаженный тайл в кадре приходится до 4 запросов, и склейка строки на каждый
+    // из них была лишней аллокацией на ровном месте.
+    private readonly Dictionary<(string protoId, int state), Image?> _iconSmoothStateCache = new();
+    // Составной строковый ключ для тех же стейтов (нужен GetSourceRect: по нему
+    // определяется каталог meta.json и имя стейта). Строится один раз на (прототип, стейт).
+    private readonly Dictionary<(string protoId, int state), string> _iconSmoothStateKeys = new();
+
+    // === Бейк спрайтов с тонированием и поворотом ===
+    // GDI+ рисует DrawImage с ImageAttributes примерно в 25 раз медленнее обычного
+    // (замер: ~118 мкс против ~3–5 мкс на спрайт 32×32), а DrawImage под Transform
+    // ровно на 90° — примерно в 300 раз (~1 мс против ~6 мкс у 45°/180°/270°).
+    // На карте это тысячи тонированных декалей/кабелей и десятки повёрнутых
+    // объектов, поэтому такие спрайты один раз выпекаются в битмап нужного размера
+    // (с тонированием и поворотом) и дальше рисуются обычным 1:1 DrawImage.
+    private readonly record struct BakedSpriteKey(string Id, int Variant, int Quarter, int Width, int Height, string? Tint);
+    private readonly Dictionary<BakedSpriteKey, Bitmap> _bakedSpriteCache = new();
+    private const int BakedSpriteMaxEntries = 4096;
+    private int _bakedSpriteTileSize;
+
+    // === Метаданные прототипа, нужные при отрисовке ===
+    // Раньше на каждый объект каждый кадр заново обходилась цепочка parent: (слои,
+    // offset, IsStructure, directions), причём GetStateDirections у индексатора
+    // читал meta.json с диска. Теперь всё это резолвится один раз на protoId.
+    private sealed class ProtoRenderMeta
+    {
+        public IconSmoothSettings? IconSmooth;
+        public List<Models.SpriteLayer>? Layers;
+        public (float x, float y) SpriteOffset;
+        public bool IsStructure;
+        public int StateDirections;
+        public int DrawDepthOffset;
+        public bool IsOccluder;
+        public (string? baseClosed, string? doorOpen, string? doorClosed)? StorageVisuals;
+    }
+    private readonly Dictionary<string, ProtoRenderMeta> _protoMetaCache = new(StringComparer.Ordinal);
+
+    // Готовые данные отрисовки слоя многослойного прототипа: составной ключ текстур,
+    // сама текстура и признак «у слоя есть directions». Заполняется один раз на
+    // (прототип, номер слоя); раньше всё это пересчитывалось на каждый слой каждой
+    // сущности в кадре.
+    private readonly Dictionary<(string protoId, int layerIndex), (string CacheKey, Image? Texture, bool HasDirections)> _layerInfoCache = new();
+
+    // === Композиция спрайтов в один битмап ===
+    // Многослойные прототипы (у телеком-сервера 15 слоёв) и IconSmooth (4 угловых
+    // слоя) раньше выводились построчно: 4–15 DrawImage на объект. На стандартной
+    // карте это ~7500 вызовов GDI+ за кадр. Здесь слои один раз собираются в один
+    // битмап, и на кадр остаётся один DrawImage на объект.
+    private readonly Dictionary<(string protoId, int quarter, int width, int height), Bitmap?> _layeredCompositeCache = new();
+    private const int LayeredCompositeMaxEntries = 1024;
+    private int _layeredCompositeTileSize;
+
+    private readonly Dictionary<(string protoId, int mask, int quarter, int tileSize), Bitmap?> _smoothCompositeCache = new();
+    private const int SmoothCompositeMaxEntries = 2048;
+    private int _smoothCompositeTileSize;
+
+    // === Кэш оверлея обзора камер ===
+    // До кэша на КАЖДЫЙ кадр заново обходились все сущности карты (проверка Occluder
+    // по цепочке parent:) и для КАЖДОЙ камеры считалась видимость: две волны по ~289
+    // клеткам плюс проход углов. На стандартной карте SS14 (~25 тыс. сущностей) это
+    // давало ~85 мс на кадр. Теперь результат считается один раз на структурное
+    // изменение грида — камеры неподвижны, меняется только кадр/зум.
+    private sealed class CameraCoverageCache
+    {
+        public readonly List<(float X, float Y)> Cameras = new();
+        // Ключ — клетка камеры; значение — видимые ею клетки (в мировых тайлах,
+        // от зума не зависят).
+        public readonly Dictionary<(int x, int y), List<(int x, int y)>> VisibleByCamera = new();
+    }
+    private readonly Dictionary<int, CameraCoverageCache> _cameraCoverageCache = new();
+    private readonly HashSet<int> _dirtyCameraCoverage = new();
 
     // Резолвнутая визуальная информация кабеля (CableVisualizer + цвета слоёв) по protoId.
     // Резолв идёт по цепочке parent:, поэтому кэшируем, чтобы не обходить её на каждый
@@ -575,11 +647,7 @@ public partial class Renderer
         // - 64×64  → 2×2 тайла (раньше ошибочно сжимался в 1×1 — отсюда были
         //   вдвое уменьшенные лестницы и подобные крупные объекты);
         // - 64×128 → 2×4 тайла и т.д. — любой размер экстрагируется "как есть".
-        float tilesWide = (float)src.Width / RsiBaseTexelsPerTile;
-        float tilesHigh = (float)src.Height / RsiBaseTexelsPerTile;
-
-        int drawW = Math.Max(1, (int)Math.Round(rect.Width * tilesWide));
-        int drawH = Math.Max(1, (int)Math.Round(rect.Height * tilesHigh));
+        var (drawW, drawH) = GetAspectDrawSize(rect, src);
 
         // Спрайт центрируется на исходном тайле (том, куда фактически поставлен
         // объект) и может выходить за его границы во все стороны — точно так же,
@@ -588,23 +656,150 @@ public partial class Renderer
         int drawY = rect.Y + (rect.Height - drawH) / 2;
         g.DrawImage(texture, new Rectangle(drawX, drawY, drawW, drawH), src, GraphicsUnit.Pixel);
     }
+
+    /// <summary>
+    /// Размер, в который DrawPreservingAspect выводит кадр src внутри rect (масштаб по
+    /// каждой оси от 32 px/тайл). Вынесено отдельно, чтобы запекание спрайта считало
+    /// ровно ту же геометрию, что и обычная отрисовка.
+    /// </summary>
+    private static (int w, int h) GetAspectDrawSize(Rectangle rect, Rectangle src)
+    {
+        float tilesWide = (float)src.Width / RsiBaseTexelsPerTile;
+        float tilesHigh = (float)src.Height / RsiBaseTexelsPerTile;
+        return (Math.Max(1, (int)Math.Round(rect.Width * tilesWide)),
+                Math.Max(1, (int)Math.Round(rect.Height * tilesHigh)));
+    }
+
+    /// <summary>
+    /// Четверть оборота (0=S,1=E,2=N,3=W) для угла, кратного 90°, либо -1, если угол
+    /// произвольный. Нужен, чтобы не гонять GDI+ через g.Transform: у него именно
+    /// ровно 90° — самый медленный путь (~1 мс на спрайт вместо ~6 мкс).
+    /// </summary>
+    private static int GetQuarterTurn(float rotation)
+    {
+        float norm = rotation % (float)(2 * Math.PI);
+        if (norm < 0) norm += (float)(2 * Math.PI);
+        float degrees = norm * 180f / (float)Math.PI;
+        int quarter = (int)Math.Round(degrees / 90f);
+        return Math.Abs(degrees - quarter * 90f) < 0.01f ? ((quarter % 4) + 4) % 4 : -1;
+    }
+
+    /// <summary>
+    /// Берёт из кэша (или выпекает) спрайт нужного размера с тонированием и поворотом
+    /// на четверть оборота. Готовый битмап потом выводится обычным DrawImage — это
+    /// в десятки раз дешевле, чем DrawImage с ImageAttributes или с Transform.
+    /// rotation может быть 0 (только тонирование). null — угол не кратен 90°.
+    /// </summary>
+    private Bitmap? GetBakedSprite(string id, int variant, Image texture, Rectangle src, int width, int height,
+                                   float rotation, string? tintColor)
+    {
+        if (texture == null || src.Width <= 0 || src.Height <= 0 || width <= 0 || height <= 0) return null;
+
+        int quarter = GetQuarterTurn(rotation);
+        if (quarter < 0) return null;
+
+        // Зум поменялся — запечённые размеры больше не нужны, не копим их
+        if (_bakedSpriteTileSize != _cachedTileSize)
+        {
+            ClearBakedSprites();
+            _bakedSpriteTileSize = _cachedTileSize;
+        }
+
+        var key = new BakedSpriteKey(id, variant, quarter, width, height, tintColor);
+        if (_bakedSpriteCache.TryGetValue(key, out var cached)) return cached;
+
+        if (_bakedSpriteCache.Count >= BakedSpriteMaxEntries) ClearBakedSprites();
+
+        Bitmap bmp = new(width, height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        try
+        {
+            using (var bg = Graphics.FromImage(bmp))
+            {
+                bg.InterpolationMode = _interpolationMode;
+                bg.PixelOffsetMode = PixelOffsetMode.Half;
+                bg.SmoothingMode = SmoothingMode.None;
+                var dest = new Rectangle(0, 0, width, height);
+                var tint = string.IsNullOrEmpty(tintColor) ? null : GetDecalTintAttributes(tintColor!);
+                if (tint != null)
+                    bg.DrawImage(texture, dest, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+                else
+                    bg.DrawImage(texture, dest, src, GraphicsUnit.Pixel);
+            }
+
+            // RotateFlip меняет местами ширину и высоту у 90°/270° — как и поворот
+            // вокруг центра тайла, который делал WithRotation.
+            if (quarter != 0)
+            {
+                bmp.RotateFlip(quarter switch
+                {
+                    1 => RotateFlipType.Rotate90FlipNone,
+                    2 => RotateFlipType.Rotate180FlipNone,
+                    _ => RotateFlipType.Rotate270FlipNone
+                });
+            }
+        }
+        catch
+        {
+            bmp.Dispose();
+            return null;
+        }
+
+        _bakedSpriteCache[key] = bmp;
+        return bmp;
+    }
+
+    /// <summary>Выводит запечённый спрайт по центру anchor-прямоугольника (как WithRotation).</summary>
+    private static void DrawBakedSprite(Graphics g, Bitmap baked, Rectangle anchor)
+    {
+        g.DrawImage(baked, anchor.X + (anchor.Width - baked.Width) / 2,
+                           anchor.Y + (anchor.Height - baked.Height) / 2,
+                           baked.Width, baked.Height);
+    }
+
+    /// <summary>
+    /// Пытается нарисовать спрайт с поворотом без GDI+-трансформации: если угол кратен
+    /// 90°, кадр один раз выпекается (с тонированием, если задан цвет) и выводится 1:1
+    /// по центру rect. false — угол произвольный, рисовать надо обычным путём.
+    /// preserveAspect — как в прежней отрисовке: без тонирования кадр сохранял пропорции,
+    /// с тонированием растягивался на весь rect.
+    /// </summary>
+    private bool TryDrawBaked(Graphics g, string id, int variant, Image texture, Rectangle rect, Rectangle src,
+                              float rotation, string? tintColor, bool preserveAspect)
+    {
+        int quarter = GetQuarterTurn(rotation);
+        if (quarter < 0) return false;
+
+        int w = rect.Width, h = rect.Height;
+        if (preserveAspect) (w, h) = GetAspectDrawSize(rect, src);
+
+        var baked = GetBakedSprite(id, variant, texture, src, w, h, rotation, tintColor);
+        if (baked == null) return false;
+
+        DrawBakedSprite(g, baked, rect);
+        return true;
+    }
+
+    private void ClearBakedSprites()
+    {
+        foreach (var kvp in _bakedSpriteCache)
+            kvp.Value.Dispose();
+        _bakedSpriteCache.Clear();
+    }
     /// <summary>
     /// Рисует текстуру прототипа в rect (с опциональным тонированием tint), либо, если текстуры
     /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
     /// каждого типа объекта своя.
     /// </summary>
-    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f)
+    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f, string? tintColor = null)
     {
         // Многослойный прототип (YAML Sprite.layers) — рисуем все слои поверх друг
         // друга отдельным путём и выходим, не трогая старую однослойную логику ниже.
-        // GetLayers учитывает наследование от parent (в отличие от
-        // FindPrototype(...).Layers), поэтому наследуемые прототипы вроде
-        // Locker*Filled/Closet*Filled — которые переопределяют только parent и
-        // EntityTableContainerFill — тоже рисуются многослойно, как в панели репозитория.
-        var layered = !string.IsNullOrEmpty(protoId) ? _indexer?.GetLayers(protoId) : null;
-        if (layered != null && layered.Count > 0)
+        // Слои берутся из кэша метаданных: GetLayers обходил цепочку parent: на
+        // каждый объект каждый кадр и возвращал новый List даже без слоёв.
+        var layered = GetProtoLayers(protoId ?? "");
+        if (layered != null)
         {
-            DrawLayeredTexturedRect(g, protoId!, layered, rect, tint, fallback, rotation);
+            DrawLayeredTexturedRect(g, protoId!, layered, rect, tint, fallback, rotation, tintColor);
             return;
         }
 
@@ -619,7 +814,7 @@ public partial class Renderer
             // YAMLGenerator: posY = -Y + ...). При такой формуле "восток" на 90°
             // визуально уводит смещение в "запад" экрана и наоборот — так и должно
             // быть по факту наблюдаемого поведения игры.
-            var (offX, offY) = _indexer?.GetSpriteOffset(protoId ?? "") ?? (0f, 0f);
+            var (offX, offY) = GetProtoSpriteOffset(protoId ?? "");
             if (offX != 0f || offY != 0f)
             {
                 float cosR = (float)Math.Cos(rotation);
@@ -654,15 +849,31 @@ public partial class Renderer
             // прототипов (без направленных состояний) строка всегда одна и та же,
             // и без явного WithRotation колесо мыши визуально ничего не поворачивало —
             // отсюда и была "сломана" видимая ротация в редакторе.
-            if (GetStateDirections(protoId!) >= 4)
+            bool hasDirections = GetStateDirections(protoId!) >= 4;
+
+            // ЭКЗЕМПЛЯРЫ: при зуме кадр рисуется в одном и том же размере rect для всех
+            // объектов прототипа. Вместо масштабированного DrawImage на каждый объект
+            // (при отдалении ~15 мкс против ~3 мкс у блита 1:1) один раз печём копию
+            // в этом размере (с поворотом и тонированием) и выводим 1:1. Для направленных
+            // спрайтов GetSourceRect внутри уже выбирает кадр по rotation.
+            if (TryDrawBaked(g, protoId!, 0, texture, rect, src, rotation, tintColor, preserveAspect: tint == null))
+            {
+                return;
+            }
+
+            if (hasDirections)
             {
                 DoDraw();
             }
-            else
+            else if (rotation != 0f)
             {
                 float cx = rect.X + rect.Width / 2f;
                 float cy = rect.Y + rect.Height / 2f;
                 WithRotation(g, cx, cy, rotation, DoDraw);
+            }
+            else
+            {
+                DoDraw();
             }
         }
         else
@@ -678,9 +889,9 @@ public partial class Renderer
     /// раньше для одного слоя), а собственный offset конкретного слоя (если задан) —
     /// уже поверх этого, только к этому слою.
     /// </summary>
-    private void DrawLayeredTexturedRect(Graphics g, string protoId, List<Models.SpriteLayer> layers, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation)
+    private void DrawLayeredTexturedRect(Graphics g, string protoId, List<Models.SpriteLayer> layers, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation, string? tintColor = null)
     {
-        var (offX, offY) = _indexer?.GetSpriteOffset(protoId) ?? (0f, 0f);
+        var (offX, offY) = GetProtoSpriteOffset(protoId);
         if (offX != 0f || offY != 0f)
         {
             float cosR = (float)Math.Cos(rotation);
@@ -698,50 +909,38 @@ public partial class Renderer
         float cx = rect.X + rect.Width / 2f;
         float cy = rect.Y + rect.Height / 2f;
 
-        // EntityStorageVisuals: шкафчики/локеры переопределяют state базовых слоёв
-        // спрайта (Base → stateBaseClosed, Door → stateDoorClosed), причём сам компонент
-        // Sprite с layers живёт у далёкого предка (ClosetBase, closet.rsi), а state —
-        // у конкретного наследника (LockerCaptionFilled и т.п.). Подменяем state слоя
-        // перед загрузкой текстуры, иначе рисовался бы дефолтный "generic"/"generic_door".
-        var storageViz = _indexer?.GetEntityStorageVisuals(protoId);
+        // Быстрый путь: слоёв со своим смещением нет, поворот кратен 90° — вся
+        // композиция уже собрана в один битмап, и на кадр остаётся ОДИН DrawImage
+        // вместо N (у телеком-сервера их 15). Слои с HasOffset идут старым путём:
+        // их смещение поворачивается вокруг центра клетки, а не центра слоя.
+        if (tint == null && LayerSetCanBeComposited(layers))
+        {
+            int quarter = GetQuarterTurn(rotation);
+            if (quarter >= 0)
+            {
+                var composite = GetLayeredComposite(protoId, layers, rect.Width, rect.Height, quarter);
+                if (composite != null)
+                {
+                    DrawBakedSprite(g, composite, rect);
+                    return;
+                }
+            }
+        }
+
+        // EntityStorageVisuals (подмена state базовых слоёв) резолвится внутри
+        // GetLayerInfo — один раз на (прототип, слой), а не на каждую сущность в кадре.
 
         for (int i = 0; i < layers.Count; i++)
         {
             var layer = layers[i];
             if (!layer.Visible) continue;
 
-            // Составной ключ кэша — отдельная запись в _textureCache/_sourceRectCache
-            // и т.п. на каждый слой каждого прототипа (а не одна на protoId, как для
-            // однослойных текстур). State хранения включается в ключ, чтобы разные
-            // state (закрыто/открыто) не конфликтовали в кэше.
-            string effectiveState = layer.State;
-            if (storageViz != null)
-            {
-                bool isBase;
-                bool isDoor;
-                if (!string.IsNullOrEmpty(layer.MapKey))
-                {
-                    isBase = layer.MapKey.Contains("Base");
-                    isDoor = layer.MapKey.Contains("Door");
-                }
-                else
-                {
-                    bool first = i == 0;
-                    bool second = i == 1;
-                    isBase = first && !second;
-                    isDoor = !first && second;
-                }
-
-                string? overrideState = isBase ? storageViz.Value.baseClosed
-                                       : isDoor ? storageViz.Value.doorClosed
-                                       : null;
-                if (!string.IsNullOrEmpty(overrideState))
-                    effectiveState = overrideState;
-            }
-
-            string cacheKey = $"{protoId}__layer{i}__{effectiveState ?? "?"}";
-            Image? layerTexture = GetOrLoadLayerTexture(cacheKey, protoId, layer, effectiveState);
-            if (layerTexture == null) continue;
+            // Составной ключ кэша, текстура и признак «у слоя есть направления»
+            // кэшируются по (прототип, номер слоя): раньше строка склеивалась и
+            // текстура искалась заново на КАЖДЫЙ слой КАЖДОЙ сущности в кадре
+            // (у телеком-сервера до 15 слоёв), а на карте это тысячи объектов.
+            var layerInfo = GetLayerInfo(protoId, i, layer);
+            if (layerInfo.Texture == null) continue;
 
             anyDrawn = true;
 
@@ -763,7 +962,9 @@ public partial class Renderer
             // из-за чего сущность визуально "не туда" смотрит и как будто застревает
             // на юге). Если же у слоя directions<4 (кадр всегда один и тот же) — нужен
             // обычный аффинный поворот картинки, как раньше для однослойных спрайтов.
-            bool layerHasDirections = GetStateDirections(cacheKey) >= 4;
+            bool layerHasDirections = layerInfo.HasDirections;
+            string cacheKey = layerInfo.CacheKey;
+            Image layerTexture = layerInfo.Texture;
 
             void DrawThisLayer()
             {
@@ -780,15 +981,286 @@ public partial class Renderer
             }
 
             if (layerHasDirections)
+            {
                 DrawThisLayer();
-            else
-                WithRotation(g, cx, cy, rotation, DrawThisLayer);
+                continue;
+            }
+
+            // Поворот кратен 90°: выпекаем слой (с тонированием и поворотом) один раз
+            // и выводим 1:1 — GDI+ с ImageAttributes/Transform на этом был узким местом.
+            // Слой со своим смещением поворачивается вокруг центра СВОЕГО прямоугольника,
+            // а прежний WithRotation крутил его вокруг центра всей клетки — для смещённых
+            // слоёв запекание дало бы сдвиг, поэтому такие слои идут старым путём.
+            bool layerCanBake = !layer.HasOffset;
+
+            string? layerTintColor = tint != null ? tintColor
+                                   : (!string.IsNullOrEmpty(layer.Color) ? layer.Color : null);
+            if (layerCanBake && rotation != 0f &&
+                TryDrawBaked(g, protoId, i + 1, layerTexture, layerRect,
+                             GetSourceRect(cacheKey, layerTexture, 0f), rotation, layerTintColor,
+                             preserveAspect: layerTintColor == null))
+            {
+                continue;
+            }
+
+            WithRotation(g, cx, cy, rotation, DrawThisLayer);
         }
 
         if (!anyDrawn)
             fallback?.Invoke(g, rect);
     }
 
+
+    /// <summary>
+    /// Можно ли собрать композицию слоёв в один битмап: ни у одного видимого слоя
+    /// нет собственного смещения (иначе поворот вокруг центра слоя не совпадёт
+    /// с поворотом вокруг центра клетки).
+    /// </summary>
+    private static bool LayerSetCanBeComposited(List<Models.SpriteLayer> layers)
+    {
+        for (int i = 0; i < layers.Count; i++)
+            if (layers[i].Visible && layers[i].HasOffset) return false;
+        return true;
+    }
+    /// <summary>
+    /// Собирает все видимые слои прототипа в один битмап: на кадр вместо N DrawImage
+    /// (у телеком-сервера 15) остаётся один. Слои без направленных кадров поворачиваются
+    /// здесь же через RotateFlip, у направленных кадр выбирает GetSourceRect — ровно как
+    /// в прежней построчной отрисовке, поэтому картинка не меняется. null — если ни одна
+    /// текстура слоя не загрузилась (тогда работает прежний путь с фолбэком).
+    /// Слои со своим смещением (HasOffset) здесь не участвуют: вызывающий код для такого
+    /// прототипа идёт старым путём, потому что смещение поворачивается вокруг центра
+    /// клетки, а не центра слоя.
+    /// </summary>
+    private Bitmap? GetLayeredComposite(string protoId, List<Models.SpriteLayer> layers, int width, int height, int quarter)
+    {
+        if (_layeredCompositeTileSize != _cachedTileSize)
+        {
+            ClearLayeredComposites();
+            _layeredCompositeTileSize = _cachedTileSize;
+        }
+
+        var key = (protoId, quarter, width, height);
+        if (_layeredCompositeCache.TryGetValue(key, out var cached)) return cached;
+
+        if (_layeredCompositeCache.Count >= LayeredCompositeMaxEntries) ClearLayeredComposites();
+
+        float quarterAngle = quarter * (float)(Math.PI / 2);
+        var layerBitmaps = new List<Bitmap>();
+
+        try
+        {
+            for (int i = 0; i < layers.Count; i++)
+            {
+                var layer = layers[i];
+                if (!layer.Visible || layer.HasOffset) continue;
+
+                var info = GetLayerInfo(protoId, i, layer);
+                if (info.Texture == null) continue;
+
+                var src = GetSourceRect(info.CacheKey, info.Texture, quarterAngle);
+                if (src.Width == 0 || src.Height == 0) continue;
+
+                var tint = !string.IsNullOrEmpty(layer.Color) ? GetDecalTintAttributes(layer.Color) : null;
+                var (w, h) = tint != null
+                    ? (width, height)
+                    : GetAspectDrawSize(new Rectangle(0, 0, width, height), src);
+
+                var layerBmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                using (var lg = Graphics.FromImage(layerBmp))
+                {
+                    lg.InterpolationMode = _interpolationMode;
+                    lg.PixelOffsetMode = PixelOffsetMode.Half;
+                    lg.SmoothingMode = SmoothingMode.None;
+                    var dst = new Rectangle(0, 0, w, h);
+                    if (tint != null)
+                        lg.DrawImage(info.Texture, dst, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+                    else
+                        lg.DrawImage(info.Texture, dst, src, GraphicsUnit.Pixel);
+                }
+
+                // Направленный слой уже выбрал кадр по четверти — его крутить не нужно
+                if (!info.HasDirections && quarter != 0)
+                {
+                    layerBmp.RotateFlip(quarter switch
+                    {
+                        1 => RotateFlipType.Rotate90FlipNone,
+                        2 => RotateFlipType.Rotate180FlipNone,
+                        _ => RotateFlipType.Rotate270FlipNone
+                    });
+                }
+
+                layerBitmaps.Add(layerBmp);
+            }
+
+            if (layerBitmaps.Count == 0)
+            {
+                _layeredCompositeCache[key] = null;
+                return null;
+            }
+
+            int canvasW = 0, canvasH = 0;
+            foreach (var b in layerBitmaps)
+            {
+                if (b.Width > canvasW) canvasW = b.Width;
+                if (b.Height > canvasH) canvasH = b.Height;
+            }
+
+            var composite = new Bitmap(canvasW, canvasH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var cg = Graphics.FromImage(composite))
+            {
+                cg.InterpolationMode = InterpolationMode.NearestNeighbor;
+                cg.PixelOffsetMode = PixelOffsetMode.Half;
+                cg.SmoothingMode = SmoothingMode.None;
+                foreach (var b in layerBitmaps)
+                    cg.DrawImage(b, (canvasW - b.Width) / 2, (canvasH - b.Height) / 2, b.Width, b.Height);
+            }
+
+            _layeredCompositeCache[key] = composite;
+            return composite;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            foreach (var b in layerBitmaps) b.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Собирает 4 угловых слоя IconSmooth в один битмап (вместо 4 DrawImage на объект).
+    /// Кадры выбираются теми же layerFills/layerAngle, что и в прежней отрисовке,
+    /// поэтому картинка не меняется. null — ни один state-кадр не загрузился.
+    /// </summary>
+    private Bitmap? GetSmoothComposite(string protoId, IconSmoothSettings settings, int mask, int quarter, int tileSize)
+    {
+        if (_smoothCompositeTileSize != _cachedTileSize)
+        {
+            ClearSmoothComposites();
+            _smoothCompositeTileSize = _cachedTileSize;
+        }
+
+        var key = (protoId, mask, quarter, tileSize);
+        if (_smoothCompositeCache.TryGetValue(key, out var cached)) return cached;
+
+        if (_smoothCompositeCache.Count >= SmoothCompositeMaxEntries) ClearSmoothComposites();
+
+        var layerFills = RotateLayerFills(ComputeCornerFills(mask), quarter);
+        var images = new Image?[4];
+        var keys = new string?[4];
+        bool anyLoaded = false;
+        for (int li = 0; li < 4; li++)
+        {
+            var (img, key2) = GetSmoothState(protoId, settings, LayerFillAt(layerFills, li));
+            images[li] = img;
+            keys[li] = key2;
+            if (img != null) anyLoaded = true;
+        }
+
+        if (!anyLoaded)
+        {
+            _smoothCompositeCache[key] = null;
+            return null;
+        }
+
+        Bitmap? bmp = null;
+        try
+        {
+            bmp = new Bitmap(tileSize, tileSize, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var bg = Graphics.FromImage(bmp))
+            {
+                bg.InterpolationMode = _interpolationMode;
+                bg.PixelOffsetMode = PixelOffsetMode.Half;
+                bg.SmoothingMode = SmoothingMode.None;
+                var rect = new Rectangle(0, 0, tileSize, tileSize);
+
+                for (int li = 0; li < 4; li++)
+                {
+                    var img = images[li];
+                    var stateKey = keys[li];
+                    if (img == null || stateKey == null) continue;
+
+                    float layerAngle = quarter * (float)(Math.PI / 2) + (float)IconSmoothLayerBaseAngle[li];
+                    var src = GetSourceRect(stateKey, img, layerAngle);
+                    if (src.Width == 0 || src.Height == 0) continue;
+                    bg.DrawImage(img, rect, src, GraphicsUnit.Pixel);
+                }
+            }
+
+            _smoothCompositeCache[key] = bmp;
+            return bmp;
+        }
+        catch
+        {
+            bmp?.Dispose();
+            return null;
+        }
+    }
+
+    private void ClearLayeredComposites()
+    {
+        foreach (var kvp in _layeredCompositeCache)
+            kvp.Value?.Dispose();
+        _layeredCompositeCache.Clear();
+    }
+
+    private void ClearSmoothComposites()
+    {
+        foreach (var kvp in _smoothCompositeCache)
+            kvp.Value?.Dispose();
+        _smoothCompositeCache.Clear();
+    }
+
+    /// <summary>
+    /// Данные отрисовки одного слоя многослойного прототипа — из кэша по
+    /// (прототип, номер слоя). Здесь же резолвится подмена state из EntityStorageVisuals
+    /// (шкафчики/локеры переопределяют state базовых слоёв: Base → stateBaseClosed,
+    /// Door → stateDoorClosed). Сам компонент Sprite с layers живёт у далёкого предка
+    /// (ClosetBase, closet.rsi), а state — у конкретного наследника
+    /// (LockerCaptionFilled и т.п.), поэтому без подмены рисовался бы дефолтный
+    /// "generic"/"generic_door". Раньше это делалось на каждую сущность в кадре.
+    /// </summary>
+    private (string CacheKey, Image? Texture, bool HasDirections) GetLayerInfo(string protoId, int index, Models.SpriteLayer layer)
+    {
+        var key = (protoId, index);
+        if (_layerInfoCache.TryGetValue(key, out var cached)) return cached;
+
+        string effectiveState = layer.State;
+        var storageViz = GetProtoMeta(protoId).StorageVisuals;
+        if (storageViz != null)
+        {
+            bool isBase;
+            bool isDoor;
+            if (!string.IsNullOrEmpty(layer.MapKey))
+            {
+                isBase = layer.MapKey.Contains("Base");
+                isDoor = layer.MapKey.Contains("Door");
+            }
+            else
+            {
+                bool first = index == 0;
+                bool second = index == 1;
+                isBase = first && !second;
+                isDoor = !first && second;
+            }
+
+            string? overrideState = isBase ? storageViz.Value.baseClosed
+                                   : isDoor ? storageViz.Value.doorClosed
+                                   : null;
+            if (!string.IsNullOrEmpty(overrideState))
+                effectiveState = overrideState;
+        }
+
+        string cacheKey = $"{protoId}__layer{index}__{effectiveState ?? "?"}";
+        var texture = GetOrLoadLayerTexture(cacheKey, protoId, layer, effectiveState);
+        bool hasDirections = texture != null && GetStateDirections(cacheKey) >= 4;
+
+        var result = (cacheKey, texture, hasDirections);
+        _layerInfoCache[key] = result;
+        return result;
+    }
 
     /// <summary>
     /// Загружает и кэширует текстуру ОДНОГО слоя многослойного прототипа. cacheKey —
@@ -866,6 +1338,9 @@ public partial class Renderer
             float cx = rect.X + tileSize / 2f;
             float cy = rect.Y + tileSize / 2f;
 
+            if (TryDrawDecalBaked(g, decal, rect))
+                continue;
+
             WithRotation(g, cx, cy, decal.Rotation, () =>
             {
                 var tintAttrs = GetDecalTintAttributes(decal.Color);
@@ -878,7 +1353,7 @@ public partial class Renderer
                         (int)(160 * opacity),
                         fallbackColor.R, fallbackColor.G, fallbackColor.B));
                     gg.FillRectangle(brush, r);
-                });
+                }, decal.Rotation, string.IsNullOrEmpty(decal.Color) ? null : decal.Color);
             });
         }
     }
@@ -1276,9 +1751,22 @@ public partial class Renderer
         var tint = !string.IsNullOrEmpty(color) ? GetDecalTintAttributes(color!) : null;
 
         if (tint != null)
+        {
+            // DrawImage с ImageAttributes — ~118 мкс на спрайт, а кабелей на карте сотни.
+            // Печём состояние кабеля с тонированием один раз (ключ — protoId + маска
+            // соседей) и дальше выводим обычным 1:1 DrawImage.
+            var baked = GetBakedSprite(protoId, mask, texture, src, rect.Width, rect.Height, 0f, color);
+            if (baked != null)
+            {
+                DrawBakedSprite(g, baked, rect);
+                return true;
+            }
             g.DrawImage(texture, rect, src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, tint);
+        }
         else
+        {
             DrawPreservingAspect(g, texture, rect, src);
+        }
 
         return true;
     }
@@ -1329,7 +1817,7 @@ public partial class Renderer
 
         if (visualizer != null && !string.IsNullOrEmpty(visualizer.StatePrefix))
         {
-            var layers = _indexer.GetLayers(protoId);
+            var layers = GetProtoLayers(protoId) ?? new List<Models.SpriteLayer>();
             string? componentColor = _indexer.GetSpriteColor(protoId);
 
             info = new CableRenderInfo
@@ -1454,57 +1942,123 @@ public partial class Renderer
     /// </summary>
     private void DrawCameraCoverageOverlay(Graphics g, Grid grid, TileGrid tileGrid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
-        // Половина стороны квадрата: 6.5 клетки дают 13×13 тайлов (тайлы с шагом
-        // до 6 от клетки камеры включительно).
-        const float halfSideTiles = 6.5f;
+        // Вся тяжёлая часть (перекрытия + видимость каждой камеры) считается один раз
+        // на структурное изменение грида — см. GetCameraCoverage.
+        var coverage = GetCameraCoverage(grid, tileGrid);
+        if (coverage.Cameras.Count == 0) return;
 
-        // Не один цикл по сущностям с фильтрацией по прототипу: «привязка»-камера
-        // хранит прототип в CameraProto, обычная сущность — в Proto. В том же проходе
-        // собираем сущности-перекрытия (Occluder), чтобы не обходить список дважды.
-        var cameras = new List<(float X, float Y)>();
-        var entityOccluders = new HashSet<(int x, int y)>();
-        var protoOccluderCache = new Dictionary<string, bool>();
-        foreach (var entity in grid.Entities)
-        {
-            string proto = entity is CameraEntity camera ? camera.CameraProto : entity.Proto;
-            if (IsCameraProto(proto))
-                cameras.Add((entity.X, entity.Y));
-
-            if (string.IsNullOrEmpty(proto) || _indexer == null) continue;
-
-            // Кэш по прототипу: обход цепочки parent: на каждую сущность был бы дорогим —
-            // на карте тысячи одинаковых прототипов (шкафы, кусты, кресла).
-            if (!protoOccluderCache.TryGetValue(proto, out bool blocks))
-            {
-                blocks = _indexer.HasComponent(proto, "Occluder");
-                protoOccluderCache[proto] = blocks;
-            }
-
-            if (blocks)
-                entityOccluders.Add(((int)Math.Floor(entity.X), (int)Math.Floor(entity.Y)));
-        }
-
-        if (cameras.Count == 0) return;
-
-        var occluders = CollectCameraOccluders(grid, tileGrid, cameras, entityOccluders);
+        // Клетки собираем только от камер, чья зона вообще пересекает кадр: у камеры
+        // дальше 6.5+запас клеток от видимой области закрашивать нечего.
+        const int cullMargin = 9;
         var covered = new HashSet<(int x, int y)>();
-
-        foreach (var (camX, camY) in cameras)
+        foreach (var kv in coverage.VisibleByCamera)
         {
-            foreach (var (tx, ty) in GetCameraVisibleTiles(occluders, camX, camY, halfSideTiles))
+            var (cx, cy) = kv.Key;
+            if (cx + cullMargin < visibleRect.Left || cx - cullMargin > visibleRect.Right ||
+                cy + cullMargin < visibleRect.Top || cy - cullMargin > visibleRect.Bottom) continue;
+
+            foreach (var tile in kv.Value)
             {
-                if (!IsTileVisible(tx, ty, visibleRect)) continue;
-                covered.Add((tx, ty));
+                if (!IsTileVisible(tile.x, tile.y, visibleRect)) continue;
+                covered.Add(tile);
             }
         }
 
         if (covered.Count == 0) return;
 
         using var brush = new SolidBrush(Color.FromArgb(45, 60, 140, 230));
-        foreach (var (tx, ty) in covered)
+        FillTileSpans(g, covered, tileSize, viewOffset, gridOffset, brush);
+    }
+
+    /// <summary>
+    /// Перекрытия для камер и их зоны обзора, с кэшем по гриду. Пересчитывается только
+    /// после InvalidateTileGrid: камеры и стены между кадрами не двигаются, а раньше
+    /// обход всех сущностей карты и волна видимости для каждой камеры выполнялись
+    /// на каждый кадр (на стандартной карте SS14 — десятки камер, ~85 мс/кадр).
+    /// </summary>
+    private CameraCoverageCache GetCameraCoverage(Grid grid, TileGrid tileGrid)
+    {
+        if (!_dirtyCameraCoverage.Contains(grid.Uid) &&
+            _cameraCoverageCache.TryGetValue(grid.Uid, out var cached))
         {
-            var rect = ToRect(tx, ty, tileSize, viewOffset, gridOffset);
-            g.FillRectangle(brush, rect);
+            return cached;
+        }
+
+        // Половина стороны квадрата: 6.5 клетки дают 13×13 тайлов.
+        const float halfSideTiles = 6.5f;
+
+        var cache = new CameraCoverageCache();
+        var entityOccluders = new HashSet<(int x, int y)>();
+
+        foreach (var entity in grid.Entities)
+        {
+            // «Привязка»-камера хранит прототип в CameraProto, обычная сущность — в Proto
+            string proto = entity is CameraEntity camera ? camera.CameraProto : entity.Proto;
+            if (IsCameraProto(proto))
+                cache.Cameras.Add((entity.X, entity.Y));
+
+            if (string.IsNullOrEmpty(proto) || _indexer == null) continue;
+
+            // Occluder резолвится в кэше метаданных прототипа (обход parent: — один
+            // раз на прототип, а не на каждую сущность в каждом кадре).
+            if (GetProtoMeta(proto).IsOccluder)
+                entityOccluders.Add(((int)Math.Floor(entity.X), (int)Math.Floor(entity.Y)));
+        }
+
+        if (cache.Cameras.Count > 0)
+        {
+            var occluders = CollectCameraOccluders(grid, tileGrid, cache.Cameras, entityOccluders);
+            foreach (var (camX, camY) in cache.Cameras)
+            {
+                var key = ((int)Math.Floor(camX), (int)Math.Floor(camY));
+                if (cache.VisibleByCamera.ContainsKey(key)) continue; // две камеры в одной клетке
+                cache.VisibleByCamera[key] = new List<(int x, int y)>(
+                    GetCameraVisibleTiles(occluders, camX, camY, halfSideTiles));
+            }
+        }
+
+        _cameraCoverageCache[grid.Uid] = cache;
+        _dirtyCameraCoverage.Remove(grid.Uid);
+        return cache;
+    }
+
+    /// <summary>
+    /// Заливка набора клеток горизонтальными полосами: вместо FillRectangle на каждую
+    /// клетку — один прямоугольник на непрерывный ряд (зона обзора — почти квадрат,
+    /// так что вызовов становится в ~13 раз меньше при том же объёме пикселей).
+    /// </summary>
+    private static void FillTileSpans(Graphics g, HashSet<(int x, int y)> tiles, int tileSize,
+        PointF viewOffset, PointF gridOffset, Brush brush)
+    {
+        var sorted = new (int x, int y)[tiles.Count];
+        tiles.CopyTo(sorted);
+        Array.Sort(sorted, static (a, b) => a.y != b.y ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
+
+        int i = 0;
+        while (i < sorted.Length)
+        {
+            int y = sorted[i].y;
+            int startX = sorted[i].x;
+            int endX = startX;
+            i++;
+            for (; i < sorted.Length && sorted[i].y == y; i++)
+            {
+                if (sorted[i].x == endX + 1)
+                {
+                    endX = sorted[i].x;
+                    continue;
+                }
+                FillRun(y, startX, endX);
+                startX = endX = sorted[i].x;
+            }
+            FillRun(y, startX, endX);
+        }
+
+        void FillRun(int row, int x0, int x1)
+        {
+            float sx = (x0 + gridOffset.X) * tileSize - viewOffset.X;
+            float sy = (row + gridOffset.Y) * tileSize - viewOffset.Y;
+            g.FillRectangle(brush, sx, sy, (x1 - x0 + 1) * tileSize, tileSize);
         }
     }
 
@@ -2005,9 +2559,11 @@ public partial class Renderer
             Image? texture = GetOrLoadTexture(protoId);
             if (texture != null)
             {
+                var srcRect = GetSourceRect(protoId, texture);
+                if (rotation != 0f && TryDrawBaked(g, protoId, 0, texture, rect, srcRect, rotation, null, preserveAspect: false))
+                    continue;
                 WithRotation(g, cx, cy, rotation, () =>
                 {
-                    var srcRect = GetSourceRect(protoId, texture);
                     g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
                 });
             }
@@ -2278,9 +2834,6 @@ public partial class Renderer
 
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
     {
-        var renderQueue = new List<(double WorldY, int DrawDepthOffset, int LayerOrder, int InsertOrder, Action draw)>();
-        int _insertCounter = 0;
-
         // Индекс IconSmooth (тайл → smooth-ключи): собирает И тайлы-стены, И сущности, чтобы
         // стены из генератора комнат и из панели репозитория сглаживались друг с другом.
         // Кэшируется по гриду — перестраивается один раз на структурное изменение
@@ -2322,247 +2875,328 @@ public partial class Renderer
         // поведением (dd=FloorTiles, самый нижний слой, без индивидуальной сортировки выше декалей).
         DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect);
 
-        // Стены
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
+        // Очередь отрисовки собирается и сортируется один раз на структурное изменение
+        // (см. GetDrawItems): в кадре остаётся только фильтр по видимой области и сам
+        // вывод. Раньше на КАЖДЫЙ кадр шли несколько проходов по всем сущностям карты,
+        // замыкания на каждый видимый объект и повторная сортировка.
+        foreach (var item in GetDrawItems(grid, tileGrid, rebuildRenderCaches))
         {
-            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
-            int dd = tile.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
+            if (item.Kind is DrawItemKind.WallTile or DrawItemKind.DoorTile)
             {
-                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "WallSolid");
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+                if (!IsTileVisible((int)item.X, (int)item.Y, visibleRect)) continue;
             }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("Walls");
-            var t = tile;
-            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawWallTile(g, tileGrid, t.X, t.Y, t.ProtoId ?? "WallSolid", tileSize, viewOffset, gridOffset, opacity)));
-        }
-
-        // Двери
-        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
-        {
-            if (!IsTileVisible(tile.X, tile.Y, visibleRect)) continue;
-            int dd = tile.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
+            else if (item.Kind != DrawItemKind.PipeEndpoints)
             {
-                var ddName = _indexer.GetDrawDepth(tile.ProtoId ?? "Airlock");
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
+                if (!IsPointVisible(item.X, item.Y, visibleRect)) continue;
             }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("Doors");
-            var t = tile;
-            renderQueue.Add((t.Y, dd, 0, _insertCounter++, () => DrawSingleDoor(g, t.X, t.Y, t.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset)));
-        }
 
-        // Декали
-        // Декали — украшения пола/стен: они рисуются ПОВЕРХ только тайлов (пола/стен), но
-        // ВСЕГДА ПОД любыми сущностями (мебель, ковры, мобы). Ковры и прочий floor-декор —
-        // это сущности на уровне "FloorObjects" и выше, поэтому полку декалей фиксируем на
-        // один слой НИЖЕ самой нижней сущности (FloorObjects - 1). Это ставит декали сразу
-        // над тайлами пола и под ЖЕ любым объектом, независимо от глубины прототипа декали
-        // (раньше декаль резолвилась до своего drawdepth — WallTops/Walls — и вылезала
-        // поверх ковров; а потолок Objects-1 её от этого не спасал).
-        // Единая полка также означает, что среди декалей наслоение целиком решает
-        // LayerOrder (порядок слоёв из «Наследования декалей»), а не глубина прототипа.
-        int decalShelfDepth = _drawDepthManager.GetOffset("FloorObjects") - 1;
-        // Концы атмос-труб (вентиляции и приёмники утилизации) при ВЫКЛЮЧЕННОМ оверлее
-        // труб остаются видны, но как напольные детали: кладём всю их пачку на полку
-        // декалей с максимальным layerOrder — то есть выше всех декалей, но ПОД ковры,
-        // которые лежат на FloorObjects. При включённом оверлее концы, наоборот, рисуются
-        // вместе с линиями труб поверх всего (см. блок труб в Render).
-        if (!ShowPipeOverlay && _pipeBuilder != null)
-        {
-            var layerPipes = _pipeBuilder.GetPipes(grid);
-            var visiblePipes = layerPipes.Where(p => IsPointVisible(p.X, p.Y, visibleRect)).ToList();
-            if (visiblePipes.Count > 0)
+            switch (item.Kind)
             {
-                renderQueue.Add((float.MinValue, decalShelfDepth, int.MaxValue, _insertCounter++,
-                    () => DrawEndpointMarkers(g, visiblePipes, layerPipes, tileSize, viewOffset, gridOffset)));
+                case DrawItemKind.WallTile:
+                {
+                    var tile = (TileData)item.Data;
+                    DrawWallTile(g, tileGrid, tile.X, tile.Y, tile.ProtoId ?? "WallSolid",
+                                 tileSize, viewOffset, gridOffset, opacity);
+                    break;
+                }
+                case DrawItemKind.DoorTile:
+                {
+                    var tile = (TileData)item.Data;
+                    DrawSingleDoor(g, tile.X, tile.Y, tile.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.PipeEndpoints:
+                {
+                    // Концы атмос-труб при выключенном оверлее труб: напольные детали
+                    // над декалями и под коврами (см. GetDrawItems).
+                    if (ShowPipeOverlay) break;
+                    var pipes = (List<PipeEntity>)item.Data;
+                    var visiblePipes = new List<PipeEntity>();
+                    foreach (var p in pipes)
+                        if (IsPointVisible(p.X, p.Y, visibleRect)) visiblePipes.Add(p);
+                    if (visiblePipes.Count > 0)
+                        DrawEndpointMarkers(g, visiblePipes, pipes, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Decal:
+                    DrawSingleDecal(g, (PlacedDecal)item.Data, tileSize, viewOffset, gridOffset, opacity);
+                    break;
+                case DrawItemKind.Carpet:
+                case DrawItemKind.Entity:
+                {
+                    var e = (MapEntity)item.Data;
+                    DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Firelock:
+                    DrawSingleFirelock(g, (FirelockEntity)item.Data, tileSize, viewOffset, gridOffset);
+                    break;
+                case DrawItemKind.AirAlarm:
+                    DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
+                                    "AirAlarm", Color.FromArgb(200, 255, 200, 100));
+                    break;
+                case DrawItemKind.FireAlarm:
+                    DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
+                                    "FireAlarm", Color.FromArgb(200, 255, 100, 100));
+                    break;
+                case DrawItemKind.Holopad:
+                {
+                    var h = (HolopadEntity)item.Data;
+                    DrawSingleHolopad(g, h.HolopadProto, h.X, h.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Locker:
+                {
+                    var l = (LockerEntity)item.Data;
+                    DrawSingleLocker(g, l.LockerProto, l.X, l.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.SuitStorage:
+                {
+                    var s = (SuitStorageEntity)item.Data;
+                    DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Bed:
+                {
+                    var b = (BedEntity)item.Data;
+                    DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Camera:
+                {
+                    var c = (CameraEntity)item.Data;
+                    DrawSingleCamera(g, c.CameraProto, c.Rotation, c.X, c.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Dresser:
+                {
+                    var d = (DresserEntity)item.Data;
+                    DrawSingleDresser(g, d.DresserProto, d.X, d.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Intercom:
+                {
+                    var i = (IntercomEntity)item.Data;
+                    DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
+                case DrawItemKind.Fax:
+                {
+                    var f = (FaxMachineEntity)item.Data;
+                    DrawSingleFax(g, f.FaxProto, f.X, f.Y, tileSize, viewOffset, gridOffset);
+                    break;
+                }
             }
-        }
-
-        // Ковры (сущности с id "Carpet*") — отдельная полка ровно НА ОДИН слой выше
-        // декалей (FloorObjects вместо FloorObjects-1). В игре ковры рисуются на
-        // drawdepth "FloorObjects" — поверх пола и декалей, но под мебелью/мобами,
-        // поэтому и в редакторе они должны быть над декалями, а не под ними.
-        int carpetShelfDepth = decalShelfDepth + 1;
-        foreach (var decal in grid.Decals)
-        {
-            if (!IsPointVisible(decal.X, decal.Y, visibleRect)) continue;
-            var d = decal;
-            int layerOrder = d.PatternLayerIndex;
-            renderQueue.Add((d.Y, decalShelfDepth, layerOrder, _insertCounter++, () => DrawSingleDecal(g, d, tileSize, viewOffset, gridOffset, opacity)));
-        }
-
-        // Ковры (сущности с id "Carpet*") — рисуем на отдельной полке поверх декалей,
-        // принудительно игнорируя drawdepth прототипа (иначе ковёр с drawdepth ниже
-        // FloorObjects провалился бы под декали). Внутри себя ковры сортируем по Y.
-        foreach (var entity in grid.Entities)
-        {
-            if (entity.Proto == null ||
-                !entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
-            var c = entity;
-            renderQueue.Add((c.Y, carpetShelfDepth, 0, _insertCounter++, () => DrawSingleEntity(g, c.Proto, c.X, c.Y, c.Rotation, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Огнешлюзы
-        foreach (var firelock in grid.Entities.OfType<FirelockEntity>())
-        {
-            if (!IsPointVisible(firelock.X, firelock.Y, visibleRect)) continue;
-            int dd = firelock.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(firelock.Proto);
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            var f = firelock;
-            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleFirelock(g, f, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Сигнализации (AirAlarm / FireAlarm) — теперь внутри общей сортировки
-        foreach (var entity in grid.Entities.OfType<AirAlarmEntity>())
-        {
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
-            int dd = entity.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(entity.Proto);
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
-            var a = entity;
-            renderQueue.Add((a.Y, dd, 0, _insertCounter++, () => DrawSingleAlarm(g, a, tileSize, viewOffset, gridOffset, "AirAlarm", Color.FromArgb(200, 255, 200, 100))));
-        }
-        foreach (var entity in grid.Entities.OfType<FireAlarmEntity>())
-        {
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
-            int dd = entity.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(entity.Proto);
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
-            var f = entity;
-            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleAlarm(g, f, tileSize, viewOffset, gridOffset, "FireAlarm", Color.FromArgb(200, 255, 100, 100))));
-        }
-
-        // Generic entities (без труб, огнешлюзов и сигнализаций — у них свои
-        // отдельные циклы выше в этом же методе с другим якорем позиционирования
-        // (top-left, а не центр тайла); без этого исключения та же сущность
-        // рендерилась второй раз с ошибочным смещением на пол-тайла влево-вверх)
-        foreach (var entity in grid.Entities)
-        {
-            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity or CameraEntity or DresserEntity or IntercomEntity or FaxMachineEntity) continue;
-            if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
-            if (!IsPointVisible(entity.X, entity.Y, visibleRect)) continue;
-            int dd = entity.DrawDepthOffset;
-            if (dd == 0 && _indexer != null)
-            {
-                var ddName = _indexer.GetDrawDepth(entity.Proto);
-                if (!string.IsNullOrEmpty(ddName)) dd = _drawDepthManager.GetOffset(ddName);
-            }
-            if (dd == 0) dd = _drawDepthManager.GetOffset("Objects");
-            var e = entity;
-            renderQueue.Add((e.Y, dd, 0, _insertCounter++, () => DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Голопады — отдельный слой «привязок» поверх остальных объектов
-        foreach (var holopad in grid.Entities.OfType<HolopadEntity>())
-        {
-            if (!IsPointVisible(holopad.X, holopad.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var h = holopad;
-            renderQueue.Add((h.Y, dd, 0, _insertCounter++, () => DrawSingleHolopad(g, h.HolopadProto, h.X, h.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Шкафчики — отдельный слой «привязок» поверх остальных объектов
-        foreach (var locker in grid.Entities.OfType<LockerEntity>())
-        {
-            if (!IsPointVisible(locker.X, locker.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var l = locker;
-            renderQueue.Add((l.Y, dd, 0, _insertCounter++, () => DrawSingleLocker(g, l.LockerProto, l.X, l.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Хранилища скафандров — отдельный слой «привязок» поверх остальных объектов
-        foreach (var suit in grid.Entities.OfType<SuitStorageEntity>())
-        {
-            if (!IsPointVisible(suit.X, suit.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var s = suit;
-            renderQueue.Add((s.Y, dd, 0, _insertCounter++, () => DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Кровати — отдельный слой «привязок» поверх остальных объектов
-        foreach (var bed in grid.Entities.OfType<BedEntity>())
-        {
-            if (!IsPointVisible(bed.X, bed.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var b = bed;
-            renderQueue.Add((b.Y, dd, 0, _insertCounter++, () => DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Камеры — отдельный слой «привязок» поверх остальных объектов. Поворот
-        // хранится в самой привязке: при установке он выбирается по стене, к которой
-        // камера примыкает (колёсико мыши перебирает стены, если их несколько), в том
-        // числе по стене-сущности из панели репозитория.
-        foreach (var camera in grid.Entities.OfType<CameraEntity>())
-        {
-            if (!IsPointVisible(camera.X, camera.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var c = camera;
-            renderQueue.Add((c.Y, dd, 0, _insertCounter++, () => DrawSingleCamera(g, c.CameraProto, c.Rotation, c.X, c.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Комоды — отдельный слой «привязок» поверх остальных объектов
-        foreach (var dresser in grid.Entities.OfType<DresserEntity>())
-        {
-            if (!IsPointVisible(dresser.X, dresser.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var d = dresser;
-            renderQueue.Add((d.Y, dd, 0, _insertCounter++, () => DrawSingleDresser(g, d.DresserProto, d.X, d.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Интеркомы — отдельный слой «привязок»; лежат в тайле-стены и развёрнуты
-        // гранью в комнату (поворот сохранён при установке).
-        foreach (var intercom in grid.Entities.OfType<IntercomEntity>())
-        {
-            if (!IsPointVisible(intercom.X, intercom.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var i = intercom;
-            renderQueue.Add((i.Y, dd, 0, _insertCounter++, () => DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Факсы — отдельный слой «привязок»; стоят по центру клетки, как комод,
-        // отличаются прототипом (FaxMachineBase / FaxMachineCaptain) и адресом.
-        foreach (var fax in grid.Entities.OfType<FaxMachineEntity>())
-        {
-            if (!IsPointVisible(fax.X, fax.Y, visibleRect)) continue;
-            int dd = _drawDepthManager.GetOffset("Objects") + 1;
-            var f = fax;
-            renderQueue.Add((f.Y, dd, 0, _insertCounter++, () => DrawSingleFax(g, f.FaxProto, f.X, f.Y, tileSize, viewOffset, gridOffset)));
-        }
-
-        // Сортируем: сначала по слою DrawDepthOffset (меньше = ниже/заднее),
-        // затем по порядку слоя декали (LayerOrder — как настроено в окне Decal Rule;
-        // для всего, что не декаль, всегда 0, поэтому на них это не влияет),
-        // и только затем внутри всего этого — по Y (меньше Y = дальше на экране = заднее)
-        renderQueue.Sort((a, b) =>
-        {
-            int ddComp = a.DrawDepthOffset.CompareTo(b.DrawDepthOffset);
-            if (ddComp != 0) return ddComp;
-            int layerComp = a.LayerOrder.CompareTo(b.LayerOrder);
-            if (layerComp != 0) return layerComp;
-            return a.WorldY.CompareTo(b.WorldY);
-        });
-
-        foreach (var item in renderQueue)
-        {
-            item.draw();
         }
 
         // Связи беспроводной сети — поверх всего слоя
         DrawEntityNetworkLinks(g, grid, tileSize, viewOffset, gridOffset);
+    }
+
+    // ===== Очередь отрисовки (кэш на структурное изменение) =====
+
+    private enum DrawItemKind : byte
+    {
+        WallTile,
+        DoorTile,
+        PipeEndpoints,
+        Decal,
+        Carpet,
+        Entity,
+        Firelock,
+        AirAlarm,
+        FireAlarm,
+        Holopad,
+        Locker,
+        SuitStorage,
+        Bed,
+        Camera,
+        Dresser,
+        Intercom,
+        Fax
+    }
+
+    private readonly struct DrawItem
+    {
+        public readonly DrawItemKind Kind;
+        public readonly int DrawDepth;
+        public readonly int LayerOrder;
+        public readonly float X;
+        public readonly float Y;
+        // Порядок вставки — финальный ключ сортировки: при равной глубине и равном Y
+        // объекты рисуются стабильно (стены → двери → декали → ковры → сущности →
+        // «привязки»), а не в том порядке, который случайно выдал бы introsort.
+        public readonly int Order;
+        public readonly object Data;
+
+        public DrawItem(DrawItemKind kind, int drawDepth, int layerOrder, float x, float y, object data, int order = 0)
+        {
+            Kind = kind;
+            DrawDepth = drawDepth;
+            LayerOrder = layerOrder;
+            X = x;
+            Y = y;
+            Data = data;
+            Order = order;
+        }
+    }
+
+    private sealed class DrawQueueCache
+    {
+        public DrawItem[] Items = Array.Empty<DrawItem>();
+        public int EntityCount;
+        public int DecalCount;
+        public int FloorObjectsOffset;
+    }
+
+    private readonly Dictionary<int, DrawQueueCache> _drawQueueCache = new();
+
+    /// <summary>
+    /// Очередь отрисовки одного грида: собирается и сортируется один раз на структурное
+    /// изменение грида и переиспользуется между кадрами. Порядок вставки и компаратор
+    /// те же, что были у прежней очереди из замыканий, поэтому итоговый порядок
+    /// отрисовки (и картинка) не меняются — исчезает только работа на каждый кадр.
+    /// Счётчики сущностей/декалей и смещение слоя FloorObjects — страховка от правок,
+    /// которые почему-то не вызвали InvalidateTileGrid.
+    /// </summary>
+    private DrawItem[] GetDrawItems(Grid grid, TileGrid tileGrid, bool rebuildRenderCaches)
+    {
+        int floorObjectsOffset = _drawDepthManager.GetOffset("FloorObjects");
+
+        if (!rebuildRenderCaches &&
+            _drawQueueCache.TryGetValue(grid.Uid, out var cached) &&
+            cached.EntityCount == grid.Entities.Count &&
+            cached.DecalCount == grid.Decals.Count &&
+            cached.FloorObjectsOffset == floorObjectsOffset)
+        {
+            return cached.Items;
+        }
+
+        int decalShelfDepth = floorObjectsOffset - 1;
+        int carpetShelfDepth = decalShelfDepth + 1;
+
+        var items = new List<DrawItem>(grid.Entities.Count + grid.Decals.Count + 512);
+
+        // Стены и двери — из тайл-сетки (строится генератором комнат).
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall))
+        {
+            int dd = ResolveDrawDepth(tile.DrawDepthOffset, tile.ProtoId ?? "WallSolid", "Walls");
+            items.Add(new DrawItem(DrawItemKind.WallTile, dd, 0, tile.X, tile.Y, tile));
+        }
+
+        foreach (var tile in tileGrid.GetTilesByContent(TileContent.Door))
+        {
+            int dd = ResolveDrawDepth(tile.DrawDepthOffset, tile.ProtoId ?? "Airlock", "Doors");
+            items.Add(new DrawItem(DrawItemKind.DoorTile, dd, 0, tile.X, tile.Y, tile));
+        }
+
+        // Концы атмос-труб (вентиляция и приёмники утилизации) при ВЫКЛЮЧЕННОМ оверлее
+        // труб остаются видны, но как напольные детали: вся пачка лежит на полке декалей
+        // с максимальным layerOrder — выше всех декалей, но ПОД коврами.
+        if (_pipeBuilder != null)
+        {
+            var layerPipes = _pipeBuilder.GetPipes(grid);
+            if (layerPipes.Count > 0)
+                items.Add(new DrawItem(DrawItemKind.PipeEndpoints, decalShelfDepth, int.MaxValue,
+                                       float.MinValue, float.MinValue, layerPipes));
+        }
+
+        // Декали — над тайлами пола и под любыми сущностями.
+        foreach (var decal in grid.Decals)
+            items.Add(new DrawItem(DrawItemKind.Decal, decalShelfDepth, decal.PatternLayerIndex,
+                                   decal.X, decal.Y, decal));
+
+        // Ковры (сущности "Carpet*") — отдельная полка ровно на слой выше декалей.
+        foreach (var entity in grid.Entities)
+        {
+            if (entity.Proto == null ||
+                !entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
+            items.Add(new DrawItem(DrawItemKind.Carpet, carpetShelfDepth, 0, entity.X, entity.Y, entity));
+        }
+
+        foreach (var firelock in grid.Entities.OfType<FirelockEntity>())
+        {
+            int dd = firelock.DrawDepthOffset != 0 ? firelock.DrawDepthOffset : GetProtoDrawDepth(firelock.Proto);
+            items.Add(new DrawItem(DrawItemKind.Firelock, dd, 0, firelock.X, firelock.Y, firelock));
+        }
+
+        foreach (var entity in grid.Entities.OfType<AirAlarmEntity>())
+        {
+            int dd = ResolveDrawDepth(entity.DrawDepthOffset, entity.Proto, "Objects");
+            items.Add(new DrawItem(DrawItemKind.AirAlarm, dd, 0, entity.X, entity.Y, entity));
+        }
+
+        foreach (var entity in grid.Entities.OfType<FireAlarmEntity>())
+        {
+            int dd = ResolveDrawDepth(entity.DrawDepthOffset, entity.Proto, "Objects");
+            items.Add(new DrawItem(DrawItemKind.FireAlarm, dd, 0, entity.X, entity.Y, entity));
+        }
+
+        // Обычные сущности: у труб, огнешлюзов, сигнализаций и «привязок» свои циклы
+        // и свои якоря позиционирования (top-left вместо центра тайла).
+        foreach (var entity in grid.Entities)
+        {
+            if (entity is PipeEntity or FirelockEntity or AirAlarmEntity or FireAlarmEntity
+                or WireEntity or HolopadEntity or LockerEntity or SuitStorageEntity or BedEntity
+                or CameraEntity or DresserEntity or IntercomEntity or FaxMachineEntity) continue;
+            if (entity.Proto != null && entity.Proto.StartsWith("Carpet", StringComparison.OrdinalIgnoreCase)) continue;
+            int dd = ResolveDrawDepth(entity.DrawDepthOffset, entity.Proto, "Objects");
+            items.Add(new DrawItem(DrawItemKind.Entity, dd, 0, entity.X, entity.Y, entity));
+        }
+
+        // «Привязки» — отдельный слой над остальными объектами.
+        int mountDepth = _drawDepthManager.GetOffset("Objects") + 1;
+        foreach (var holopad in grid.Entities.OfType<HolopadEntity>())
+            items.Add(new DrawItem(DrawItemKind.Holopad, mountDepth, 0, holopad.X, holopad.Y, holopad));
+        foreach (var locker in grid.Entities.OfType<LockerEntity>())
+            items.Add(new DrawItem(DrawItemKind.Locker, mountDepth, 0, locker.X, locker.Y, locker));
+        foreach (var suit in grid.Entities.OfType<SuitStorageEntity>())
+            items.Add(new DrawItem(DrawItemKind.SuitStorage, mountDepth, 0, suit.X, suit.Y, suit));
+        foreach (var bed in grid.Entities.OfType<BedEntity>())
+            items.Add(new DrawItem(DrawItemKind.Bed, mountDepth, 0, bed.X, bed.Y, bed));
+        foreach (var camera in grid.Entities.OfType<CameraEntity>())
+            items.Add(new DrawItem(DrawItemKind.Camera, mountDepth, 0, camera.X, camera.Y, camera));
+        foreach (var dresser in grid.Entities.OfType<DresserEntity>())
+            items.Add(new DrawItem(DrawItemKind.Dresser, mountDepth, 0, dresser.X, dresser.Y, dresser));
+        foreach (var intercom in grid.Entities.OfType<IntercomEntity>())
+            items.Add(new DrawItem(DrawItemKind.Intercom, mountDepth, 0, intercom.X, intercom.Y, intercom));
+        foreach (var fax in grid.Entities.OfType<FaxMachineEntity>())
+            items.Add(new DrawItem(DrawItemKind.Fax, mountDepth, 0, fax.X, fax.Y, fax));
+
+        // Порядок вставки — финальный ключ сортировки: при равной глубине и равном Y
+        // объекты рисуются в стабильном порядке (стены → двери → декали → ковры →
+        // сущности → «привязки»), а не в том, который случайно выдал бы introsort.
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            items[i] = new DrawItem(it.Kind, it.DrawDepth, it.LayerOrder, it.X, it.Y, it.Data, i);
+        }
+
+        var array = items.ToArray();
+        // Сортировка та же, что раньше: DrawDepth → LayerOrder → Y. Массив
+        // сортируется тем же introsort'ом, что и прежний List<(...)>.Sort,
+        // поэтому порядок при равных ключах совпадает.
+        Array.Sort(array, static (a, b) =>
+        {
+            int ddComp = a.DrawDepth.CompareTo(b.DrawDepth);
+            if (ddComp != 0) return ddComp;
+            int layerComp = a.LayerOrder.CompareTo(b.LayerOrder);
+            if (layerComp != 0) return layerComp;
+            int yComp = ((double)a.Y).CompareTo(b.Y);
+            if (yComp != 0) return yComp;
+            return a.Order.CompareTo(b.Order);
+        });
+
+        _drawQueueCache[grid.Uid] = new DrawQueueCache
+        {
+            Items = array,
+            EntityCount = grid.Entities.Count,
+            DecalCount = grid.Decals.Count,
+            FloorObjectsOffset = floorObjectsOffset
+        };
+
+        return array;
     }
 
     /// <summary>
@@ -2572,45 +3206,26 @@ public partial class Renderer
     /// </summary>
     private void DrawWallTile(Graphics g, TileGrid tileGrid, int x, int y, string protoId, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
-        if (_indexer?.GetIconSmoothInfo(protoId) is { } smoothInfo && smoothInfo.Enabled && smoothInfo.Base != null)
+        if (GetProtoIconSmooth(protoId) is { Enabled: true, Base: not null } smoothInfo)
         {
             // Соседи по 8 направлениям ищем в едином индексе (_smoothKeysByTile), куда входят
             // и тайлы-стены (генератор комнат), и сущности (панель репозитория) — поэтому стены
             // из обоих источников сглаживаются друг с другом.
-            bool[] m = SmoothMatchNeighbors(smoothInfo, x, y);
+            int mask = SmoothNeighborMask(protoId, x, y);
 
-            int[] fills = ComputeCornerFills(m); // [NE,NW,SW,SE]
             int quarter = 0; // стены SnapgridCenter, поворот не применяем
-            int[] layerFills = RotateLayerFills(fills, quarter); // [SE,NE,NW,SW]
-
             var rect = ToRect(x, y, tileSize, viewOffset, gridOffset); // стена-тайл рисуется от угла клетки
 
-            bool anyLoaded = false;
-            Image?[] imgs = new Image?[4];
-            string[] cacheKeys = new string[4];
-            for (int li = 0; li < 4; li++)
+            // 4 угловых слоя собраны в один битмап — один DrawImage на стену вместо четырёх
+            var composite = GetSmoothComposite(protoId, smoothInfo, mask, quarter, tileSize);
+            if (composite == null)
             {
-                int state = layerFills[li];
-                imgs[li] = GetOrLoadIconSmoothState(protoId, smoothInfo, state);
-                cacheKeys[li] = $"{protoId}||{smoothInfo.Base}{state}";
-                if (imgs[li] != null) anyLoaded = true;
-            }
-            if (!anyLoaded)
-            {
-                // Падаем в обычный рендер тайла
+                // Ни один state-кадр не загрузился — обычный рендер тайла
                 DrawSingleTile(g, x, y, protoId, tileSize, viewOffset, gridOffset, false, opacity);
                 return;
             }
 
-            for (int li = 0; li < 4; li++)
-            {
-                Image? stateImg = imgs[li];
-                if (stateImg == null) continue;
-                float layerAngle = (float)IconSmoothLayerBaseAngle[li];
-                Rectangle src = GetSourceRect(cacheKeys[li], stateImg, layerAngle);
-                if (src.Width == 0 || src.Height == 0) continue;
-                g.DrawImage(stateImg, rect, src, GraphicsUnit.Pixel);
-            }
+            g.DrawImage(composite, rect);
             return;
         }
 
@@ -2698,6 +3313,14 @@ public partial class Renderer
     private void DrawSingleDecal(Graphics g, PlacedDecal decal, int tileSize, PointF viewOffset, PointF gridOffset, float opacity)
     {
         var rect = ToRect(decal.X, decal.Y, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        // Быстрый путь: тонирование (ImageAttributes — ~118 мкс на спрайт) и поворот
+        // (Transform ровно на 90° — ~1 мс) выпекаются в битмап один раз на пару
+        // (прототип, цвет, четверть оборота). На карте сотни и тысячи декалей,
+        // поэтому именно это было основной просадкой кадра.
+        if (TryDrawDecalBaked(g, decal, rect))
+            return;
+
         float cx = rect.X + tileSize / 2f;
         float cy = rect.Y + tileSize / 2f;
 
@@ -2711,8 +3334,31 @@ public partial class Renderer
                     (int)(160 * opacity),
                     fallbackColor.R, fallbackColor.G, fallbackColor.B));
                 gg.FillRectangle(brush, r);
-            });
+            }, decal.Rotation, string.IsNullOrEmpty(decal.Color) ? null : decal.Color);
         });
+    }
+
+    /// <summary>
+    /// Рисует декаль заранее запечённым спрайтом (тонирование + поворот на четверть).
+    /// false — текстуры нет либо угол произвольный: вызывающий рисует обычным путём
+    /// (там же фолбэк-заглушка для декали без текстуры).
+    /// </summary>
+    private bool TryDrawDecalBaked(Graphics g, PlacedDecal decal, Rectangle rect)
+    {
+        if (string.IsNullOrEmpty(decal.Proto)) return false;
+
+        var texture = GetOrLoadTexture(decal.Proto);
+        if (texture == null) return false;
+
+        var src = GetSourceRect(decal.Proto, texture, 0f);
+        if (src.Width == 0 || src.Height == 0) return false;
+
+        string? tintColor = string.IsNullOrEmpty(decal.Color) ? null : decal.Color;
+        var baked = GetBakedSprite(decal.Proto, 0, texture, src, rect.Width, rect.Height, decal.Rotation, tintColor);
+        if (baked == null) return false;
+
+        DrawBakedSprite(g, baked, rect);
+        return true;
     }
 
     private void DrawSingleFirelock(Graphics g, FirelockEntity firelock, int tileSize, PointF viewOffset, PointF gridOffset)
@@ -2796,7 +3442,7 @@ public partial class Renderer
             if (_smoothProtoKeyCache.TryGetValue(protoId, out var cached))
                 return cached;
         }
-        var settings = _indexer.GetIconSmoothInfo(protoId);
+        var settings = GetProtoIconSmooth(protoId!);
         HashSet<string>? result = null;
         if (settings != null && settings.Enabled)
         {
@@ -2932,36 +3578,36 @@ public partial class Renderer
         return false;
     }
 
-    // Массив из 8 результатов MatchingEntity для 8 соседей (индекс = SmoothNeighborOffsets).
-    private bool[] SmoothMatchNeighbors(IconSmoothSettings settings, int tx, int ty)
+    // 8 результатов MatchingEntity для 8 соседей одним битовым полем (бит i =
+    // SmoothNeighborOffsets[i]). Раньше на каждый сглаженный тайл в кадре создавались
+    // HashSet и bool[8] — при тысячах стен это заметный мусор в GC.
+    private int SmoothNeighborMask(string protoId, int tx, int ty)
     {
-        bool[] m = new bool[8];
-        HashSet<string> ours = new(StringComparer.Ordinal);
-        if (!string.IsNullOrEmpty(settings.Key)) ours.Add(settings.Key);
-        foreach (var k in settings.AdditionalKeys) ours.Add(k);
-        if (ours.Count == 0) return m;
+        var ours = GetSmoothKeysForProto(protoId);
+        if (ours == null) return 0;
 
+        int mask = 0;
         for (int i = 0; i < 8; i++)
         {
             var (dx, dy) = SmoothNeighborOffsets[i];
-            if (_smoothKeysByTile.TryGetValue((tx + dx, ty + dy), out var otherKeys))
-            {
-                if (KeysOverlap(ours, otherKeys)) m[i] = true;
-            }
+            if (_smoothKeysByTile.TryGetValue((tx + dx, ty + dy), out var otherKeys) && KeysOverlap(ours, otherKeys))
+                mask |= 1 << i;
         }
-        return m;
+        return mask;
     }
+
+    // Сглаженные углы клетки: [NE,NW,SW,SE] в именах функции игры.
+    private readonly record struct CornerFills(int NE, int NW, int SW, int SE);
 
     /// <summary>
     /// Считает CornerFill (0–7) для углов (корнер индексы: 0=SE,1=NE,2=NW,3=SW) по занятости
     /// 8 соседей — точно как CalculateCornerFill в игре (стартовый проход без поворота).
-    /// neighbors[i] — результат MatchingEntity для i-го смещения из SmoothNeighborOffsets.
-    /// Возвращает массив fills[4] = [fillNE, fillNW, fillSW, fillSE] (в именах функции игры).
+    /// mask — результат SmoothNeighborMask (бит i = i-е смещение из SmoothNeighborOffsets).
     /// </summary>
-    private int[] ComputeCornerFills(bool[] m)
+    private static CornerFills ComputeCornerFills(int mask)
     {
-        bool n = m[0], ne = m[1], e = m[2], se = m[3],
-             s = m[4], sw = m[5], w = m[6], nw = m[7];
+        bool n  = (mask & 1) != 0, ne = (mask & 2) != 0, e  = (mask & 4) != 0, se = (mask & 8) != 0,
+             s  = (mask & 16) != 0, sw = (mask & 32) != 0, w  = (mask & 64) != 0, nw = (mask & 128) != 0;
 
         int cornerNE = 0, cornerNW = 0, cornerSW = 0, cornerSE = 0;
         if (n)  { cornerNE |= 1; cornerNW |= 4; }
@@ -2972,31 +3618,37 @@ public partial class Renderer
         if (sw) { cornerSW |= 2; }
         if (w)  { cornerSW |= 4; cornerNW |= 1; }
         if (nw) { cornerNW |= 2; }
-        return new[] { cornerNE, cornerNW, cornerSW, cornerSE }; // [NE,NW,SW,SE]
+        return new CornerFills(cornerNE, cornerNW, cornerSW, cornerSE);
     }
 
     /// <summary>
-    /// По направлению объекта возвращает, какое значение CornerFill (0–7) из массива fills
-    /// [NE,NW,SW,SE] должен получить КАЖДЫЙ из 4 угловых ЛОКАЛЬНЫХ слоёв (0=SE,1=NE,2=NW,3=SW).
+    /// По направлению объекта возвращает, какое значение CornerFill (0–7) из [NE,NW,SW,SE]
+    /// должен получить КАЖДЫЙ из 4 угловых ЛОКАЛЬНЫХ слоёв (0=SE,1=NE,2=NW,3=SW).
     /// Точное соответствие возврату CalculateCornerFill + LayerSetRsiState в игре (слой SE всегда
     /// получает cornerSE и т.д., поэтому даже у южной ориентации нужна перестановка из массива).
     /// quarter: 0=South,1=East,2=North,3=West (см. GetQuarter).
+    /// Возвращает кортеж значений для слоёв 0..3 (он же — через LayerFillAt).
     /// </summary>
-    private int[] RotateLayerFills(int[] fills, int quarter)
+    private static (int a, int b, int c, int d) RotateLayerFills(CornerFills f, int quarter)
     {
-        int NE = fills[0], NW = fills[1], SW = fills[2], SE = fills[3];
-        switch (quarter)
+        int NE = f.NE, NW = f.NW, SW = f.SW, SE = f.SE;
+        return quarter switch
         {
-            case 1: // East: локальные NE,NW,SW,SE = мировые SE,NE,NW,SW
-                return new[] { NE, NW, SW, SE };
-            case 2: // North: локальные = SW,SE,NE,NW
-                return new[] { NW, SW, SE, NE };
-            case 3: // West: локальные = SE,NE,NW,SW
-                return new[] { SW, SE, NE, NW };
-            default: // South: локальные = NE,NW,SW,SE
-                return new[] { SE, NE, NW, SW };
-        }
+            1 => (NE, NW, SW, SE), // East: локальные NE,NW,SW,SE = мировые SE,NE,NW,SW
+            2 => (NW, SW, SE, NE), // North: локальные = SW,SE,NE,NW
+            3 => (SW, SE, NE, NW), // West: локальные = SE,NE,NW,SW
+            _ => (SE, NE, NW, SW)  // South: локальные = NE,NW,SW,SE
+        };
     }
+
+    /// <summary>Значение CornerFill для углового слоя index (0=SE,1=NE,2=NW,3=SW).</summary>
+    private static int LayerFillAt((int a, int b, int c, int d) fills, int index) => index switch
+    {
+        0 => fills.a,
+        1 => fills.b,
+        2 => fills.c,
+        _ => fills.d
+    };
 
     /// <summary>Квартализация угла (радианы) в 0..3 как GetCardinalDir: 0=S,1=E,2=N,3=W.</summary>
     private static int GetQuarter(float rotation)
@@ -3013,7 +3665,8 @@ public partial class Renderer
     private Image? GetOrLoadIconSmoothState(string protoId, IconSmoothSettings settings, int state)
     {
         if (settings.Base == null) return null;
-        string cacheKey = $"{protoId}||{settings.Base}{state}";
+        var cacheKey = (protoId, state);
+        string stateKey = $"{protoId}||{settings.Base}{state}";
         if (_iconSmoothStateCache.TryGetValue(cacheKey, out var cached))
             return cached;
 
@@ -3028,14 +3681,31 @@ public partial class Renderer
                 {
                     img = Image.FromFile(path);
                     string stateName = $"{settings.Base}{state}";
-                    _protoTextureDirCache[cacheKey] = Path.GetDirectoryName(path) ?? "";
-                    _protoStateNameCache[cacheKey] = stateName;
+                    _protoTextureDirCache[stateKey] = Path.GetDirectoryName(path) ?? "";
+                    _protoStateNameCache[stateKey] = stateName;
                 }
                 catch { img = null; }
             }
         }
-        _iconSmoothStateCache[cacheKey] = img!;
+        _iconSmoothStateCache[cacheKey] = img;
+        // Ключ для GetSourceRect (по нему ищется meta.json каталога и имя стейта)
+        // строится один раз на (прототип, стейт), а не на каждый тайл каждый кадр.
+        _iconSmoothStateKeys[cacheKey] = stateKey;
         return img;
+    }
+
+    /// <summary>
+    /// State-кадр сглаживания вместе со строковым ключом для GetSourceRect. Ключ-кортеж
+    /// в кэше — чтобы не склеивать строку на каждый из 4 углов каждого тайла в кадре.
+    /// </summary>
+    private (Image? img, string key) GetSmoothState(string protoId, IconSmoothSettings settings, int state)
+    {
+        var cacheKey = (protoId, state);
+        if (!_iconSmoothStateCache.TryGetValue(cacheKey, out var img))
+            img = GetOrLoadIconSmoothState(protoId, settings, state);
+
+        _iconSmoothStateKeys.TryGetValue(cacheKey, out var key);
+        return (img, key ?? (protoId + "||" + settings.Base + state));
     }
 
     /// <summary>
@@ -3048,40 +3718,18 @@ public partial class Renderer
         int tx = (int)Math.Floor(worldX);
         int ty = (int)Math.Floor(worldY);
 
-        bool[] neigh = SmoothMatchNeighbors(settings, tx, ty);
-        int[] fills = ComputeCornerFills(neigh);
+        int mask = SmoothNeighborMask(protoId, tx, ty);
         int quarter = GetQuarter(rotation);
-        int[] layerFills = RotateLayerFills(fills, quarter); // [SE,NE,NW,SW]
 
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
 
-        // Сначала пробуем предзагрузить все 4 стейта. Если ни один не загрузился
-        // (нет RSI-папки/кадров у прототипа) — НЕ рисуем пустую клетку, а даём
-        // вызывающему коду уйти в обычный DrawTexturedRect.
-        bool anyLoaded = false;
-        Image?[] imgs = new Image?[4];
-        string[] cacheKeys = new string[4];
-        for (int li = 0; li < 4; li++)
-        {
-            int state = layerFills[li];
-            imgs[li] = GetOrLoadIconSmoothState(protoId, settings, state);
-            cacheKeys[li] = $"{protoId}||{settings.Base}{state}";
-            if (imgs[li] != null) anyLoaded = true;
-        }
-        // Если ни один стейт-кадр не загрузился — выходим, вызывающий код уйдёт в обычный спрайт.
-        if (!anyLoaded) return;
-        for (int li = 0; li < 4; li++)
-        {
-            Image? stateImg = imgs[li];
-            if (stateImg == null) continue;
+        // 4 угловых слоя собраны в один битмап — один DrawImage вместо четырёх.
+        // Если ни один state-кадр не загрузился (нет RSI-папки/кадров у прототипа) —
+        // не рисуем пустую клетку, как и раньше.
+        var composite = GetSmoothComposite(protoId, settings, mask, quarter, tileSize);
+        if (composite == null) return;
 
-            // Угол слоя: собственный поворот объекта + базовый угол слоя (какой угол нужно передать
-            // в GetSourceRect, чтобы он выбрал кадр этого угла). 
-            float layerAngle = rotation + (float)IconSmoothLayerBaseAngle[li];
-            Rectangle src = GetSourceRect(cacheKeys[li], stateImg, layerAngle);
-            if (src.Width == 0 || src.Height == 0) continue;
-            g.DrawImage(stateImg, rect, src, GraphicsUnit.Pixel);
-        }
+        g.DrawImage(composite, rect);
     }
 
     private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, bool cableSmoothing = true)
@@ -3100,7 +3748,7 @@ public partial class Renderer
 
         // IconSmooth: если у прототипа (или его предков) есть компонент IconSmooth —
         // рисуем сглаженным способом (4 угловых слоя), а не обычной текстурой.
-        if (_indexer != null && _indexer.GetIconSmoothInfo(protoId) is { } smoothInfo)
+        if (GetProtoIconSmooth(protoId) is { } smoothInfo)
         {
             if (smoothInfo.Enabled && smoothInfo.Base != null)
             {
@@ -3109,12 +3757,9 @@ public partial class Renderer
             }
         }
 
-        if (_indexer != null)
-        {
-            var proto = _indexer.FindPrototype(protoId);
-            if (proto?.IsStructure == true && _indexer.GetStateDirections(protoId) < 4)
-                rotation = 0f;
-        }
+        // Структуры без направленных кадров всегда смотрят на юг (оба признака — из
+        // кэша метаданных, раньше здесь на каждую сущность читался meta.json с диска)
+        rotation = NormalizeStructureRotation(protoId, rotation);
 
         DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
         {
@@ -3306,9 +3951,13 @@ public partial class Renderer
         Image? texture = GetOrLoadTexture(protoId);
         if (texture != null)
         {
+            var srcRect = GetSourceRect(protoId, texture);
+            // Поворот кратен 90° — выводим заранее повёрнутый кадр (Transform ровно
+            // на 90° в GDI+ стоит ~1 мс на объект против ~3 мкс у обычного DrawImage).
+            if (rotation != 0f && TryDrawBaked(g, protoId, 0, texture, rect, srcRect, rotation, null, preserveAspect: false))
+                return;
             WithRotation(g, cx, cy, rotation, () =>
             {
-                var srcRect = GetSourceRect(protoId, texture);
                 g.DrawImage(texture, rect, srcRect, GraphicsUnit.Pixel);
             });
         }
@@ -3421,12 +4070,11 @@ public partial class Renderer
         // DrawTexturedRect, а не выбор другого кадра. Раньше rotation безусловно входил
         // в ключ кэша — на картах с тысячами декалей/сущностей под разными углами это
         // плодило кучу почти-дублирующихся записей в кэше и лишние строковые аллокации
-        // на каждый кадр рендера.
-        string key = directions >= 4
-            ? $"{protoId}_{img.Width}_{img.Height}_{rotation:F2}"
-            : $"{protoId}_{img.Width}_{img.Height}";
+        // на каждый кадр рендера. Ключ кэша теперь кортеж (спрайт, четверть оборота):
+        // строка не собирается вовсе.
+        int quarter = directions >= 4 ? GetQuarterTurnOrRound(rotation) : 0;
 
-        if (_sourceRectCache.TryGetValue(key, out var cached))
+        if (_sourceRectCache.TryGetValue((protoId, quarter), out var cached))
             return cached;
 
         var frameSize = GetRsiFrameSize(protoId, img);
@@ -3437,9 +4085,6 @@ public partial class Renderer
             // Порядок направлений, зашитый в сам движок Robust Toolbox: 0=юг, 1=север,
             // 2=восток, 3=запад (это порядок, в котором кадры направлений идут ПОДРЯД
             // в общей последовательности кадров стейта — а не "направление = своя строка").
-            float normalized = rotation % (float)(2 * Math.PI);
-            if (normalized < 0) normalized += (float)(2 * Math.PI);
-            int quarter = (int)Math.Round(normalized / (Math.PI / 2)) % 4;
             int dirIndex = _quarterToDirOrder[quarter];
 
             // Реальная упаковка PNG у RSI — ПОСЛЕДОВАТЕЛЬНАЯ: все кадры стейта (направление
@@ -3458,8 +4103,19 @@ public partial class Renderer
         }
 
         var rect = new Rectangle(col * frameSize.Width, row * frameSize.Height, frameSize.Width, frameSize.Height);
-        _sourceRectCache[key] = rect;
+        _sourceRectCache[(protoId, quarter)] = rect;
         return rect;
+    }
+
+    /// <summary>
+    /// Четверть оборота (0–3) без требования кратности 90°: для кадров с directions>=4
+    /// берётся ближайшая сторона, как и раньше (Math.Round угла / 90°).
+    /// </summary>
+    private static int GetQuarterTurnOrRound(float rotation)
+    {
+        float norm = rotation % (float)(2 * Math.PI);
+        if (norm < 0) norm += (float)(2 * Math.PI);
+        return (int)Math.Round(norm / (Math.PI / 2)) % 4;
     }
 
     // Порядок направлений в общей последовательности кадров RSI-стейта (0=юг,1=север,
@@ -3539,6 +4195,96 @@ public partial class Renderer
     }
 
     private int GetStateDirections(string protoId) => GetStateDirectionInfo(protoId).directions;
+
+    // === Метаданные прототипа (обход цепочки parent: один раз на protoId) ===
+    // Всё, что ниже, раньше резолвилось на КАЖДЫЙ объект в КАЖДОМ кадре: слои
+    // (GetLayers возвращал новый List даже когда слоёв нет), offset и IsStructure
+    // (рекурсивный обход родителей), directions (GetStateDirections индексатора
+    // читал meta.json с диска), drawdepth. На карте это тысячи вызовов на кадр.
+    private ProtoRenderMeta GetProtoMeta(string protoId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return new ProtoRenderMeta();
+
+        if (_protoMetaCache.TryGetValue(protoId, out var meta)) return meta;
+
+        meta = new ProtoRenderMeta();
+        if (_indexer != null)
+        {
+            try
+            {
+                meta.IconSmooth = _indexer.GetIconSmoothInfo(protoId);
+
+                var layers = _indexer.GetLayers(protoId);
+                meta.Layers = layers.Count > 0 ? layers : null;
+
+                meta.SpriteOffset = _indexer.GetSpriteOffset(protoId);
+
+                var proto = _indexer.FindPrototype(protoId);
+                meta.IsStructure = proto?.IsStructure == true;
+                meta.StorageVisuals = _indexer.GetEntityStorageVisuals(protoId);
+
+                // Перекрытие для обзора камер (Occluder) — тоже по цепочке parent:
+                // раньше это проверялось для каждой сущности карты на каждый кадр.
+                meta.IsOccluder = _indexer.HasComponent(protoId, "Occluder");
+
+                // directions у индексатора — самый дорогой вызов (File.ReadAllText
+                // meta.json + разбор JSON), поэтому и кэшируется здесь
+                meta.StateDirections = _indexer.GetStateDirections(protoId);
+
+                var ddName = _indexer.GetDrawDepth(protoId);
+                if (!string.IsNullOrEmpty(ddName))
+                    meta.DrawDepthOffset = _drawDepthManager.GetOffset(ddName);
+            }
+            catch
+            {
+                // Некорректный прототип/битый meta.json — работаем с пустыми значениями
+            }
+        }
+
+        _protoMetaCache[protoId] = meta;
+        return meta;
+    }
+
+    /// <summary>Слои спрайта (или null, если прототип однослойный) — из кэша метаданных.</summary>
+    private List<Models.SpriteLayer>? GetProtoLayers(string protoId)
+        => string.IsNullOrEmpty(protoId) ? null : GetProtoMeta(protoId).Layers;
+
+    /// <summary>Смещение компонента Sprite (без поворота) — из кэша метаданных.</summary>
+    private (float x, float y) GetProtoSpriteOffset(string protoId)
+        => string.IsNullOrEmpty(protoId) ? (0f, 0f) : GetProtoMeta(protoId).SpriteOffset;
+
+    /// <summary>IconSmooth-компонент прототипа (или null) — из кэша метаданных.</summary>
+    private IconSmoothSettings? GetProtoIconSmooth(string protoId)
+        => string.IsNullOrEmpty(protoId) ? null : GetProtoMeta(protoId).IconSmooth;
+
+    /// <summary>DrawDepth прототипа в виде готового offset'а; 0 — слой не задан.</summary>
+    private int GetProtoDrawDepth(string? protoId)
+        => string.IsNullOrEmpty(protoId) ? 0 : GetProtoMeta(protoId).DrawDepthOffset;
+
+    /// <summary>
+    /// Итоговый DrawDepthOffset объекта: явно заданный у объекта → слой прототипа из
+    /// YAML → слой по умолчанию. Слой прототипа берётся из кэша метаданных (раньше
+    /// на каждый объект в кадре рекурсивно обходилась цепочка parent:).
+    /// </summary>
+    private int ResolveDrawDepth(int explicitOffset, string? protoId, string fallbackLayer)
+    {
+        if (explicitOffset != 0) return explicitOffset;
+        int dd = GetProtoDrawDepth(protoId);
+        return dd != 0 ? dd : _drawDepthManager.GetOffset(fallbackLayer);
+    }
+
+    /// <summary>
+    /// Поворот структуры обнуляется, если у её иконки нет направленных кадров
+    /// (directions &lt; 4): структуры в игре всегда смотрят на юг. Оба признака берутся
+    /// из кэша метаданных — раньше здесь на каждую сущность в кадре читался meta.json.
+    /// </summary>
+    private float NormalizeStructureRotation(string? protoId, float rotation)
+    {
+        if (string.IsNullOrEmpty(protoId)) return rotation;
+        var meta = GetProtoMeta(protoId!);
+        return meta.IsStructure && meta.StateDirections < 4 ? 0f : rotation;
+    }
+
     // Кэш ImageAttributes по цвету декали — пересоздавать ColorMatrix на каждый DrawImage
     // накладно, а цветов у декалей на карте обычно немного (одни и те же несколько цветов
     // из палитры повторяются на десятках декалей)
@@ -3636,6 +4382,18 @@ public partial class Renderer
         _cableIndexCache.Clear();
         _cableRenderInfoCache.Clear();
         ClearFloorChunks();
+
+        // Бейки спрайтов и метаданные прототипов тоже завязаны на индекс репозитория:
+        // после его перезагрузки и текстуры, и слои/offset/drawdepth другие.
+        ClearBakedSprites();
+        _protoMetaCache.Clear();
+        _iconSmoothStateCache.Clear();
+        _iconSmoothStateKeys.Clear();
+        _layerInfoCache.Clear();
+        ClearLayeredComposites();
+        ClearSmoothComposites();
+        _cameraCoverageCache.Clear();
+        _dirtyCameraCoverage.Clear();
 
         foreach (var kvp in _decalTintCache)
             kvp.Value.Dispose();
@@ -4133,6 +4891,9 @@ public partial class Renderer
         // Кэши рендера (индекс сглаживания, чанки пола) тоже зависят от содержимого
         // грида — при любом структурном изменении их нужно пересобрать.
         _dirtyRenderCaches.Add(gridUid);
+        // Оверлей обзора камер зависит от стен/дверей/перекрытий — пересчитываем его
+        // там же, где пересобирается сам TileGrid, а не на каждом кадре.
+        _dirtyCameraCoverage.Add(gridUid);
     }
     private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     {
@@ -4162,13 +4923,7 @@ public partial class Renderer
 
         // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
         // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)
-        float previewRotation = _previewEntityRotation;
-        if (_indexer != null)
-        {
-            var proto = _indexer.FindPrototype(_previewEntityProto);
-            if (proto?.IsStructure == true && _indexer.GetStateDirections(_previewEntityProto) < 4)
-                previewRotation = 0f;
-        }
+        float previewRotation = NormalizeStructureRotation(_previewEntityProto, _previewEntityRotation);
 
         ImageAttributes? tint = !string.IsNullOrEmpty(_previewDecalColor)
         ? GetDecalTintAttributes(_previewDecalColor)
@@ -4235,13 +4990,7 @@ public partial class Renderer
 
             // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
             // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)
-            float rotation = entity.Rotation;
-            if (_indexer != null)
-            {
-                var proto = _indexer.FindPrototype(protoId);
-                if (proto?.IsStructure == true && _indexer.GetStateDirections(protoId) < 4)
-                    rotation = 0f;
-            }
+            float rotation = NormalizeStructureRotation(protoId, entity.Rotation);
 
             DrawTexturedRect(g, protoId, rect, null, (gg, r) =>
             {
@@ -4742,3 +5491,9 @@ public partial class Renderer
 
     #endregion
 }
+
+
+
+
+
+
