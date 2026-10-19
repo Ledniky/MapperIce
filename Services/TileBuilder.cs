@@ -171,6 +171,18 @@ private string? GetConcaveCornerWallProto(Room room, int x, int y)
             }
         }
 
+        // Клетки, где стена убрана инструментом «Убрать стену»: тайл-стена не
+        // строится (как у прохода), но DecalPatternBuilder продолжает считать
+        // такую клетку стеной. В WallHidden входит пол комнаты со стадии 1.
+        var hiddenWallPositions = new HashSet<(int x, int y)>();
+        foreach (var room in allRooms)
+        {
+            foreach (var hidden in room.HiddenWalls)
+            {
+                hiddenWallPositions.Add((hidden.X, hidden.Y));
+            }
+        }
+
 
         // 1. ПОЛ (тайлы) - под всеми занятыми клетками комнаты, кроме вырезанных
         foreach (var room in allRooms)
@@ -205,6 +217,7 @@ foreach (var room in allRooms)
                     if (room.RemovedCells.Contains((x, y))) continue;
                     if (doorPositions.Contains((x, y))) continue;
                     if (passagePositions.Contains((x, y))) continue;
+                    if (hiddenWallPositions.Contains((x, y))) continue;
                     if (windowPositions.Contains((x, y))) continue;
 
                     // ОБЩАЯ СТЕНА: если ВСЕ открытые стороны клетки уже "закрыты"
@@ -261,6 +274,7 @@ foreach (var room in allRooms)
                     if (room.RemovedCells.Contains((x, y))) continue;
                     if (doorPositions.Contains((x, y))) continue;
                     if (passagePositions.Contains((x, y))) continue;
+                    if (hiddenWallPositions.Contains((x, y))) continue;
                     if (windowPositions.Contains((x, y))) continue;
 
                     var existing = tileGrid.GetTile(x, y);
@@ -274,11 +288,14 @@ foreach (var room in allRooms)
 
 
 
-        // 2в. ОБЩАЯ СТЕНА — по приоритету, но строго в пределах одного тайла от
-        // территории комнаты: клетка стены принимает прототип соседней комнаты
-        // только если та комната граничит с клеткой ПОЛОМ. Клетка стены соседа,
-        // примыкающая к стене же, не учитывается — иначе прототип приоритетной
-        // комнаты расползался бы на 2 тайла от её территории.
+        // 2в. ОБЩАЯ СТЕНА — по приоритету, строго в пределах одного тайла от
+        // территории комнаты: клетка стены принимает прототип соседней комнаты,
+        // если та граничит с клеткой ПОЛОМ (обычная общая стена), либо если эта
+        // клетка вообще входит в территорию обеих комнат (общий угловой тайл
+        // двух комнат впритык — его записывает та комната, что обрабатывается
+        // последней). Ориентироваться на соседнюю стену нельзя: клетка соседней
+        // комнаты на 1 тайл в стороне уже не принадлежит приоритетной комнате,
+        // и её укреплённая стена растеклась бы за конец её территории.
         foreach (var tile in tileGrid.GetTilesByContent(TileContent.Wall).ToList())
         {
             string ownWall = tile.ProtoId ?? "WallSolid";
@@ -290,6 +307,7 @@ foreach (var room in allRooms)
                 if (neighborTile == null || neighborTile.Content != TileContent.Floor) continue;
                 if (doorPositions.Contains((neighborTile.X, neighborTile.Y))) continue;
                 if (passagePositions.Contains((neighborTile.X, neighborTile.Y))) continue;
+                if (hiddenWallPositions.Contains((neighborTile.X, neighborTile.Y))) continue;
                 if (windowPositions.Contains((neighborTile.X, neighborTile.Y))) continue;
 
                 var neighborRoom = allRooms.FirstOrDefault(r => r.GetHashCode() == neighborTile.RoomUid)
@@ -297,6 +315,17 @@ foreach (var room in allRooms)
                 if (neighborRoom == null || neighborRoom.GetHashCode() == tile.RoomUid) continue;
 
                 bestWall = BestWall(bestWall, neighborRoom.WallProto);
+            }
+
+            // Клетка-стена, входящая в территорию нескольких комнат (общий
+            // угловой тайл) — тип выбирается по приоритету среди ВСЕХ таких
+            // комнат, независимо от того, какая записала клетку последней.
+            foreach (var owner in allRooms)
+            {
+                if (owner.GetHashCode() == tile.RoomUid) continue;
+                if (!owner.Contains(tile.X, tile.Y)) continue;
+
+                bestWall = BestWall(bestWall, owner.WallProto);
             }
 
             if (bestWall != ownWall)

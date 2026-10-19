@@ -191,6 +191,12 @@ public partial class MainForm
                         if (canDeleteDoors) { anyRoom.Passages.Remove((tileX, tileY)); RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
                         foundDoorFeature = true;
                     }
+                    else if (anyRoom.HiddenWalls.Contains((tileX, tileY)))
+                    {
+                        // Снимаем пометку «убрать стену» — TileBuilder восстановит стену
+                        if (canDeleteDoors) { anyRoom.HiddenWalls.Remove((tileX, tileY)); RecalculateDecalPatterns(); SaveState(); UpdateTileGrid(); Render(); }
+                        foundDoorFeature = true;
+                    }
                     else if (anyRoom.Windows.Contains((tileX, tileY)))
                     {
                         if (canDeleteDoors)
@@ -346,6 +352,30 @@ public partial class MainForm
                 }
             }
 
+            else if (_toolManager.CurrentTool == ToolManager.Tool.RemoveWall)
+            {
+                var grid = _map.ActiveGrid;
+                // Та же клетка периметра, что и у «Прохода»: стена комнаты на границе
+                var room = grid.Rooms.FirstOrDefault(r =>
+                {
+                    bool isOnEdge = tileX == r.X || tileX == r.X + r.Width - 1 ||
+                                    tileY == r.Y || tileY == r.Y + r.Height - 1;
+                    return isOnEdge && _tileGrid.IsWall(tileX, tileY);
+                });
+
+                if (room != null && !room.HiddenWalls.Contains((tileX, tileY)))
+                {
+                    // Стена снимается (TileBuilder пропустит клетку так же, как проход),
+                    // но для узора декалей она остаётся на месте — DecalPatternBuilder
+                    // считает клетку из HiddenWalls стеной.
+                    room.HiddenWalls.Add((tileX, tileY));
+                    RecalculateDecalPatterns();
+                    UpdateTileGrid();
+                    SaveState();
+                    Render();
+                }
+            }
+
             else if (_toolManager.CurrentTool == ToolManager.Tool.RestoreWall)
             {
                 var grid = _map.ActiveGrid;
@@ -370,6 +400,15 @@ public partial class MainForm
                             .ToList();
                         foreach (var we in winEntities)
                             grid.Entities.Remove(we);
+                        RecalculateDecalPatterns();
+                        UpdateTileGrid();
+                        SaveState();
+                        Render();
+                    }
+                    else if (isOnEdge && room.HiddenWalls.Contains((tileX, tileY)))
+                    {
+                        // Снимаем пометку «убрать стену» — TileBuilder восстановит стену
+                        room.HiddenWalls.Remove((tileX, tileY));
                         RecalculateDecalPatterns();
                         UpdateTileGrid();
                         SaveState();
@@ -2062,6 +2101,7 @@ public partial class MainForm
                                 if (rr.Contains(x, y))
                                 {
                                     rr.Passages.Remove((x, y));
+                                    rr.HiddenWalls.Remove((x, y));
                                     if (rr.Windows.Remove((x, y)))
                                     {
                                         _tileGrid.SetTile(x, y, TileContent.Wall, rr.WallProto, rr.RoomType, rr.GetHashCode());

@@ -30,6 +30,11 @@ public string? AirAlarmProto { get; set; } = null;   // переопределе
     public Color LineColor { get; set; } = Color.FromArgb(255, 180, 180, 180);
     public List<Door> Doors { get; set; } = new();
     public List<(int X, int Y)> Passages { get; set; } = new();
+    // Клетки на границе комнаты, где стена убрана инструментом «Убрать стену»:
+    // TileBuilder не строит на них стену (как у прохода), но DecalPatternBuilder
+    // продолжает считать их стеной — узор обводит такую клетку, будто стена на
+    // месте. В отличие от прохода, это «невидимая» стена для декальрула.
+    public List<(int X, int Y)> HiddenWalls { get; set; } = new();
     // Клетки на границе комнаты, где стена заменена на окно (инструмент
     // "Заменить на окно") — BuildFromRooms пропускает их так же, как Passages,
     // иначе стена восстанавливается заново при следующей пересборке TileGrid
@@ -120,6 +125,7 @@ public string? AirAlarmProto { get; set; } = null;   // переопределе
         }
 
         clone.Passages = new List<(int X, int Y)>(Passages);
+        clone.HiddenWalls = new List<(int X, int Y)>(HiddenWalls);
         clone.Windows = new List<(int X, int Y)>(Windows);
 
         return clone;

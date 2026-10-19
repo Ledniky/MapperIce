@@ -19,6 +19,7 @@ public class ToolManager
         DoorGlass,
         Passage,
         RestoreWall,
+        RemoveWall,
         PipeDistra,
         PipeWaste,
         PipeNormal,

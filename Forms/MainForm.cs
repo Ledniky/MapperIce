@@ -63,6 +63,7 @@ public partial class MainForm : Form
         { "Дверь", ToolManager.Tool.Door },
         { "Дверь (стекло)", ToolManager.Tool.DoorGlass },
         { "Проход", ToolManager.Tool.Passage },
+        { "Убрать стену", ToolManager.Tool.RemoveWall },
         { "Восстановить стену", ToolManager.Tool.RestoreWall }
     };
     // Для пунктов с реальным прототипом (двери) — Id для GetCachedProtoIcon.
@@ -73,6 +74,7 @@ public partial class MainForm : Form
         { "Дверь", ("Airlock", "🚪") },
         { "Дверь (стекло)", ("AirlockGlass", "🔲") },
         { "Проход", (null, "▢") },
+        { "Убрать стену", (null, "🚧") },
         { "Восстановить стену", (null, "🧱") },
         { "Заменить на окно", (null, "🪟") }
     };
@@ -1384,6 +1386,13 @@ public partial class MainForm : Form
                     _doorToolCombo.SelectedItem = "Восстановить стену";
                 }
                 break;
+            case ToolManager.Tool.RemoveWall:
+                if (_doorToolCombo != null)
+                {
+                    _doorToolCombo.BackColor = AppTheme.SelectedBack;
+                    _doorToolCombo.SelectedItem = "Убрать стену";
+                }
+                break;
             case ToolManager.Tool.ReplaceWallWithWindow:
                 if (_windowToolCombo != null)
                 {
@@ -1490,7 +1499,7 @@ public partial class MainForm : Form
             ToolManager.Tool.Delete or ToolManager.Tool.DeleteArea or ToolManager.Tool.DeleteSettings => Cursors.Hand,
             ToolManager.Tool.DecalRule or ToolManager.Tool.NetworkConfigurator => Cursors.Hand,
             ToolManager.Tool.Magnifier => Cursors.Cross,
-            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom or ToolManager.Tool.ReplaceWallWithWindow => Cursors.Help,
+            ToolManager.Tool.Door or ToolManager.Tool.DoorGlass or ToolManager.Tool.Passage or ToolManager.Tool.RemoveWall or ToolManager.Tool.RestoreWall or ToolManager.Tool.ExpandRoom or ToolManager.Tool.ReplaceWallWithWindow => Cursors.Help,
             ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil => Cursors.Help,
             ToolManager.Tool.PipeUtilSettings => Cursors.Help,
             ToolManager.Tool.UtilWrenches => Cursors.Help,

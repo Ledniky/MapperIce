@@ -88,11 +88,26 @@ public class DecalPatternBuilder
     // Клетка-проход стеной не считается: инструмент «Проход» сносит на ней стену
     // (TileBuilder пропускает её в стадии 2, а пол под ней уже лежит со стадии 1),
     // поэтому для узора это обычная клетка пола, а не клетка периметра.
+    // Клетка «Убрать стену» (Room.HiddenWalls) — наоборот: TileBuilder стену на ней
+    // тоже не строит, но для узора стена остаётся на месте, и периметр обводится
+    // так, будто она есть.
     private static bool IsWallCell(Grid grid, Room room, int x, int y)
     {
         if (IsPassageAnywhereInGrid(grid, x, y)) return false;
+        if (IsHiddenWallAnywhereInGrid(grid, x, y)) return true;
 
         return IsOrthogonalBoundaryWall(room, x, y) || IsConcavePinchWall(room, x, y);
+    }
+
+/// <summary>Клетка помечена инструментом «Убрать стену»: стена на ней снесена
+/// (TileBuilder её не строит), но для узора декалей она остаётся стеной.</summary>
+private static bool IsHiddenWallAnywhereInGrid(Grid grid, int x, int y)
+    {
+        foreach (var r in grid.Rooms)
+        {
+            if (r.HiddenWalls.Any(w => w.X == x && w.Y == y)) return true;
+        }
+        return false;
     }
 
 

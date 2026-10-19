@@ -431,6 +431,7 @@ public static class GridDivider
 
         clone.Doors = room.Doors.Where(d => room.Contains(d.X, d.Y) && keep(d.X, d.Y)).ToList();
         clone.Passages = room.Passages.Where(p => room.Contains(p.X, p.Y) && keep(p.X, p.Y)).ToList();
+        clone.HiddenWalls = room.HiddenWalls.Where(w => room.Contains(w.X, w.Y) && keep(w.X, w.Y)).ToList();
         clone.Windows = room.Windows.Where(w => room.Contains(w.X, w.Y) && keep(w.X, w.Y)).ToList();
 
         // Линия разреза (сосед — клетка той же комнаты, ушедшая в другой грид).

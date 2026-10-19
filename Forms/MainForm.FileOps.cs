@@ -355,6 +355,10 @@ public partial class MainForm
                 {
                     roomData.Passages.Add($"{p.X},{p.Y}");
                 }
+                foreach (var h in room.HiddenWalls)
+                {
+                    roomData.HiddenWalls.Add($"{h.X},{h.Y}");
+                }
                 foreach (var w in room.Windows)
                 {
                     roomData.Windows.Add($"{w.X},{w.Y}");
@@ -631,6 +635,14 @@ public partial class MainForm
                         if (parts.Length == 2)
                         {
                             room.Passages.Add((int.Parse(parts[0]), int.Parse(parts[1])));
+                        }
+                    }
+                    foreach (var cellStr in roomData.HiddenWalls)
+                    {
+                        var parts = cellStr.Split(',');
+                        if (parts.Length == 2)
+                        {
+                            room.HiddenWalls.Add((int.Parse(parts[0]), int.Parse(parts[1])));
                         }
                     }
                     foreach (var cellStr in roomData.Windows)

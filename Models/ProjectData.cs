@@ -111,6 +111,8 @@ public class RoomGridData
     public List<DoorData> Doors { get; set; } = new();
     public List<string> RemovedCells { get; set; } = new();
     public List<string> Passages { get; set; } = new();
+    // Клетки со снятой стеной (инструмент «Убрать стену») — список строк "x,y"
+    public List<string> HiddenWalls { get; set; } = new();
     public List<string> Windows { get; set; } = new();
     public DecalPatternMode DecalMode { get; set; } = DecalPatternMode.Auto;
     public DecalRuleData? AutoDecalRule { get; set; }

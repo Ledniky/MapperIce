@@ -64,6 +64,7 @@ public static class RoomCleanup
         foreach (var r in grid.Rooms)
         {
             r.Passages.RemoveAll(p => cells.Contains((p.X, p.Y)));
+            r.HiddenWalls.RemoveAll(w => cells.Contains((w.X, w.Y)));
             r.Windows.RemoveAll(w => cells.Contains((w.X, w.Y)));
         }
 
@@ -103,6 +104,7 @@ public static class RoomCleanup
         if (room == null) return false;
 
         bool changed = room.Passages.RemoveAll(p => !room.Contains(p.X, p.Y)) > 0;
+        changed |= room.HiddenWalls.RemoveAll(w => !room.Contains(w.X, w.Y)) > 0;
         changed |= room.Windows.RemoveAll(w => !room.Contains(w.X, w.Y)) > 0;
         return changed;
     }

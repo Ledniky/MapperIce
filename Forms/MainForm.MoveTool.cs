@@ -153,6 +153,7 @@ public partial class MainForm
                     // и после переноса), а на новом месте стена восстанавливается и
                     // проход пропадает из уже перенесённой комнаты.
                     room.Passages = room.Passages.Select(p => (p.X + dx, p.Y + dy)).ToList();
+                    room.HiddenWalls = room.HiddenWalls.Select(w => (w.X + dx, w.Y + dy)).ToList();
                     room.Windows = room.Windows.Select(w => (w.X + dx, w.Y + dy)).ToList();
                 }
                 break;
