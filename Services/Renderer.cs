@@ -53,18 +53,24 @@ public partial class Renderer
     // отдельным слоем безопасно — с декалями/сущностями/дверями не переплетается.
     // Кэш валиден, потому что пол не меняется при панорамировании/зуме — пересобирается
     // только при структурном изменении грида (тот же флаг _dirtyTileGrids).
-    private const int StaticChunkTiles = 16;
+    private const int StaticChunkMaxTiles = 16;
     private const int StaticChunkMaxBitmaps = 512;
-    // ключ (gridUid, chunkX, chunkY) -> Bitmap. Чанковый битмап полностью непрозрачен
-    // в запечённых тайлах и прозрачен там, где пола нет.
-    private readonly Dictionary<(int gridUid, int cx, int cy), Bitmap> _floorChunkCache = new();
-    private readonly LinkedList<(int gridUid, int cx, int cy)> _floorChunkLru = new();
+    // Максимальный размер чанка по пикселям: при сильном приближении (тайл 128–256px)
+    // чанк 16×16 клеток раздувался до огромных битмапов (до 4096² ≈ 64 МБ) и их печение
+    // с рисованием доминировало в кадре. Поэтому число клеток в чанке режем по пикселям.
+    private const int StaticChunkMaxPixels = 512;
+
+    private static int GetChunkTiles(int tileSize) => Math.Clamp(StaticChunkMaxPixels / Math.Max(1, tileSize), 1, StaticChunkMaxTiles);
+    // Ключ (gridUid, tileSize, chunkX, chunkY) -> Bitmap. Размер тайла в ключе: с переменной
+    // величиной чанка (GetChunkTiles) сетки разных зумов разные, и без него записи
+    // под разными зумами пересекались бы.
+    private readonly Dictionary<(int gridUid, int tileSize, int cx, int cy), Bitmap> _floorChunkCache = new();
+    private readonly LinkedList<(int gridUid, int tileSize, int cx, int cy)> _floorChunkLru = new();
     // Чанки, в которых нет ни одного тайла пола — BakeFloorChunk возвращает для них null.
     // Храним их отдельным множеством, а не как null-значения в _floorChunkCache, чтобы
     // ClearGridFloorChunks/ClearFloorChunks могли безопасно Dispose каждый закэшированный
     // битмап (null в словаре приводил к NullReferenceException).
-    private readonly HashSet<(int gridUid, int cx, int cy)> _emptyFloorChunks = new();
-    private int _floorChunkTileSize = 0;
+    private readonly HashSet<(int gridUid, int tileSize, int cx, int cy)> _emptyFloorChunks = new();
 
     // Кэш кадров IconSmooth-стейтов: ключ (прототип, номер стейта) -> Image.
     // Один state_N.png (например state_3.png, 64×64) содержит 4 кадра-фриза по 32×32 —
@@ -88,7 +94,6 @@ public partial class Renderer
     private readonly record struct BakedSpriteKey(string Id, int Variant, int Quarter, int Width, int Height, string? Tint);
     private readonly Dictionary<BakedSpriteKey, Bitmap> _bakedSpriteCache = new();
     private const int BakedSpriteMaxEntries = 4096;
-    private int _bakedSpriteTileSize;
 
     // === Метаданные прототипа, нужные при отрисовке ===
     // Раньше на каждый объект каждый кадр заново обходилась цепочка parent: (слои,
@@ -120,11 +125,9 @@ public partial class Renderer
     // битмап, и на кадр остаётся один DrawImage на объект.
     private readonly Dictionary<(string protoId, int quarter, int width, int height), Bitmap?> _layeredCompositeCache = new();
     private const int LayeredCompositeMaxEntries = 1024;
-    private int _layeredCompositeTileSize;
 
     private readonly Dictionary<(string protoId, int mask, int quarter, int tileSize), Bitmap?> _smoothCompositeCache = new();
     private const int SmoothCompositeMaxEntries = 2048;
-    private int _smoothCompositeTileSize;
 
     // === Кэш оверлея обзора камер ===
     // До кэша на КАЖДЫЙ кадр заново обходились все сущности карты (проверка Occluder
@@ -698,12 +701,11 @@ public partial class Renderer
         int quarter = GetQuarterTurn(rotation);
         if (quarter < 0) return null;
 
-        // Зум поменялся — запечённые размеры больше не нужны, не копим их
-        if (_bakedSpriteTileSize != _cachedTileSize)
-        {
-            ClearBakedSprites();
-            _bakedSpriteTileSize = _cachedTileSize;
-        }
+        // Кэш однослойных «экземпляров» ключуется размером (width/height), поэтому при
+        // смене зума его НЕ очищаем: записи под другие размеры остаются валидными, и
+        // возврат на ранее посещённый зум снова попадает в кэш (иначе каждый зум-шаг
+        // перепекал бы всё, даже если этот размер уже видели). Вытесняет только лимит
+        // MaxEntries внизу.
 
         var key = new BakedSpriteKey(id, variant, quarter, width, height, tintColor);
         if (_bakedSpriteCache.TryGetValue(key, out var cached)) return cached;
@@ -1034,11 +1036,9 @@ public partial class Renderer
     /// </summary>
     private Bitmap? GetLayeredComposite(string protoId, List<Models.SpriteLayer> layers, int width, int height, int quarter)
     {
-        if (_layeredCompositeTileSize != _cachedTileSize)
-        {
-            ClearLayeredComposites();
-            _layeredCompositeTileSize = _cachedTileSize;
-        }
+        // Кэш многослойных композиций ключуется размером (width/height) — при смене зума
+        // не очищаем: записи под другие размеры остаются валидными, и возврат на прежний
+        // зум снова попадает в кэш вместо перепекания. Вытесняет только лимит ниже.
 
         var key = (protoId, quarter, width, height);
         if (_layeredCompositeCache.TryGetValue(key, out var cached)) return cached;
@@ -1136,11 +1136,9 @@ public partial class Renderer
     /// </summary>
     private Bitmap? GetSmoothComposite(string protoId, IconSmoothSettings settings, int mask, int quarter, int tileSize)
     {
-        if (_smoothCompositeTileSize != _cachedTileSize)
-        {
-            ClearSmoothComposites();
-            _smoothCompositeTileSize = _cachedTileSize;
-        }
+        // Кэш смус-композиций ключуется tileSize — при смене зума не очищаем: записи под
+        // другие размеры остаются валидными, и возврат на прежний зум снова попадает
+        // в кэш вместо перепекания. Вытесняет только лимит ниже.
 
         var key = (protoId, mask, quarter, tileSize);
         if (_smoothCompositeCache.TryGetValue(key, out var cached)) return cached;
@@ -2711,32 +2709,23 @@ public partial class Renderer
     // выводится целиком ПЕРВЫМ, до декалей/стен/дверей/сущностей, т.к. пол всегда внизу.
     private void DrawStaticFloorChunks(Graphics g, TileGrid tileGrid, int gridUid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
-        // Смена зума (tileSize) делает невалидным весь кэш чанков — размеры битмапов зависят
-        // от пиксельного размера тайла.
-        if (_floorChunkTileSize != tileSize)
-        {
-            if (_floorChunkTileSize != 0)
-            {
-                foreach (var kvp in _floorChunkCache)
-                    kvp.Value.Dispose();
-                _floorChunkCache.Clear();
-                _floorChunkLru.Clear();
-                _emptyFloorChunks.Clear();
-            }
-            _floorChunkTileSize = tileSize;
-        }
+        // Число клеток в чанке зависит от пиксельного размера тайла: при сильном
+        // приближении (тайл 128–256px) большие чанки раздували битмапы до 64 МБ и печь их
+        // было очень дорого. Ключ включает tileSize, поэтому смену зума чистить не нужно —
+        // записи под разные размеры не пересекаются, вытесняет LRU/лимит.
+        int chunkTiles = GetChunkTiles(tileSize);
 
         // Диапазон видимых чанков по осям (в мировых координатах, инклюзивно).
-        int chunkMinX = (int)Math.Floor(visibleRect.Left / StaticChunkTiles);
-        int chunkMaxX = (int)Math.Floor(visibleRect.Right / StaticChunkTiles);
-        int chunkMinY = (int)Math.Floor(visibleRect.Top / StaticChunkTiles);
-        int chunkMaxY = (int)Math.Floor(visibleRect.Bottom / StaticChunkTiles);
+        int chunkMinX = (int)Math.Floor(visibleRect.Left / chunkTiles);
+        int chunkMaxX = (int)Math.Floor(visibleRect.Right / chunkTiles);
+        int chunkMinY = (int)Math.Floor(visibleRect.Top / chunkTiles);
+        int chunkMaxY = (int)Math.Floor(visibleRect.Bottom / chunkTiles);
 
         for (int cy = chunkMinY; cy <= chunkMaxY; cy++)
         {
             for (int cx = chunkMinX; cx <= chunkMaxX; cx++)
             {
-                var key = (gridUid, cx, cy);
+                var key = (gridUid, tileSize, cx, cy);
                 if (!_floorChunkCache.TryGetValue(key, out var chunk))
                 {
                     if (_emptyFloorChunks.Contains(key))
@@ -2754,14 +2743,14 @@ public partial class Renderer
                 if (chunk == null) continue;
 
                 // Экранные координаты левого верхнего угла чанка.
-                int sx = (int)((cx * StaticChunkTiles + gridOffset.X) * tileSize - viewOffset.X);
-                int sy = (int)((cy * StaticChunkTiles + gridOffset.Y) * tileSize - viewOffset.Y);
+                int sx = (int)((cx * chunkTiles + gridOffset.X) * tileSize - viewOffset.X);
+                int sy = (int)((cy * chunkTiles + gridOffset.Y) * tileSize - viewOffset.Y);
                 g.DrawImage(chunk, sx, sy);
             }
         }
     }
 
-    private void InsertFloorChunk((int gridUid, int cx, int cy) key, Bitmap chunk)
+    private void InsertFloorChunk((int gridUid, int tileSize, int cx, int cy) key, Bitmap chunk)
     {
         _floorChunkCache[key] = chunk;
         _floorChunkLru.AddLast(key);
@@ -2779,19 +2768,20 @@ public partial class Renderer
         }
     }
 
-    // Запекает чанк пола (StaticChunkTiles×StaticChunkTiles тайлов) в Bitmap.
+    // Запекает чанк пола (GetChunkTiles(tileSize)×GetChunkTiles(tileSize) тайлов) в Bitmap.
     // Возвращает null, если в чанке нет ни одного тайла пола (чик пустой — не создаём битмап).
-    private Bitmap? BakeFloorChunk(TileGrid tileGrid, (int gridUid, int cx, int cy) key, int tileSize)
+    private Bitmap? BakeFloorChunk(TileGrid tileGrid, (int gridUid, int tileSize, int cx, int cy) key, int tileSize)
     {
-        int chunkPx = StaticChunkTiles * tileSize;
-        int baseX = key.cx * StaticChunkTiles;
-        int baseY = key.cy * StaticChunkTiles;
+        int chunkTiles = GetChunkTiles(tileSize);
+        int chunkPx = chunkTiles * tileSize;
+        int baseX = key.cx * chunkTiles;
+        int baseY = key.cy * chunkTiles;
 
         // Быстрая проверка: есть ли в этом чанке хоть один тайл пола (или пол под дверью).
         bool any = false;
-        for (int ly = 0; ly < StaticChunkTiles; ly++)
+        for (int ly = 0; ly < chunkTiles; ly++)
         {
-            for (int lx = 0; lx < StaticChunkTiles; lx++)
+            for (int lx = 0; lx < chunkTiles; lx++)
             {
                 var tile = tileGrid.GetTile(baseX + lx, baseY + ly);
                 if (tile != null &&
@@ -2810,9 +2800,9 @@ public partial class Renderer
             tg.SmoothingMode = SmoothingMode.None;
             tg.PixelOffsetMode = PixelOffsetMode.Half;
 
-            for (int ly = 0; ly < StaticChunkTiles; ly++)
+            for (int ly = 0; ly < chunkTiles; ly++)
             {
-                for (int lx = 0; lx < StaticChunkTiles; lx++)
+                for (int lx = 0; lx < chunkTiles; lx++)
                 {
                     var tile = tileGrid.GetTile(baseX + lx, baseY + ly);
                     if (tile == null) continue;
@@ -4407,7 +4397,6 @@ public partial class Renderer
         _floorChunkCache.Clear();
         _floorChunkLru.Clear();
         _emptyFloorChunks.Clear();
-        _floorChunkTileSize = 0;
     }
 
     // Выкидывает чанки пола конкретного грида (при структурном изменении карты).
