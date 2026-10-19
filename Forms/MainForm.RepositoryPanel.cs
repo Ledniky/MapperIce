@@ -422,6 +422,13 @@ listContainer.Controls.Add(_protoList);
             }
 
             _indexer.ReindexFromDisk(repo);
+
+            // Переиндексация того же репозитория тоже меняет прототипы/спрайты, но в отличие
+            // от смены репозитория раньше кэш рендера здесь не сбрасывался — запечённые
+            // текстуры оставались от старого индекса, и спрайты показывали устаревший вид
+            // до ручного трогания карты/переключения репозитория.
+            _renderer?.ClearCache();
+
             int count = _indexer.GetPrototypeIds().Count;
             _repoManager.MarkAsIndexed(repo.Id, count);
             UpdateRepoSelector();
