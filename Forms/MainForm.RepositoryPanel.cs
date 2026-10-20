@@ -941,6 +941,23 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
             _btnPlaceFax.Image = _faxIcon;
             _btnPlaceFax.Invalidate();
         }
+        if (_btnPlaceLight != null && !_btnPlaceLight.IsDisposed)
+        {
+            _lightIcon?.Dispose();
+            // Обычная лампа — по умолчанию Poweredlight (как ставит инструмент).
+            var lightProto = _roomTypeManager?.GetRoomType("General")?.LightProto;
+            _lightIcon = GetPrototypeIcon(!string.IsNullOrEmpty(lightProto) ? lightProto : "Poweredlight");
+            _btnPlaceLight.Image = _lightIcon;
+            _btnPlaceLight.Invalidate();
+        }
+        if (_btnPlaceEmergencyLight != null && !_btnPlaceEmergencyLight.IsDisposed)
+        {
+            _emergencyLightIcon?.Dispose();
+            var emergencyProto = _roomTypeManager?.GetRoomType("General")?.EmergencyLightProto;
+            _emergencyLightIcon = GetPrototypeIcon(!string.IsNullOrEmpty(emergencyProto) ? emergencyProto : "EmergencyLight");
+            _btnPlaceEmergencyLight.Image = _emergencyLightIcon;
+            _btnPlaceEmergencyLight.Invalidate();
+        }
     }
     
     private Image? GetCachedProtoIcon(string protoId)
@@ -986,9 +1003,6 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
     {
         if (e.Index < 0) return;
 
-        AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
-            (e.State & DrawItemState.Selected) == DrawItemState.Selected);
-
         string? id = _protoList.Items[e.Index]?.ToString();
         const int iconSize = 32;
         const int padding = 3;
@@ -998,6 +1012,31 @@ private Size GetRsiFrameSize(string texturePath, Image fallbackImage)
                             !id.StartsWith("(") && !id.StartsWith("⚠") &&
                             !id.StartsWith("⏳") && !id.StartsWith("Ошибка") &&
                             !id.StartsWith("Нажмите");
+
+        // Суффикс "…, DO NOT MAP" — такие сущности нельзя/не нужно ставить на карту
+        // (спавнеры, служебные маркеры). Подсвечиваем их тускло-красным фоном.
+        // В русской локализации встречается и «НЕ МАППИТЬ», поэтому ловим оба варианта.
+        bool doNotMap = false;
+        if (isRealProto)
+        {
+            var proto = _indexer.FindPrototype(id!);
+            var suffix = proto?.LocalizedSuffix;
+            doNotMap = suffix != null &&
+                       (suffix.Contains("DO NOT MAP", StringComparison.OrdinalIgnoreCase) ||
+                        suffix.Contains("НЕ МАППИТЬ", StringComparison.OrdinalIgnoreCase) ||
+                        suffix.Contains("НЕ МАПИТЬ", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (doNotMap)
+        {
+            using var dimRed = new SolidBrush(Color.FromArgb(120, 150, 40, 40));
+            e.Graphics.FillRectangle(dimRed, e.Bounds);
+        }
+        else
+        {
+            AppTheme.DrawItemBackground(e.Graphics, e.Bounds,
+                (e.State & DrawItemState.Selected) == DrawItemState.Selected);
+        }
 
         // В ListBox.Items по-прежнему лежит настоящий id (drag&drop, выбор,
         // ArmPrototypePlacement и т.п. завязаны именно на него) — здесь подменяем

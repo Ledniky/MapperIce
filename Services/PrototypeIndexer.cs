@@ -689,6 +689,11 @@ public class PrototypeIndexer
         var spriteComponentBlock = ExtractComponentBlock(block, "Sprite");
         proto.Layers = ParseSpriteLayers(spriteComponentBlock);
 
+        // snapCardinals: true — спрайт не вращается при повороте (гироскоп и т.п.).
+        var snapCardMatch = Regex.Match(spriteComponentBlock, @"(?m)^\s*snapCardinals:\s*(true|false)", RegexOptions.IgnoreCase);
+        if (snapCardMatch.Success)
+            proto.SnapCardinals = snapCardMatch.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
+
         // Цвет однослойного Sprite (color: Green у CableApcExtension и т.п.).
         // У многослойных спрайтов цвет задаётся отдельно у каждого слоя (см. ParseSpriteLayers).
         proto.SpriteColor = ParseTopLevelSpriteColor(spriteComponentBlock);
@@ -722,11 +727,13 @@ public class PrototypeIndexer
             var mKey = Regex.Match(iconSmoothBlock, @"(?m)^\s*key:\s*([^\s#]+)");
             var mBase = Regex.Match(iconSmoothBlock, @"(?m)^\s*base:\s*([^\s#]+)");
             var mEnabled = Regex.Match(iconSmoothBlock, @"(?m)^\s*enabled:\s*(true|false)", RegexOptions.IgnoreCase);
+            var mMode = Regex.Match(iconSmoothBlock, @"(?m)^\s*mode:\s*([^\s#]+)");
 
             var settings = new IconSmoothSettings();
             if (mKey.Success) settings.Key = mKey.Groups[1].Value;
             if (mBase.Success) settings.Base = mBase.Groups[1].Value; // сохраняем как есть (напр. "state_") — итоговый стейт = Base + индекс
             if (mEnabled.Success) settings.Enabled = !mEnabled.Groups[1].Value.Equals("false", StringComparison.OrdinalIgnoreCase);
+            if (mMode.Success) settings.Mode = mMode.Groups[1].Value;
 
             // additionalKeys — список строк под полем: "additionalKeys:\n  - A\n  - B"
             // ИЛИ однострочный массив: "additionalKeys: [A, B]"
@@ -845,6 +852,35 @@ public class PrototypeIndexer
     /// (см. ExtractComponentBlock). Каждый элемент списка ("- state: X" и последующие
     /// вложенные строки того же элемента) превращается в один SpriteLayer.
     /// </summary>
+    /// <summary>
+    /// Состояния слоёв спрайта, которые НЕ рисуются на карте и не участвуют в
+    /// парсинге/запекании текстур: это "служебные" визуальные состояния —
+    /// открытая панель устройства (generic_panel_open), сломанное/выброс/отказ.
+    /// Такие слои помечаются Visible=false, поэтому парсятся, но рендер, композиция
+    /// и превью в панели (все проверяют layer.Visible) их пропускают, а нумерация
+    /// базовых слоёв (Base/Door у шкафчиков) при этом не сдвигается.
+    /// </summary>
+    private static readonly HashSet<string> IgnoredVisualStates =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "generic_panel_open",
+            "brokenstate",
+            "ejectstate",
+            "denystate",
+        };
+
+    /// <summary>
+    /// true, если имя слоя (state ИЛИ map-ключ вроде
+    /// "enum.ExtractionStationVisualLayers.BrokenState") попадает в IgnoredVisualStates.
+    /// </summary>
+    private static bool IsIgnoredVisualState(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (IgnoredVisualStates.Contains(value)) return true;
+        int dot = value.LastIndexOf('.');
+        return dot >= 0 && IgnoredVisualStates.Contains(value.Substring(dot + 1));
+    }
+
     private List<SpriteLayer> ParseSpriteLayers(string spriteComponentBlock)
     {
         var layers = new List<SpriteLayer>();
@@ -921,6 +957,14 @@ public class PrototypeIndexer
 
             var visibleMatch = Regex.Match(fieldLine, @"^visible:\s*(true|false)", RegexOptions.IgnoreCase);
             if (visibleMatch.Success) { current.Visible = visibleMatch.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase); continue; }
+
+            // Служебные визуальные состояния (generic_panel_open, BrokenState и т.п.)
+            // не рисуем: помечаем слой невидимым. Проверяем и state, и map-ключ.
+            if (IsIgnoredVisualState(current.State) || IsIgnoredVisualState(current.MapKey))
+            {
+                current.Visible = false;
+                continue;
+            }
 
             var offsetMatch = Regex.Match(fieldLine, @"^offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
             if (offsetMatch.Success)
@@ -1624,6 +1668,21 @@ public class PrototypeIndexer
                 return proto.SpriteColor;
         }
         return null;
+    }
+
+    /// <summary>
+    /// snapCardinals с учётом наследования от parent: (ближайший true по цепочке).
+    /// Если true — спрайт не вращается при повороте сущности (гироскоп и т.п.).
+    /// </summary>
+    public bool GetSnapCardinals(string id)
+    {
+        foreach (var nodeId in BuildParentChain(id))
+        {
+            var proto = FindPrototype(nodeId);
+            if (proto?.SnapCardinals == true)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

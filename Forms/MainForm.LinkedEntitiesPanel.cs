@@ -393,6 +393,61 @@ public partial class MainForm
         _linkedEntitiesPanel.Controls.Add(_btnPlaceFax);
         y += 40 + 2;
 
+        // === КНОПКИ УСТАНОВКИ ЛАМП (две на одной строке: обычная и аварийная) ===
+        var lightsPanel = new Panel
+        {
+            Location = new Point(leftMargin + 2, y),
+            Width = contentWidth - 4,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+
+        _btnPlaceLight = new Button
+        {
+            Text = "  Лампа",
+            Location = new Point(0, 0),
+            Width = (lightsPanel.Width - 1) / 2,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _lightIcon
+        };
+        _btnPlaceLight.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceLight);
+        lightsPanel.Controls.Add(_btnPlaceLight);
+
+        _btnPlaceEmergencyLight = new Button
+        {
+            Text = "  Авар. лампа",
+            Location = new Point((lightsPanel.Width - 1) / 2 + 1, 0),
+            Width = (lightsPanel.Width - 1) / 2,
+            Height = 40,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Font = new Font("Arial", 10),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            Image = _emergencyLightIcon
+        };
+        _btnPlaceEmergencyLight.Click += (s, e) => _toolManager.SetTool(ToolManager.Tool.PlaceEmergencyLight);
+        lightsPanel.Controls.Add(_btnPlaceEmergencyLight);
+
+        lightsPanel.Resize += (s, e) =>
+        {
+            int half = (lightsPanel.Width - 1) / 2;
+            _btnPlaceLight.Width = half;
+            _btnPlaceLight.Location = new Point(0, 0);
+            _btnPlaceEmergencyLight.Width = half;
+            _btnPlaceEmergencyLight.Location = new Point(half + 1, 0);
+        };
+
+        _linkedEntitiesPanel.Controls.Add(lightsPanel);
+        y += 40 + 2;
+
         // Содержимое собрано абсолютной вёрсткой по Y и по высоте больше низкого окна:
         // складываем его в один контейнер фиксированной высоты и отдаём скролл самой
         // панели (та же схема, что в панели инструментов — MainForm.ToolPanel.cs).
@@ -438,6 +493,7 @@ public partial class MainForm
             atmosLabel.Width = content - 4;
             otherLabel.Width = content - 4;
             alarmPanel.Width = content - 4;
+            lightsPanel.Width = content - 4;
 
             foreach (var button in new[]
                      {
@@ -452,6 +508,31 @@ public partial class MainForm
 
         contentPanel.Resize += (s, e) => StretchContentToPanelWidth();
         StretchContentToPanelWidth();
+    }
+
+    /// <summary>
+    /// Отображаемое имя пункта списка дверей: у двух прототип-вариантов («Дверь»/
+    /// «Дверь (стекло)») подставляем русскую локализацию репозитория (как в панели
+    /// репозитория), а не статический ярлык. Остальные пункты (Проход и т.п.) —
+    /// не прототипы, показываем как есть. Внутренний ключ-метка не трогаем: на него
+    /// завязаны выбор инструмента и иконки.
+    /// </summary>
+    private string LocalizedDoorLabel(string label)
+    {
+        if (!_doorToolIcons.TryGetValue(label, out var info) || string.IsNullOrEmpty(info.ProtoId))
+            return label;
+
+        var proto = _indexer.FindPrototype(info.ProtoId!);
+        var localizedName = proto?.LocalizedName;
+        bool hasLocalizedName = !string.IsNullOrWhiteSpace(localizedName) &&
+                                localizedName!.Any(c => c >= '\u0400' && c <= '\u04FF');
+        if (!hasLocalizedName)
+            return label;
+
+        // Статичные ярлыки «Дверь»/«Дверь (стекло)» превращаем в локализованное имя
+        // (по желанию пользователя пара «локализация + суффикс» не нужна для дверей,
+        // поэтому без скобок-суффикса, в отличие от окон/ЛКП).
+        return localizedName!;
     }
 
     private ComboBox BuildDoorWindowCombo(bool drawDoorIcons)
@@ -513,7 +594,8 @@ public partial class MainForm
                     textX = e.Bounds.Left + padding + iconSize + padding;
                 }
 
-                TextRenderer.DrawText(e.Graphics, label, combo.Font,
+                string shownText = drawDoorIcons ? LocalizedDoorLabel(label) : label;
+                TextRenderer.DrawText(e.Graphics, shownText, combo.Font,
                     new Rectangle(textX, e.Bounds.Top, e.Bounds.Width - (textX - e.Bounds.Left), e.Bounds.Height),
                     combo.ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             }

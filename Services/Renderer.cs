@@ -108,6 +108,7 @@ public partial class Renderer
         public int StateDirections;
         public int DrawDepthOffset;
         public bool IsOccluder;
+        public bool SnapCardinals;
         public (string? baseClosed, string? doorOpen, string? doorClosed)? StorageVisuals;
     }
     private readonly Dictionary<string, ProtoRenderMeta> _protoMetaCache = new(StringComparer.Ordinal);
@@ -794,6 +795,12 @@ public partial class Renderer
     /// </summary>
     private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f, string? tintColor = null)
     {
+        // snapCardinals: true — спрайт не вращается при повороте (гироскоп и т.п.).
+        // Обнуляем поворот до входа в любой путь отрисовки (однослойный/многослойный),
+        // иначе симметричный спрайт с directions:1 аффинно крутится за сущностью.
+        if (!string.IsNullOrEmpty(protoId) && GetProtoMeta(protoId!).SnapCardinals)
+            rotation = 0f;
+
         // Многослойный прототип (YAML Sprite.layers) — рисуем все слои поверх друг
         // друга отдельным путём и выходим, не трогая старую однослойную логику ниже.
         // Слои берутся из кэша метаданных: GetLayers обходил цепочку parent: на
@@ -2648,8 +2655,11 @@ public partial class Renderer
             .ToList();
         if (linksEntities.Count == 0) return;
 
-        int NodeScreenX(float wx) => (int)((wx + 0.5f + gridOffset.X) * tileSize - viewOffset.X);
-        int NodeScreenY(float wy) => (int)((wy + 0.5f + gridOffset.Y) * tileSize - viewOffset.Y);
+        // Сущности-участники сети (кнопки/рычаги/устройства) хранят X/Y как дробный
+        // ЦЕНТР тайла (при размещении +0.5, см. PlaceLinkedEntity), поэтому линия идёт
+        // прямо от их центра — без дополнительного +0.5, иначе начало уезжало бы в угол.
+        int NodeScreenX(float wx) => (int)((wx + gridOffset.X) * tileSize - viewOffset.X);
+        int NodeScreenY(float wy) => (int)((wy + gridOffset.Y) * tileSize - viewOffset.Y);
 
         using var dimPen = new Pen(Color.FromArgb(90, 255, 220, 60), 2);
         using var brightPen = new Pen(Color.FromArgb(255, 255, 220, 60), 3);
@@ -3592,6 +3602,26 @@ public partial class Renderer
         return mask;
     }
 
+    // Диагональный режим (mode: Diagonal): true, если все три соседа (E, NE, N) — «свои»
+    // (соответствуют smooth-ключу окна). Поворот сущности поворачивает тройку проверяемых
+    // соседей (как rotation.RotateVec в игре): quarter 0=юг,1=восток,2=север,3=запад.
+    // Индексы базовых соседей из SmoothNeighborOffsets: N=0, NE=1, E=2.
+    private static bool ComputeDiagonalState(int mask, int quarter)
+    {
+        int[] bits;
+        switch (((quarter % 4) + 4) % 4)
+        {
+            case 0: bits = new[] { 2, 1, 0 }; break; // E, NE, N
+            case 1: bits = new[] { 3, 2, 1 }; break; // SE, E, NE
+            case 2: bits = new[] { 4, 3, 2 }; break; // S, SE, E
+            case 3: bits = new[] { 5, 4, 3 }; break; // SW, S, SE
+            default: bits = new[] { 2, 1, 0 }; break;
+        }
+        return (mask & (1 << bits[0])) != 0 &&
+               (mask & (1 << bits[1])) != 0 &&
+               (mask & (1 << bits[2])) != 0;
+    }
+
     // Сглаженные углы клетки: [NE,NW,SW,SE] в именах функции игры.
     private readonly record struct CornerFills(int NE, int NW, int SW, int SE);
 
@@ -3714,10 +3744,44 @@ public partial class Renderer
         int tx = (int)Math.Floor(worldX);
         int ty = (int)Math.Floor(worldY);
 
-        int mask = SmoothNeighborMask(protoId, tx, ty);
         int quarter = GetQuarter(rotation);
-
         var rect = ToRect(worldX, worldY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+        int mask = SmoothNeighborMask(protoId, tx, ty);
+
+        // Диагональный режим (mode: Diagonal — диагональные окна): как CalculateNewSpriteDiagonal
+        // в игре. Смотрит три соседа (E, NE, N), повёрнутых на поворот сущности; если все три
+        // совпадают с нашим smooth-ключом — стейт "{base}1", иначе "{base}0". Это состояние
+        // СВЯЗНОСТИ, а не направление кадра: state1 = окно встало вплотную к соседним стенам,
+        // state0 = изолированное. Поворот сущности влияет на то, какие три соседа проверяются,
+        // поэтому фактический поворот окна здесь учитывается (а не игнорируется, как раньше).
+        if (settings.Mode.Equals("Diagonal", StringComparison.OrdinalIgnoreCase))
+        {
+            int state = ComputeDiagonalState(mask, quarter) ? 1 : 0;
+            var (img, key) = GetSmoothState(protoId, settings, state);
+            if (img == null || key == null) return;
+
+            // У diagonal-режима стейт ("state0"/"state1") — это состояние СВЯЗНОСТИ
+            // (окно вплотную к стенам или изолировано), а НЕ напрвление кадра: движок
+            // (DiagonalSpriteSmoothing) выдаёт только base+0/base+1, и в meta.json у этих
+            // стейтов нет полей directions — кадр один. Ориентация диагональной стены/окна
+            // задаётся поворотом САМОЙ сущности (колёсиком), который движок применяет
+            // визуально к спрайту. Раньше здесь рисовался голый DrawImage без поворота,
+            // поэтому вращение колёсиком никак не меняло вид (в программе одно направление).
+            var src = GetSourceRect(key, img, 0f);
+            if (src.Width == 0 || src.Height == 0) return;
+
+            if (rotation != 0f)
+            {
+                float cx = rect.X + rect.Width / 2f;
+                float cy = rect.Y + rect.Height / 2f;
+                WithRotation(g, cx, cy, rotation, () => g.DrawImage(img, rect, src, GraphicsUnit.Pixel));
+            }
+            else
+            {
+                g.DrawImage(img, rect, src, GraphicsUnit.Pixel);
+            }
+            return;
+        }
 
         // 4 угловых слоя собраны в один битмап — один DrawImage вместо четырёх.
         // Если ни один state-кадр не загрузился (нет RSI-папки/кадров у прототипа) —
@@ -4223,6 +4287,9 @@ public partial class Renderer
                 // раньше это проверялось для каждой сущности карты на каждый кадр.
                 meta.IsOccluder = _indexer.HasComponent(protoId, "Occluder");
 
+                // snapCardinals: спрайт не вращается при повороте (гироскоп и т.п.)
+                meta.SnapCardinals = _indexer.GetSnapCardinals(protoId);
+
                 // directions у индексатора — самый дорогой вызов (File.ReadAllText
                 // meta.json + разбор JSON), поэтому и кэшируется здесь
                 meta.StateDirections = _indexer.GetStateDirections(protoId);
@@ -4271,15 +4338,40 @@ public partial class Renderer
 
     /// <summary>
     /// Поворот структуры обнуляется, если у её иконки нет направленных кадров
-    /// (directions &lt; 4): структуры в игре всегда смотрят на юг. Оба признака берутся
-    /// из кэша метаданных — раньше здесь на каждую сущность в кадре читался meta.json.
+    /// (directions &lt; 4): обычные структуры в игре всегда смотрят на юг. Оба признака
+    /// берутся из кэша метаданных — раньше здесь на каждую сущность в кадре читался
+    /// meta.json. Исключение — створки и взрывные двери (Shutters*/BlastDoor*): они
+    /// ставятся инструментом «Заменить на окно» как свободные объекты и вращаются
+    /// колёсиком независимо от стен (прямо как камера), поэтому их поворот сохраняется,
+    /// даже несмотря на directions &lt; 4.
     /// </summary>
     private float NormalizeStructureRotation(string? protoId, float rotation)
     {
         if (string.IsNullOrEmpty(protoId)) return rotation;
+        if (IsFreeRotatableShutterBlast(protoId!)) return rotation;
         var meta = GetProtoMeta(protoId!);
+        // snapCardinals: true — спрайт симметричный, вращение не отображается (гироскоп)
+        if (meta.SnapCardinals) return 0f;
+        // Диагональные стены/окна (IconSmooth mode: Diagonal): у них directions у
+        // state0/state1 нет (==1), но они РАЗВОРАЧИВАЮТСЯ поворотом сущности колёсиком —
+        // спрайт остаётся тем же, просто аффинно поворачивается. Поэтому для них поворот
+        // не обнуляем, как и для створок/взрывных дверей ниже. Проверяем и наличие
+        // диагонального IconSmooth, и само имя прототипа (все диагональные стены/окна
+        // содержат "Diagonal" в id) — на случай, если компонент не отресолвился.
+        bool isDiagonalSmooth = meta.IconSmooth != null &&
+            meta.IconSmooth.Mode.Equals("Diagonal", StringComparison.OrdinalIgnoreCase)
+            || protoId!.Contains("Diagonal", StringComparison.OrdinalIgnoreCase);
+        if (isDiagonalSmooth) return rotation;
         return meta.IsStructure && meta.StateDirections < 4 ? 0f : rotation;
     }
+
+    /// <summary>
+    /// Створка (Shutters) или взрывная дверь (BlastDoor): свободно ставящаяся структура,
+    /// которая вращается колёсиком независимо от стен (см. MainForm.IsFreePlaceableShutterBlast).
+    /// </summary>
+    private static bool IsFreeRotatableShutterBlast(string id) =>
+        id.StartsWith("Shutters", StringComparison.Ordinal) ||
+        id.StartsWith("BlastDoor", StringComparison.Ordinal);
 
     // Кэш ImageAttributes по цвету декали — пересоздавать ColorMatrix на каждый DrawImage
     // накладно, а цветов у декалей на карте обычно немного (одни и те же несколько цветов
@@ -4883,12 +4975,22 @@ public partial class Renderer
     public void InvalidateTileGrid(int gridUid)
     {
         _dirtyTileGrids.Add(gridUid);
-        // Кэши рендера (индекс сглаживания, чанки пола) тоже зависят от содержимого
-        // грида — при любом структурном изменении их нужно пересобрать.
         _dirtyRenderCaches.Add(gridUid);
-        // Оверлей обзора камер зависит от стен/дверей/перекрытий — пересчитываем его
-        // там же, где пересобирается сам TileGrid, а не на каждом кадре.
         _dirtyCameraCoverage.Add(gridUid);
+    }
+
+    /// <summary>
+    /// Помечает только кэши РЕНДЕРА грида грязными, не трогая TileGrid: для операций,
+    /// которые меняют набор/позиции/типы декалей (пересчёт узора декальрула), но не
+    /// тайлы-стены/пол/двери. Очередь отрисовки (GetDrawItems) кэшируется по числу
+    /// сущностей/декалей, и при замене одних декалей другими их число может не
+    /// измениться — без инвалидации рендер показывал бы старый узор, пока слой не
+    /// переключили. Заодно сбрасываем чанки пола, которые тоже лежат в кэше рендера.
+    /// </summary>
+    public void InvalidateRenderCache(int gridUid)
+    {
+        _dirtyRenderCaches.Add(gridUid);
+        ClearGridFloorChunks(gridUid);
     }
     private void DrawEntityPreview(Graphics g, float scale, PointF viewOffset)
     {
@@ -4915,6 +5017,8 @@ public partial class Renderer
         }
 
         if (!_previewEntityValid || string.IsNullOrEmpty(_previewEntityProto)) return;
+
+
 
         // Структуры (BaseStructure) всегда смотрят на юг, независимо от rotation,
         // НО если у иконки в meta.json directions: 4 —尊重 rotation (направленная иконка)

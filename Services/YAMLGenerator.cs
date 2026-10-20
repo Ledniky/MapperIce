@@ -10,6 +10,14 @@ public static class YAMLGenerator
     private const int CHUNK_SIZE = 16;
 
     /// <summary>
+    /// Округление координаты к ближайшей клетке с округлением половины ОТ нуля
+    /// (3.5 → 4, но и -3.5 → -4), чтобы соседние полу-клетки никогда не сливались
+    /// в один ключ. В отличие от Math.Round (банковское: 3.5 и 4.5 обе дают 4) —
+    /// даёт детерминированные уникальные ключи клеток.
+    /// </summary>
+    private static int RoundCoord(float value) => (int)Math.Floor(value + 0.5f);
+
+    /// <summary>
     /// UID родительского grid-entity, которому принадлежат ВСЕ объекты текущей
     /// группы (стены, двери, трубы и т.п.). В одно-гридовом экспорте всегда 2
     /// (map entity 1 + грид 2). В много-гридовом (GenerateAll) выставляется на uid
@@ -1921,12 +1929,16 @@ public static class YAMLGenerator
 
         if (generic.Count == 0) return;
 
-        // Заранее назначаем uid всем generic-сущностям и запоминаем позицию->uid,
-        // чтобы ниже можно было ссылаться на цель связи (DeviceLinkSource.linkedPorts)
-        var posToUid = new Dictionary<(int x, int y), int>();
+        // Каждой сущности назначаем свой уникальный uid. Ключ по округлённой клетке
+        // использовать нельзя: Math.Round даёт банковское округление (3.5 и 4.5 обе дают
+        // 4), разные сущности на соседних полу-клетках сливались в один ключ и
+        // затирали uid друг друга — в YAML получались дубликаты uid.
+        var uidByEntity = new Dictionary<MapEntity, int>();
+        var posToUid = new Dictionary<(float x, float y), int>();
         foreach (var e in generic)
         {
-            posToUid[((int)Math.Round(e.X), (int)Math.Round(e.Y))] = uid;
+            uidByEntity[e] = uid;
+            posToUid[(RoundCoord(e.X), RoundCoord(e.Y))] = uid;
             uid++;
         }
 
@@ -1937,8 +1949,7 @@ public static class YAMLGenerator
 
             foreach (var entity in group)
             {
-                var cell = ((int)Math.Round(entity.X), (int)Math.Round(entity.Y));
-                int thisUid = posToUid[cell];
+                int thisUid = uidByEntity[entity];
 
                 float posX = entity.X;
                 float posY = -entity.Y + 1.0f;
@@ -1964,7 +1975,7 @@ public static class YAMLGenerator
 
                     foreach (var targetGroup in entity.NetworkLinks.GroupBy(l => (l.TargetX, l.TargetY)))
                     {
-                        if (!posToUid.TryGetValue(((int)Math.Round(targetGroup.Key.TargetX), (int)Math.Round(targetGroup.Key.TargetY)), out int targetUid))
+                        if (!posToUid.TryGetValue((RoundCoord(targetGroup.Key.TargetX), RoundCoord(targetGroup.Key.TargetY)), out int targetUid))
                             continue;
 
                         sb.AppendLine($"        {targetUid}:");
@@ -1994,7 +2005,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var h in holopads)
         {
-            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            posToUid[(RoundCoord(h.X), RoundCoord(h.Y))] = uid;
             uid++;
         }
 
@@ -2005,7 +2016,7 @@ public static class YAMLGenerator
 
             foreach (var holopad in group)
             {
-                var cell = ((int)Math.Round(holopad.X), (int)Math.Round(holopad.Y));
+                var cell = (RoundCoord(holopad.X), RoundCoord(holopad.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = holopad.X;
@@ -2037,7 +2048,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var h in lockers)
         {
-            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            posToUid[(RoundCoord(h.X), RoundCoord(h.Y))] = uid;
             uid++;
         }
 
@@ -2048,7 +2059,7 @@ public static class YAMLGenerator
 
             foreach (var locker in group)
             {
-                var cell = ((int)Math.Round(locker.X), (int)Math.Round(locker.Y));
+                var cell = (RoundCoord(locker.X), RoundCoord(locker.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = locker.X;
@@ -2080,7 +2091,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var h in suits)
         {
-            posToUid[((int)Math.Round(h.X), (int)Math.Round(h.Y))] = uid;
+            posToUid[(RoundCoord(h.X), RoundCoord(h.Y))] = uid;
             uid++;
         }
 
@@ -2091,7 +2102,7 @@ public static class YAMLGenerator
 
             foreach (var suit in group)
             {
-                var cell = ((int)Math.Round(suit.X), (int)Math.Round(suit.Y));
+                var cell = (RoundCoord(suit.X), RoundCoord(suit.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = suit.X;
@@ -2126,7 +2137,7 @@ public static class YAMLGenerator
         {
             int bedUid = uid++;
             int sheetUid = string.IsNullOrEmpty(bed.BedsheetProto) ? -1 : uid++;
-            posToUid[((int)Math.Round(bed.X), (int)Math.Round(bed.Y))] = (bedUid, sheetUid);
+            posToUid[(RoundCoord(bed.X), RoundCoord(bed.Y))] = (bedUid, sheetUid);
         }
 
         // Кровати — группируем по прототипу кровати
@@ -2137,7 +2148,7 @@ public static class YAMLGenerator
 
             foreach (var bed in group)
             {
-                var cell = ((int)Math.Round(bed.X), (int)Math.Round(bed.Y));
+                var cell = (RoundCoord(bed.X), RoundCoord(bed.Y));
                 int thisUid = posToUid[cell].bedUid;
 
                 float posX = bed.X;
@@ -2165,7 +2176,7 @@ public static class YAMLGenerator
 
             foreach (var bed in group)
             {
-                var cell = ((int)Math.Round(bed.X), (int)Math.Round(bed.Y));
+                var cell = (RoundCoord(bed.X), RoundCoord(bed.Y));
                 int thisUid = posToUid[cell].sheetUid;
 
                 float posX = bed.X;
@@ -2200,7 +2211,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var c in cameras)
         {
-            posToUid[((int)Math.Round(c.X), (int)Math.Round(c.Y))] = uid;
+            posToUid[(RoundCoord(c.X), RoundCoord(c.Y))] = uid;
             uid++;
         }
 
@@ -2211,7 +2222,7 @@ public static class YAMLGenerator
 
             foreach (var camera in group)
             {
-                var cell = ((int)Math.Round(camera.X), (int)Math.Round(camera.Y));
+                var cell = (RoundCoord(camera.X), RoundCoord(camera.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = camera.X;
@@ -2254,7 +2265,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var d in dressers)
         {
-            posToUid[((int)Math.Round(d.X), (int)Math.Round(d.Y))] = uid;
+            posToUid[(RoundCoord(d.X), RoundCoord(d.Y))] = uid;
             uid++;
         }
 
@@ -2265,7 +2276,7 @@ public static class YAMLGenerator
 
             foreach (var dresser in group)
             {
-                var cell = ((int)Math.Round(dresser.X), (int)Math.Round(dresser.Y));
+                var cell = (RoundCoord(dresser.X), RoundCoord(dresser.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = dresser.X;
@@ -2299,7 +2310,7 @@ public static class YAMLGenerator
         var posToUid = new Dictionary<(int x, int y), int>();
         foreach (var i in intercoms)
         {
-            posToUid[((int)Math.Round(i.X), (int)Math.Round(i.Y))] = uid;
+            posToUid[(RoundCoord(i.X), RoundCoord(i.Y))] = uid;
             uid++;
         }
 
@@ -2310,7 +2321,7 @@ public static class YAMLGenerator
 
             foreach (var intercom in group)
             {
-                var cell = ((int)Math.Round(intercom.X), (int)Math.Round(intercom.Y));
+                var cell = (RoundCoord(intercom.X), RoundCoord(intercom.Y));
                 int thisUid = posToUid[cell];
 
                 float posX = intercom.X;

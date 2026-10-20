@@ -37,6 +37,8 @@ public class ToolManager
         PlaceDresser,
         PlaceIntercom,
         PlaceFax,
+        PlaceLight,
+        PlaceEmergencyLight,
         PlacePrototype,
         Move,
         DecalRule,

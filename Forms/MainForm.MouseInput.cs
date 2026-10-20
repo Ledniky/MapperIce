@@ -794,12 +794,12 @@ public partial class MainForm
                     if (isTile)
                     {
                         var placeTilePos = GetTilePosition(e.Location);  // Переименовано
+                        PlaceTileAt(grid, placeTilePos.x, placeTilePos.y);
 
-                        var existing = grid.Tiles.FirstOrDefault(t => t.X == placeTilePos.x && t.Y == placeTilePos.y);
-                        if (existing != null)
-                            grid.Tiles.Remove(existing);
-
-                        grid.Tiles.Add(new PlacedTile { X = placeTilePos.x, Y = placeTilePos.y, Proto = _protoToPlace });
+                        // Тайл рисуется серией зажатием ЛКМ как карандашом: OnMouseMove будет
+                        // ставить тайлы под курсором, пока _isPaintingTile не сброшен в OnMouseUp.
+                        _isPaintingTile = true;
+                        _lastPaintTile = (placeTilePos.x, placeTilePos.y);
                     }
 
 
@@ -983,6 +983,44 @@ public partial class MainForm
 
 
     // ===== ПРИВЯЗКИ: расчёт цели, превью и установка =====
+
+    /// <summary>
+    /// Ставит выбранный тайл репозитория в клетку (grid.Tiles, заменяя уже стоящий).
+    /// Общий код для клика в OnMouseDown и для «рисования карандашом» при зажатой ЛКМ
+    /// в OnMouseMove (сначала тайл ставится по клику — см. isTile-ветку в OnMouseDown).
+    /// </summary>
+    private void PlaceTileAt(Grid grid, int tileX, int tileY)
+    {
+        var existing = grid.Tiles.FirstOrDefault(t => t.X == tileX && t.Y == tileY);
+        if (existing != null)
+            grid.Tiles.Remove(existing);
+
+        grid.Tiles.Add(new PlacedTile { X = tileX, Y = tileY, Proto = _protoToPlace });
+    }
+
+    /// <summary>
+    /// Перечисляет тайлы на отрезке от (x0,y0) до (x1,y1) по алгоритму Брезенхэма.
+    /// Замена наивной интерполяции по целым шагам: между сильно разнесёнными клетками
+    /// закрашиваются ВСЕ тайлы, через которые проходит линия движения мыши.
+    /// </summary>
+    private static IEnumerable<(int x, int y)> BresenhamTiles(int x0, int y0, int x1, int y1)
+    {
+        int dx = Math.Abs(x1 - x0);
+        int dy = Math.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = dx - dy;
+
+        while (true)
+        {
+            yield return (x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 < dx) { err += dx; y0 += sy; }
+        }
+    }
 
     /// <summary>Инструмент привязки (голопад, шкафчик, скафандр, кровать, камера, комод, интерком).</summary>
     private static bool IsLinkedEntityTool(ToolManager.Tool tool) =>
@@ -1730,6 +1768,37 @@ public partial class MainForm
             return;
         }
 
+        // «Рисование карандашом»: пока выбран тайл в поисковике прототипов и ЛКМ зажата
+        // (см. _isPaintingTile — ставится в OnMouseDown), каждый тайл под курсором заливается
+        // выбранным тайлом. Идёт раньше превью, чтобы движение не перебивало заливку.
+        if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && _isPaintingTile && !string.IsNullOrEmpty(_protoToPlace))
+        {
+            var grid = _map.ActiveGrid;
+            if (grid != null)
+            {
+                var proto = _indexer.FindPrototype(_protoToPlace);
+                bool isTile = proto != null && proto.Type == "tile";
+                if (isTile)
+                {
+                    var tilePos = GetTilePosition(e.Location);
+
+                    // Между прошлой и текущей клеткой проводим линию и закрашиваем все
+                    // пересечённые тайлы — при быстром движении мыши клетки не пропускаются.
+                    int fromX = _lastPaintTile?.x ?? tilePos.x;
+                    int fromY = _lastPaintTile?.y ?? tilePos.y;
+                    foreach (var (px, py) in BresenhamTiles(fromX, fromY, tilePos.x, tilePos.y))
+                        PlaceTileAt(grid, px, py);
+                    _lastPaintTile = tilePos;
+
+                    // Undo-состояние фиксируется один раз при отпускании ЛКМ (OnMouseUp),
+                    // чтобы серия «карандашных» тайлов стала одним шагом истории.
+                    UpdateTileGrid();
+                    Render();
+                    return;
+                }
+            }
+        }
+
         if (_toolManager.CurrentTool == ToolManager.Tool.PlacePrototype && !string.IsNullOrEmpty(_protoToPlace))
         {
             float previewX, previewY;
@@ -1844,6 +1913,17 @@ public partial class MainForm
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
     {
+        // Завершение «рисования карандашом» тайлами: когда ЛКМ отпущена, сбрасываем флаг
+        // и фиксируем всю серию поставленных тайлов одним шагом отмены (см. .MouseInput:
+        // PlaceTileAt в OnMouseMove — там SaveState() намеренно не вызывается).
+        if (_isPaintingTile && e.Button == MouseButtons.Left)
+        {
+            _isPaintingTile = false;
+            _lastPaintTile = null;
+            if (_map.ActiveGrid != null) SaveState();
+            return;
+        }
+
         // Завершение перетаскивания прямоугольника вырезки декалей (кнопка «✖»)
         if (_isCuttingDecalCells && _cuttingDecalMouseDown && e.Button == MouseButtons.Left)
         {

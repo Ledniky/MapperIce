@@ -1158,8 +1158,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             !i.Contains("board", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Flatpack", StringComparison.OrdinalIgnoreCase)))
         {
-            var displayName = id.Replace("APC", "").TrimStart('-', '_');
-            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "APC"));
+            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, LocalizedJunctionName(id), "APC"));
         }
         
         foreach (var id in allIds.Where(i =>
@@ -1169,8 +1168,7 @@ _roomTypeCombo.DrawItem += (s, e) =>
             !i.Contains("Frame", StringComparison.OrdinalIgnoreCase) &&
             !i.Contains("Flatpack", StringComparison.OrdinalIgnoreCase)))
         {
-            var displayName = id.Replace("Substation", "").TrimStart('-', '_');
-            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, displayName, "Substation"));
+            _powerJunctionCombo.Items.Add(new ProtoDisplayItem(id, LocalizedJunctionName(id), "Substation"));
         }
         
         // Восстановление выбранного элемента
@@ -1187,6 +1185,30 @@ _roomTypeCombo.DrawItem += (s, e) =>
         }
 
         LoadWireJunctionIcons();
+    }
+
+    /// <summary>
+    /// Отображаемое имя ЛКП/подстанции: русская локализация из репозитория
+    /// (как в панели репозитория, с суффиксом в квадратных скобках), а если её
+    /// нет — устаревшее форматирование по ID ("APC"/"Substation" вырезается).
+    /// </summary>
+    private string LocalizedJunctionName(string id)
+    {
+        var proto = _indexer.FindPrototype(id);
+        var localizedName = proto?.LocalizedName;
+        bool hasLocalizedName = !string.IsNullOrWhiteSpace(localizedName) &&
+                                localizedName.Any(c => c >= '\u0400' && c <= '\u04FF');
+        if (hasLocalizedName)
+        {
+            return !string.IsNullOrWhiteSpace(proto!.LocalizedSuffix)
+                ? $"{localizedName} [{proto.LocalizedSuffix}]"
+                : localizedName!;
+        }
+
+        string typePrefix = id.StartsWith("Substation", StringComparison.OrdinalIgnoreCase)
+            ? "Substation"
+            : "APC";
+        return id.Replace(typePrefix, "").TrimStart('-', '_');
     }
 
     /// <summary>
@@ -1298,6 +1320,15 @@ private static float HueToRgb(float p, float q, float t)
     };
 
     /// <summary>
+    /// Створка (Shutters) или взрывная дверь (BlastDoor): ставится свободно, как
+    /// обычный объект, вращается колёсиком и не требует стены под собой или рядом.
+    /// Отличить от настоящего окна нужно и в превью, и при установке.
+    /// </summary>
+    private static bool IsFreePlaceableShutterBlast(string id) =>
+        id.StartsWith("Shutters", StringComparison.Ordinal) ||
+        id.StartsWith("BlastDoor", StringComparison.Ordinal);
+
+    /// <summary>
     /// Проходит ли прототип в выпадающий список «Окна»: настоящие окна (по слову
     /// Window в id) плюс створки и взрывные двери из <see cref="_extraWindowComboIds"/> —
     /// их на карте ставят тем же инструментом, что и окна (замена клетки стены).
@@ -1355,6 +1386,19 @@ private static float HueToRgb(float p, float q, float t)
 
         string GetWindowDisplayName(string protoId)
         {
+            // Русская локализация из репозитория (как в панели репозитория): если
+            // нашлась кириллица — показываем её (с суффиксом в квадратных скобках).
+            var proto = _indexer.FindPrototype(protoId);
+            var localizedName = proto?.LocalizedName;
+            bool hasLocalizedName = !string.IsNullOrWhiteSpace(localizedName) &&
+                                    localizedName.Any(c => c >= '\u0400' && c <= '\u04FF');
+            if (hasLocalizedName)
+            {
+                return !string.IsNullOrWhiteSpace(proto!.LocalizedSuffix)
+                    ? $"{localizedName} [{proto.LocalizedSuffix}]"
+                    : localizedName!;
+            }
+
             // Створки и взрывные двери показываем полным id: у ShuttersWindow слово
             // "Window" — часть названия (створки-окно), а усечение дало бы ярлыки
             // «Shutters», неотличимые от базовых прототипов.

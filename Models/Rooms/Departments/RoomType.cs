@@ -68,6 +68,12 @@ public abstract class RoomType
     /// </summary>
     public virtual string FaxProto => "FaxMachineBase";
 
+    /// <summary>Прототип обычной лампы (id из light_*.yml), привязываемый к типу комнаты. По умолчанию Poweredlight.</summary>
+    public virtual string LightProto => "Poweredlight";
+
+    /// <summary>Прототип аварийной лампы (id из light_*.yml), привязываемый к типу комнаты. По умолчанию EmergencyLight.</summary>
+    public virtual string EmergencyLightProto => "EmergencyLight";
+
     /// <summary>
     /// Интерком по отделу комнаты: у каждого отдела свой ключ шифрования
     /// (Intercom{Отдел} в intercom.yml). Supply в прототипах — это Cargo,
@@ -184,6 +190,8 @@ public class Technical : CommonRoomType
     public override string GlassDoorProto => "AirlockMaintGlassLocked";
     public override string? HolopadProto => "HolopadGeneralTools";
     public override string? LockerProto => "ClosetMaintenanceFilledRandom";
+    // Техи освещаются маленькими лампами (как на эталонных картах).
+    public override string LightProto => "PoweredSmallLight";
     public override Color FillColor => Color.FromArgb(100, 255, 240, 200);
     public override Color LineColor => Color.FromArgb(255, 200, 180, 150);
     public override int Priority => 0;
@@ -329,6 +337,8 @@ public class CustomRoomTypeData
     /// <summary>Адрес факса (name компонента FaxMachine) и его прототип — для кастомных типов.</summary>
     public string? FaxName { get; set; } = null;
     public string? FaxProto { get; set; } = null;
+    public string? LightProto { get; set; } = null;
+    public string? EmergencyLightProto { get; set; } = null;
     public string Description { get; set; } = "";
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
@@ -356,6 +366,8 @@ public class ExportData
     public string? IntercomProto { get; set; }
     public string? FaxName { get; set; }
     public string? FaxProto { get; set; }
+    public string? LightProto { get; set; }
+    public string? EmergencyLightProto { get; set; }
     public string FillColor { get; set; } = "200,230,230,230";
     public string LineColor { get; set; } = "255,180,180,180";
     public int Priority { get; set; } = 0;

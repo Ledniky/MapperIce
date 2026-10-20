@@ -174,6 +174,10 @@ public partial class MainForm : Form
     private Image? _intercomIcon;
     private Button _btnPlaceFax = null!;
     private Image? _faxIcon;
+    private Button _btnPlaceLight = null!;
+    private Image? _lightIcon;
+    private Button _btnPlaceEmergencyLight = null!;
+    private Image? _emergencyLightIcon;
     private Button _btnDeleteArea = null!;
     private Button _btnDeleteSettings = null!;
     private Point _deleteStartPoint;
@@ -184,6 +188,13 @@ public partial class MainForm : Form
     private bool _showAlarmConnections = true;
     private Point _lastMousePosition;
     private string? _protoToPlace = null;
+    // «Рисование» тайлами как карандашом: если в поисковике прототипов выбран тайл
+    // и ЛКМ зажата, тайлы ставятся непрерывно по мере движения мыши (без повторных кликов).
+    private bool _isPaintingTile = false;
+    // Последний тайл, закрашенный при «рисовании карандашом». Нужен, чтобы между
+    // прошлой и текущей позицией мыши проводить линию и закрашивать все тайлы,
+    // которые она пересекла, — иначе при быстром движении клетки пропускаются.
+    private (int x, int y)? _lastPaintTile = null;
     private Button? _btnPlaceProto;
     private bool _snapEntityToCenter = false;
     private Button? _btnSnapEntityCenter;
@@ -407,6 +418,7 @@ public partial class MainForm : Form
 
         LoadPanelSettings();
         LoadAppearanceSettings();
+        LoadDeleteSettings();
 
         CreateRepositoryPanel();
         CreateToolPanel();
@@ -650,6 +662,12 @@ public partial class MainForm : Form
     {
         if (_map.ActiveGrid == null) return;
         var grid = _map.ActiveGrid;
+
+        // Пересчёт декалей меняет содержимое грида (набор/позиции/типы декалей).
+        // Очередь отрисовки кэшируется по числу декалей, а при замене одних декалей
+        // другими число может не измениться — без инвалидации рендер показывал бы
+        // старый узор, пока слой не переключили. Инвалидируем кэш рендера.
+        _renderer.InvalidateRenderCache(grid.Uid);
 
         // Если растягивается НОВАЯ ручная область — пересчитываем ТОЛЬКО комнату-владельца
         // слоя, временно вставляя pending-область в слой. Это заметно дешевле полного
@@ -1137,6 +1155,49 @@ public partial class MainForm : Form
         return value;
     }
 
+    // === Персистентность настроек удаления (фильтры раздела «Удаление») ===
+    private static string GetDeleteSettingsPath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MapperIce");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "delete_settings.json");
+    }
+
+    // Загружает закешированные из прошлого запуска фильтры удаления.
+    private void LoadDeleteSettings()
+    {
+        try
+        {
+            var path = GetDeleteSettingsPath();
+            if (!File.Exists(path)) return;
+            var json = File.ReadAllText(path);
+            var s = JsonSerializer.Deserialize<DeleteSettings>(json);
+            if (s == null) return;
+            _deleteSettings = s;
+        }
+        catch
+        {
+            // Не критично: повреждённый файл настроек — берём значения по умолчанию
+        }
+    }
+
+    // Пишет фильтры удаления, чтобы они сохранялись между запусками (атомарно).
+    private void SaveDeleteSettings()
+    {
+        try
+        {
+            var path = GetDeleteSettingsPath();
+            var json = JsonSerializer.Serialize(_deleteSettings, new JsonSerializerOptions { WriteIndented = true });
+            var tmpPath = path + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch
+        {
+            // Игнорируем ошибки записи — настройки не критичны
+        }
+    }
+
     // Создаёт тонкие невидимые полоски-захваты на границах боковых панелей,
     // которыми можно перетаскивать их ширину, пока фиксация выключена.
     private void CreateResizeHandles()
@@ -1308,8 +1369,15 @@ public partial class MainForm : Form
         if (_btnPlaceDresser != null) _btnPlaceDresser.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceIntercom != null) _btnPlaceIntercom.BackColor = AppTheme.ButtonBack;
         if (_btnPlaceFax != null) _btnPlaceFax.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceLight != null) _btnPlaceLight.BackColor = AppTheme.ButtonBack;
+        if (_btnPlaceEmergencyLight != null) _btnPlaceEmergencyLight.BackColor = AppTheme.ButtonBack;
         if (_btnMagnifier != null) _btnMagnifier.BackColor = AppTheme.ButtonBack;
         if (tool != ToolManager.Tool.PlacePrototype) _protoToPlace = null;
+
+        // «Рисование карандашом» тайлами привязано к удержанию ЛКМ поверх карты; при смене
+        // инструмента зажатие уже невалидно, сбрасываем флаг (на случай нового клика).
+        _isPaintingTile = false;
+        _lastPaintTile = null;
 
         // Ручной поворот привязки (колёсико) сбрасывается при смене инструмента:
         // новая привязка снова разворачивается автоматически. Превью привязки живёт
@@ -1462,6 +1530,12 @@ public partial class MainForm : Form
             case ToolManager.Tool.PlaceFax:
                 if (_btnPlaceFax != null) _btnPlaceFax.BackColor = AppTheme.SelectedBack;
                 break;
+            case ToolManager.Tool.PlaceLight:
+                if (_btnPlaceLight != null) _btnPlaceLight.BackColor = AppTheme.SelectedBack;
+                break;
+            case ToolManager.Tool.PlaceEmergencyLight:
+                if (_btnPlaceEmergencyLight != null) _btnPlaceEmergencyLight.BackColor = AppTheme.SelectedBack;
+                break;
             case ToolManager.Tool.PlacePrototype:
                 break;
             case ToolManager.Tool.Move:
@@ -1513,6 +1587,7 @@ public partial class MainForm : Form
             ToolManager.Tool.PlaceDresser => Cursors.Help,
             ToolManager.Tool.PlaceIntercom => Cursors.Help,
             ToolManager.Tool.PlaceFax => Cursors.Help,
+            ToolManager.Tool.PlaceLight or ToolManager.Tool.PlaceEmergencyLight => Cursors.Help,
             ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV => Cursors.Help,
             ToolManager.Tool.PlaceSubstation or ToolManager.Tool.PlaceApc => Cursors.Help,
             _ => Cursors.Default

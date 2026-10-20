@@ -105,6 +105,14 @@ public class Prototype
     public string? SpriteColor { get; set; }
 
     /// <summary>
+    /// YAML-поле "snapCardinals:" компонента Sprite. Если true — спрайт не вращается
+    /// при повороте сущности (как гироскоп: симметричный, с единственным кадром
+    /// и snapCardinals: true у Sprite). В редакторе такой прототип всегда рисуется
+    /// южным кадром, игнорируя rotation.
+    /// </summary>
+    public bool SnapCardinals { get; set; } = false;
+
+    /// <summary>
     /// Компонент CableVisualizer (кабели HV/MV/LV/Det): в игре он сам выбирает
     /// RSI-стейт по 4-битной маске соседей-кабелей той же NodeGroupID:
     /// "{StatePrefix}{mask}" на слое 0 и "{ExtraLayerPrefix}{mask}" на слое 1.
@@ -162,6 +170,14 @@ public class IconSmoothSettings
 
     /// <summary>YAML-поле "enabled:" — если явно false, сглаживание выключено. По умолчанию true.</summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// YAML-поле "mode:" — режим сглаживания. Стандартный "Corners" (углы по соседям).
+    /// "Diagonal" — диагональные окна: вместо 4 угловых слоёв рисуется один диагональный
+    /// спрайт, разворачивающийся по повороту сущности (state — это кадр направления,
+    /// а не маска соседей).
+    /// </summary>
+    public string Mode { get; set; } = "Corners";
 }
 
 /// <summary>

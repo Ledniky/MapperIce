@@ -995,7 +995,12 @@ public partial class MainForm
             Height = 30,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        btnOk.Click += (s, e) => _deleteSettingsForm?.Close();
+        btnOk.Click += (s, e) =>
+        {
+            SaveDeleteSettings();
+            UpdateDeleteSettingsLabel();
+            _deleteSettingsForm?.Close();
+        };
         btnPanel.Controls.Add(btnOk);
 
         var btnCancel = new Button
@@ -1008,7 +1013,8 @@ public partial class MainForm
         };
         btnCancel.Click += (s, e) =>
         {
-            _deleteSettings = new DeleteSettings();
+            LoadDeleteSettings();
+            UpdateDeleteSettingsLabel();
             _deleteSettingsForm?.Close();
         };
         btnPanel.Controls.Add(btnCancel);
