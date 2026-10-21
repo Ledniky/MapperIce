@@ -103,6 +103,22 @@ public partial class MainForm
         if (_doorToolCombo.Items.Count > 0)
             _doorToolCombo.SelectedIndex = 0;
 
+        AttachComboItemTooltip(_doorToolCombo, _roomTypeTooltip, idx =>
+        {
+            string? key = idx >= 0 && idx < _doorToolCombo.Items.Count
+                ? _doorToolCombo.Items[idx].ToString()
+                : null;
+            return key switch
+            {
+                "Дверь" => "Ставит обычную дверь (прототип из настроек комнаты). Горячая клавиша: D",
+                "Дверь (стекло)" => "Стеклянная дверь (AirlockGlass, прототип из настроек комнаты). Горячая клавиша: Ctrl+D",
+                "Проход" => "Делает проход: сносит стену, клетка становится полом. Для узора декалей это клетка пола — стена и декали периметра на ней не рисуются.",
+                "Убрать стену" => "Просто убирает стену (TileBuilder её не строит). Для узора декалей клетка остаётся стеной: периметр обводится так, будто стена на месте.",
+                "Восстановить стену" => "Возвращает стену на клетку (отменяет «Убрать стену»).",
+                _ => null
+            };
+        });
+
         _doorToolCombo.SelectedIndexChanged += (s, e) =>
         {
             if (_doorToolCombo.SelectedItem is string key && _doorToolMap.TryGetValue(key, out var tool))
@@ -140,6 +156,15 @@ public partial class MainForm
         };
         _linkedEntitiesPanel.Controls.Add(_windowToolCombo);
         y += 40 + 2;
+
+        AttachComboItemTooltip(_windowToolCombo, _roomTypeTooltip, idx =>
+        {
+            if (idx < 0 || idx >= _windowToolCombo.Items.Count) return null;
+            var key = _windowToolCombo.Items[idx]?.ToString();
+            if (key == null) return null;
+            _windowProtoIdCache.TryGetValue(key, out var id);
+            return $"Окно: {id ?? key}\nСтавит в стену инструментом «Заменить на окно» (клик по клетке-стене).";
+        });
 
         // === ЗАГОЛОВОК СЕКЦИИ АТМОСА (сигнализации) ===
         var atmosLabel = new Label
@@ -508,6 +533,60 @@ public partial class MainForm
 
         contentPanel.Resize += (s, e) => StretchContentToPanelWidth();
         StretchContentToPanelWidth();
+
+        // Подсказки кнопок «Прочее» — привязки берут прототип из настроек комнаты,
+        // поэтому сменить их вид можно там же (⚙ рядом с типом комнаты).
+        var bindTip = new ToolTip { InitialDelay = 400, AutoPopDelay = 8000, ReshowDelay = 100 };
+        bindTip.SetToolTip(_btnPlaceHolopad, "Голопад: прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceLocker, "Шкафчик: прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceSuitStorage, "Хранилище скафандра: прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceBed, "Кровать: прототип и одеяло берутся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceCamera, "Камера: прототип берётся из настроек комнаты (⚙ рядом с типом). Ставится на примыкающую стену.");
+        bindTip.SetToolTip(_btnPlaceDresser, "Комод: прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceIntercom, "Интерком: прототип берётся из настроек комнаты (⚙ рядом с типом). Вешается в тайл-стены, направление — колёсиком.");
+        bindTip.SetToolTip(_btnPlaceFax, "Факс: прототип и адрес берутся из настроек комнаты (⚙ рядом с типом). Клик по факсу меняет адрес.");
+        bindTip.SetToolTip(_btnPlaceLight, "Обычная лампа (Poweredlight). Прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnPlaceEmergencyLight, "Аварийная лампа (EmergencyLight). Прототип берётся из настроек комнаты (⚙ рядом с типом).");
+        bindTip.SetToolTip(_btnAirAlarm, "Сигнализация воздуха: прототип из настроек комнаты (⚙ рядом с типом). Направление — колёсиком.");
+        bindTip.SetToolTip(_btnFireAlarm, "Сигнализация пожара: прототип из настроек комнаты (⚙ рядом с типом). Направление — колёсиком.");
+    }
+
+    /// <summary>
+    /// Показывает контекстную подсказку выбранного пункта комбобокса наведением
+    /// курсора (getText возвращает null для пунктов без подсказки). Стандартный
+    /// ToolTip даёт один текст на весь контрол; здесь текст зависит от выбранного
+    /// пункта, поэтому подсказка обновляется при смене выбора и по наведению.
+    /// Наведение по открытому списку недоступно (это нативный список, не дочерний
+    /// контрол), поэтому текст привязан к выбранному пункту.
+    /// </summary>
+    private void AttachComboItemTooltip(ComboBox combo, ToolTip tip, Func<int, string?> getText)
+    {
+        if (combo == null || tip == null) return;
+        tip.SetToolTip(combo, "");
+        tip.InitialDelay = 250;
+
+        void ShowForSelected()
+        {
+            int idx = combo.SelectedIndex;
+            string? text = idx >= 0 && idx < combo.Items.Count ? getText(idx) : null;
+            if (string.IsNullOrEmpty(text))
+            {
+                tip.Hide(combo);
+                return;
+            }
+            var cursorInCombo = combo.PointToClient(Cursor.Position);
+            tip.Show(text, combo, cursorInCombo.X + 14, cursorInCombo.Y - 6, 12000);
+        }
+
+        combo.MouseMove += (s, e) => ShowForSelected();
+        combo.SelectedIndexChanged += (s, e) =>
+        {
+            tip.Hide(combo);
+            if (combo.DroppedDown) ShowForSelected();
+        };
+        combo.MouseLeave += (s, e) => tip.Hide(combo);
+        combo.DropDownClosed += (s, e) => tip.Hide(combo);
+        combo.DropDown += (s, e) => tip.Hide(combo);
     }
 
     /// <summary>

@@ -136,15 +136,15 @@ public partial class MainForm
                 bool canDeleteTiles = _deleteSettings.DeleteAll || _deleteSettings.DeleteTiles;
 
                 // Сигнализации
-                var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
+                var alarm = grid.Entities.OfType<AirAlarmEntity>().FirstOrDefault(a => FloorToInt(a.X) == tileX && FloorToInt(a.Y) == tileY);
                 if (alarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(alarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
-                var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => (int)a.X == tileX && (int)a.Y == tileY);
+                var fireAlarm = grid.Entities.OfType<FireAlarmEntity>().FirstOrDefault(a => FloorToInt(a.X) == tileX && FloorToInt(a.Y) == tileY);
                 if (fireAlarm != null) { if (canDeleteAlarms) { grid.Entities.Remove(fireAlarm); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 // Трубы (газовые и утилизационные)
                 var pipesHere = grid.Entities.OfType<PipeEntity>()
-                    .Where(p => (int)p.X == tileX && (int)p.Y == tileY)
+                    .Where(p => FloorToInt(p.X) == tileX && FloorToInt(p.Y) == tileY)
                     .ToList();
                 if (pipesHere.Count > 0)
                 {
@@ -178,7 +178,7 @@ public partial class MainForm
                 }
 
                 // Электропроводка
-                var wire = grid.Entities.OfType<WireEntity>().FirstOrDefault(w => (int)w.X == tileX && (int)w.Y == tileY);
+                var wire = grid.Entities.OfType<WireEntity>().FirstOrDefault(w => FloorToInt(w.X) == tileX && FloorToInt(w.Y) == tileY);
                 if (wire != null) { if (canDeleteWires) { grid.Entities.Remove(wire); SaveState(); UpdateTileGrid(); Render(); } return; }
 
                 // Двери, проёмы и окна
@@ -207,7 +207,7 @@ public partial class MainForm
                             // Сносим связанные сущности окна и решётки (generic MapEntity на этой клетке)
                             var winEntities = grid.Entities
                                 .Where(e => e.GetType() == typeof(MapEntity) &&
-                                            (int)e.X == tileX && (int)e.Y == tileY)
+                                            FloorToInt(e.X) == tileX && FloorToInt(e.Y) == tileY)
                                 .ToList();
                             foreach (var we in winEntities)
                                 grid.Entities.Remove(we);
@@ -224,7 +224,7 @@ public partial class MainForm
                 }
 
                 // Прототипы из репозитория (точный тип MapEntity) и прочее
-                var anyEntity = grid.Entities.FirstOrDefault(e => (int)e.X == tileX && (int)e.Y == tileY);
+                var anyEntity = grid.Entities.FirstOrDefault(e => FloorToInt(e.X) == tileX && FloorToInt(e.Y) == tileY);
                 if (anyEntity != null)
                 {
                     bool allowed;
@@ -2252,9 +2252,15 @@ public partial class MainForm
 
             if (_deleteSettings.DeleteAll)
             {
-                // При DeleteAll удаляем всё, что попало в область
-                toRemove.AddRange(grid.Entities.Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY));
-                decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
+                // При DeleteAll удаляем всё, что попало в область.
+                // Сущности/декали хранят центральную дробную координату клетки (X+0.5),
+                // поэтому по центру клетки их ловит Floor(coord) — сравнение с сырыми
+                // дробными координатами (e.X >= minX && e.X <= maxX) из-за +0.5 промахивалось
+                // на краю области (клетка 7..7 не накрывала сущность с X=7.5).
+                toRemove.AddRange(grid.Entities.Where(e => FloorToInt(e.X) >= minX && FloorToInt(e.X) <= maxX &&
+                                                           FloorToInt(e.Y) >= minY && FloorToInt(e.Y) <= maxY));
+                decalsToRemove.AddRange(grid.Decals.Where(d => FloorToInt(d.X) >= minX && FloorToInt(d.X) <= maxX &&
+                                                               FloorToInt(d.Y) >= minY && FloorToInt(d.Y) <= maxY));
 
                 for (int x = minX; x <= maxX; x++)
                     for (int y = minY; y <= maxY; y++)
@@ -2280,17 +2286,17 @@ public partial class MainForm
             {
                 // --- Трубы ---
                 if (_deleteSettings.DeletePipes)
-                    toRemove.AddRange(grid.Entities.OfType<PipeEntity>().Where(p => p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY));
+                    toRemove.AddRange(grid.Entities.OfType<PipeEntity>().Where(p => FloorToInt(p.X) >= minX && FloorToInt(p.X) <= maxX && FloorToInt(p.Y) >= minY && FloorToInt(p.Y) <= maxY));
 
                 // --- Провода ---
                 if (_deleteSettings.DeleteWires)
-                    toRemove.AddRange(grid.Entities.OfType<WireEntity>().Where(w => w.X >= minX && w.X <= maxX && w.Y >= minY && w.Y <= maxY));
+                    toRemove.AddRange(grid.Entities.OfType<WireEntity>().Where(w => FloorToInt(w.X) >= minX && FloorToInt(w.X) <= maxX && FloorToInt(w.Y) >= minY && FloorToInt(w.Y) <= maxY));
 
                 // --- Сигнализации ---
                 if (_deleteSettings.DeleteAlarms)
                 {
-                    toRemove.AddRange(grid.Entities.OfType<AirAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
-                    toRemove.AddRange(grid.Entities.OfType<FireAlarmEntity>().Where(a => a.X >= minX && a.X <= maxX && a.Y >= minY && a.Y <= maxY));
+                    toRemove.AddRange(grid.Entities.OfType<AirAlarmEntity>().Where(a => FloorToInt(a.X) >= minX && FloorToInt(a.X) <= maxX && FloorToInt(a.Y) >= minY && FloorToInt(a.Y) <= maxY));
+                    toRemove.AddRange(grid.Entities.OfType<FireAlarmEntity>().Where(a => FloorToInt(a.X) >= minX && FloorToInt(a.X) <= maxX && FloorToInt(a.Y) >= minY && FloorToInt(a.Y) <= maxY));
                 }
 
                 // --- Прототипы (сущности из репозитория, точный тип MapEntity) ---
@@ -2298,7 +2304,7 @@ public partial class MainForm
                 {
                     var repoEntities = grid.Entities
                         .Where(e => e.GetType() == typeof(MapEntity))
-                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
+                        .Where(e => FloorToInt(e.X) >= minX && FloorToInt(e.X) <= maxX && FloorToInt(e.Y) >= minY && FloorToInt(e.Y) <= maxY)
                         .ToList();
                     toRemove.AddRange(repoEntities);
                 }
@@ -2313,7 +2319,7 @@ public partial class MainForm
                         typeof(MapEntity)
                     };
                     var otherEntities = grid.Entities
-                        .Where(e => e.X >= minX && e.X <= maxX && e.Y >= minY && e.Y <= maxY)
+                        .Where(e => FloorToInt(e.X) >= minX && FloorToInt(e.X) <= maxX && FloorToInt(e.Y) >= minY && FloorToInt(e.Y) <= maxY)
                         .Where(e => !knownTypes.Contains(e.GetType()))
                         .ToList();
                     toRemove.AddRange(otherEntities);
@@ -2322,7 +2328,7 @@ public partial class MainForm
                 // --- Декали из репозитория ---
                 if (_deleteSettings.DeleteDecals)
                 {
-                    decalsToRemove.AddRange(grid.Decals.Where(d => d.X >= minX && d.X <= maxX && d.Y >= minY && d.Y <= maxY));
+                    decalsToRemove.AddRange(grid.Decals.Where(d => FloorToInt(d.X) >= minX && FloorToInt(d.X) <= maxX && FloorToInt(d.Y) >= minY && FloorToInt(d.Y) <= maxY));
                 }
 
                 // --- Тайлы из репозитория ---
@@ -2354,7 +2360,7 @@ public partial class MainForm
                                         // Удаляем сущности окна и решётки на этой клетке
                                         var winEntities = grid.Entities
                                             .Where(e => e.GetType() == typeof(MapEntity) &&
-                                                        (int)e.X == x && (int)e.Y == y)
+                                                        FloorToInt(e.X) == x && FloorToInt(e.Y) == y)
                                             .ToList();
                                         foreach (var we in winEntities)
                                             grid.Entities.Remove(we);

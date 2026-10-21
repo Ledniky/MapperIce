@@ -43,6 +43,7 @@ public partial class MainForm
 
     private void CreateMagnifierPanel()
     {
+        _magnifierTip = new ToolTip { InitialDelay = 300, AutoPopDelay = 10000, ReshowDelay = 100 };
         _magnifierPanel = new Panel
         {
             Width = 260,
@@ -187,10 +188,11 @@ public partial class MainForm
     /// инструментом (привязка, узел сети, окно, создание комнаты): прототип/тип
     /// подставляется из строки, а не из настроек клетки под курсором. Имеет
     /// приоритет над placeProtoId.
+    /// hint — всплывающая подсказка строки (показывается при наведении).
     /// Ряд с кнопкой удаления тоже кликабелен — нажатие на саму строку берет
     /// предмет, нажатие на "✕" удаляет.
     /// </summary>
-    private void AddMagnifierRow(string text, Action? deleteAction, string? placeProtoId = null, Action? armAction = null)
+    private void AddMagnifierRow(string text, Action? deleteAction, string? placeProtoId = null, Action? armAction = null, string? hint = null)
     {
         if (_magnifierListPanel == null) return;
 
@@ -215,6 +217,9 @@ public partial class MainForm
             Cursor = takeable ? Cursors.Hand : Cursors.Default
         };
         row.Controls.Add(label);
+
+        if (!string.IsNullOrEmpty(hint) && _magnifierTip != null)
+            _magnifierTip.SetToolTip(label, hint);
 
         if (takeable)
         {
@@ -287,6 +292,8 @@ public partial class MainForm
         for (int i = _magnifierListPanel.Controls.Count - 1; i >= 0; i--)
         {
             var oldRow = _magnifierListPanel.Controls[i];
+            if (_magnifierTip != null)
+                _magnifierTip.SetToolTip(oldRow, null);
             _magnifierListPanel.Controls.RemoveAt(i);
             oldRow.Dispose();
         }
@@ -595,9 +602,11 @@ public partial class MainForm
                 total += supply;
                 string deviceProto = device.Proto;
                 AddMagnifierRow($"{deviceLabel}: {deviceProto} ({supply:F0} Вт)", null,
-                    armAction: () => ArmMagnifierPowerJunctionPlacement(deviceProto));
+                    armAction: () => ArmMagnifierPowerJunctionPlacement(deviceProto),
+                    hint: $"{deviceLabel} ({deviceProto}) — клик берёт инструмент установки. Снабжение устройства: {supply:F0} Вт.");
             }
-            AddMagnifierRow($"— Сеть {networkLabel}: {total:F0} Вт суммарно ({devices.Count} шт.)", null);
+            AddMagnifierRow($"— Сеть {networkLabel}: {total:F0} Вт суммарно ({devices.Count} шт.)", null,
+                hint: $"Суммарная мощность устройств в связной сети кабеля, считая от этой клетки. Подстанция: ВВ↔СВ (отдаёт в СВ), ЛКП: СВ↔НВ (отдаёт в НВ).");
         }
 
         // Декали

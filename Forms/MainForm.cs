@@ -130,6 +130,7 @@ public partial class MainForm : Form
     private ComboBox _filterCombo = null!;
     private string _currentFilter = "all";
     private ToolTip _roomTypeTooltip = null!;
+    private ToolTip _magnifierTip = null!;
 
     private Form? _roomTypeForm = null;
     private Form? _filterLabelForm = null;
@@ -423,6 +424,10 @@ public partial class MainForm : Form
         LoadAppearanceSettings();
         LoadDeleteSettings();
 
+        // Тултип обязателен до создания панелей: используется и для типа комнаты,
+        // и для пунктов комбо-списков дверей/окон/ЛКП (AttachComboItemTooltip).
+        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke };
+
         CreateRepositoryPanel();
         CreateToolPanel();
         CreateLinkedEntitiesPanel();
@@ -463,7 +468,7 @@ public partial class MainForm : Form
         UpdateRepoSelector();
         LoadDoorComboIcons();
         LoadWireTypeIcons();
-        _roomTypeTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 1000, ReshowDelay = 100, ForeColor = Color.Black, BackColor = Color.WhiteSmoke }; UpdateBuffer();
+        UpdateBuffer();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -631,9 +636,149 @@ public partial class MainForm : Form
             return true;
         }
 
+        // Горячие клавиши инструментов — только когда фокус не в текстовом поле
+        // (иначе буквы мешали бы вводу в поиске/полях имён).
+        if (!IsTextInputFocused())
+        {
+            if (HandleToolShortcut(keyData))
+                return true;
+        }
+
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
+    /// <summary>Фокус не в текстовом поле (поиск, поля имён и т.п.) — иначе буквы
+    /// горячих клавиш стали бы вводиться в поле.</summary>
+    private bool IsTextInputFocused()
+    {
+        if (ActiveControl is TextBoxBase) return true;
+        if (ActiveControl is ComboBox cb && cb.DroppedDown) return true;
+        return ActiveControl is NumericUpDown or DateTimePicker;
+    }
+
+    /// <summary>
+    /// Обработка горячих клавиш инструментов. Возвращает true, если клавиша съедена.
+    ///
+    /// Цифры работают по контексту: «W + 1..3» и «P + 1..4» — то есть цифра
+    /// переключает под-слой уже активного семейства (провода или трубы).
+    /// </summary>
+    private bool HandleToolShortcut(Keys keyData)
+    {
+        bool handled = true;
+
+        switch (keyData)
+        {
+            case Keys.R: _toolManager.ForceSetTool(ToolManager.Tool.CreateRoom); break;
+            case Keys.X: _toolManager.ForceSetTool(ToolManager.Tool.SubtractRoom); break;
+            case Keys.Control | Keys.X: _toolManager.ForceSetTool(ToolManager.Tool.DeleteArea); break;
+            case Keys.E: _toolManager.ForceSetTool(ToolManager.Tool.RestoreRoom); break;
+            case Keys.M: _toolManager.ForceSetTool(ToolManager.Tool.Move); break;
+            case Keys.I: _toolManager.ForceSetTool(ToolManager.Tool.Magnifier); break;
+            case Keys.Q: _toolManager.ForceSetTool(ToolManager.Tool.GridDividerAdd); break;
+            case Keys.D: _toolManager.ForceSetTool(ToolManager.Tool.Door); break;
+            case Keys.Control | Keys.D: _toolManager.ForceSetTool(ToolManager.Tool.DoorGlass); break;
+            case Keys.B: ShowLinkedEntitiesPanel(); break;
+            case Keys.K: _toolManager.ForceSetTool(ToolManager.Tool.NetworkConfigurator); break;
+
+            // W — включить инструмент провода (слой = текущий из комбо).
+            case Keys.W:
+                SelectWireLayer(_currentWireLayer);
+                break;
+
+            // Цифры переключают под-слой активного семейства: «W + 1..3» провода,
+            // «P + 1..3» трубы. Если ни одно семейство не активно — цифра ничего не делает.
+            case Keys.D1:
+            case Keys.D2:
+            case Keys.D3:
+            case Keys.NumPad1:
+            case Keys.NumPad2:
+            case Keys.NumPad3:
+                {
+                    // Индекс цифры (1/2/3) одним значением для основного ряда и цифрпада.
+                    int digit = keyData switch
+                    {
+                        Keys.D2 or Keys.NumPad2 => 2,
+                        Keys.D3 or Keys.NumPad3 => 3,
+                        _ => 1
+                    };
+
+                    if (IsWireTool(_toolManager.CurrentTool))
+                        SelectWireLayer(LayerNameFromWireIndex(digit - 1)); // 1→HV,2→MV,3→LV
+                    else if (IsPipeTool(_toolManager.CurrentTool))
+                        SelectPipeLayer(digit switch { 2 => "Waste", 3 => "Normal", _ => "Distra" });
+                    break;
+                }
+
+            // P — включить инструмент атмос-трубы (слой = текущий).
+            case Keys.P:
+                SelectPipeLayer(_currentPipeLayer);
+                break;
+
+            // 4 — утилити-труба («P + 4»).
+            case Keys.D4:
+            case Keys.NumPad4:
+                if (IsPipeTool(_toolManager.CurrentTool))
+                    SelectPipeLayer("Util");
+                break;
+
+            default: handled = false; break;
+        }
+
+        return handled;
+    }
+
+    private static bool IsWireTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.WireHV or ToolManager.Tool.WireMV or ToolManager.Tool.WireLV;
+
+    private static bool IsPipeTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste or ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeUtil;
+
+    /// <summary>Имя слоя провода по цифре горячей клавиши: 1=HV, 2=MV, 3=LV.</summary>
+    private static string LayerNameFromWireIndex(int idx) => idx switch
+    {
+        1 => "MV",
+        2 => "LV",
+        _ => "HV"
+    };
+
+    /// <summary>Выбирает слой провода: синхронизирует комбо и включает инструмент.</summary>
+    private void SelectWireLayer(string layer)
+    {
+        _currentWireLayer = layer;
+
+        int idx = layer switch
+        {
+            "MV" => 1,
+            "LV" => 2,
+            _ => 0
+        };
+
+        if (_wireTypeCombo != null)
+        {
+            if (_wireTypeCombo.SelectedIndex != idx)
+                _wireTypeCombo.SelectedIndex = idx; // обработчик сам подсветит и включит инструмент
+        }
+
+        _toolManager.ForceSetTool(layer switch
+        {
+            "MV" => ToolManager.Tool.WireMV,
+            "LV" => ToolManager.Tool.WireLV,
+            _ => ToolManager.Tool.WireHV
+        });
+    }
+
+    /// <summary>Поднимает инструмент атмос-трубы для слоя (1=Distra, 2=Waste, 3=Normal, 4=Util).</summary>
+    private void SelectPipeLayer(string layer)
+    {
+        _currentPipeLayer = layer;
+        _toolManager.ForceSetTool(layer switch
+        {
+            "Waste" => ToolManager.Tool.PipeWaste,
+            "Normal" => ToolManager.Tool.PipeNormal,
+            "Util" => ToolManager.Tool.PipeUtil,
+            _ => ToolManager.Tool.PipeDistra
+        });
+    }
 
     // === TILE GRID ===
     private void UpdateTileGrid()

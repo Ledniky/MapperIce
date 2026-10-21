@@ -430,8 +430,17 @@ _roomTypeCombo.DrawItem += (s, e) =>
             Font = new Font("Arial", 10),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
-        var powerJunctionTip = new ToolTip();
-        powerJunctionTip.SetToolTip(_powerJunctionCombo, "Электротехнический переходник (ЛКП/Подстанция)");
+        // ЛКП/подстанция — разные переходники электросети, поэтому подсказка зависит от
+        // выбранного пункта, а не одна на весь список.
+        AttachComboItemTooltip(_powerJunctionCombo, _roomTypeTooltip, idx =>
+        {
+            if (idx < 0 || idx >= _powerJunctionCombo.Items.Count) return null;
+            var item = _powerJunctionCombo.Items[idx] as ProtoDisplayItem;
+            if (item == null) return null;
+            return item.Type == "APC"
+                ? "ЛКП (APC): переходник между СВ (MV) и НВ (LV), отдаёт мощность в сеть НВ. Нужен кабель СВ/НВ. Колёсико — поворот."
+                : "Подстанция: переходник между ВВ (HV) и СВ (MV), отдаёт мощность в сеть СВ. Нужен кабель ВВ/СВ. Неориентированная.";
+        });
         _powerJunctionCombo.SelectedIndexChanged += (s, e) =>
         {
             if (_powerJunctionCombo.SelectedItem is ProtoDisplayItem item)
@@ -1063,6 +1072,27 @@ _roomTypeCombo.DrawItem += (s, e) =>
 
         _toolPanel.Controls.Add(deletePanel);
         y += 34 + 2;
+
+        // Подсказки на кнопках инструментов с горячими клавишами (см. HandleToolShortcut).
+        // Единый ToolTip на форму; текст кнопок уже описывает действие, здесь только дописываем хоткей.
+        var _hint = new ToolTip { AutoPopDelay = 5000, InitialDelay = 700, ReshowDelay = 100 };
+        _hint.SetToolTip(_btnCreateRoom, "Создать комнату (R)");
+        _hint.SetToolTip(_btnSubtractRoom, "Вычесть комнату (X)");
+        _hint.SetToolTip(_btnRestoreRoom, "Восстановить комнату (E)");
+        _hint.SetToolTip(_btnDeleteArea, "Удалить область (Ctrl+X)");
+        _hint.SetToolTip(_btnMove, "Переместить (M)");
+        _hint.SetToolTip(_btnMagnifier, "Лупа (I)");
+        _hint.SetToolTip(_btnGridDividerAdd, "Разделитель гридов — добавить (Q)");
+        _hint.SetToolTip(_btnNetworkConfigurator, "Конфигуратор сетей (K)");
+
+        // Провода: W включает инструмент, 1/2/3 переключают слой (НВ/СВ/НВ).
+        _hint.SetToolTip(_wireTypeCombo, "Инструмент провода (W). 1/2/3 — слой: НВ/СВ/НВ (HV/MV/LV)");
+
+        // Атмос-трубы: P включает, цифры — тип (1 Дистра, 2 Отработка, 3 Обычная, 4 Утилит).
+        _hint.SetToolTip(_btnPipeDistra, "Атмос-труба L2 (P, 1)");
+        _hint.SetToolTip(_btnPipeNormal, "Атмос-труба L1 (P, 3)");
+        _hint.SetToolTip(_btnPipeWaste, "Атмос-труба L3 (P, 2)");
+        if (_btnPipeUtil != null) _hint.SetToolTip(_btnPipeUtil, "Утилит-труба (P, 4)");
 
         _toolPanel.Controls.Add(new Label
         {
