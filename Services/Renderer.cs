@@ -1,4 +1,4 @@
-﻿// Services/Renderer.cs
+// Services/Renderer.cs
 using MapperIce.Models;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -61,16 +61,18 @@ public partial class Renderer
     private const int StaticChunkMaxPixels = 512;
 
     private static int GetChunkTiles(int tileSize) => Math.Clamp(StaticChunkMaxPixels / Math.Max(1, tileSize), 1, StaticChunkMaxTiles);
-    // Ключ (gridUid, tileSize, chunkX, chunkY) -> Bitmap. Размер тайла в ключе: с переменной
-    // величиной чанка (GetChunkTiles) сетки разных зумов разные, и без него записи
-    // под разными зумами пересекались бы.
-    private readonly Dictionary<(int gridUid, int tileSize, int cx, int cy), Bitmap> _floorChunkCache = new();
-    private readonly LinkedList<(int gridUid, int tileSize, int cx, int cy)> _floorChunkLru = new();
+    // Ключ (gridUid, tileSize, chunkX, chunkY, cover) -> Bitmap. Размер тайла в ключе:
+    // с переменной величиной чанка (GetChunkTiles) сетки разных зумов разные, и без него
+    // записи под разными зумами пересекались бы. cover = true — обычные тайлы пола,
+    // которые рисуются ПОВЕРХ того, что в игре лежит под плиткой (трубы/кабели);
+    // cover = false — подложка (тайлы с isSubfloor, т.е. «покрытие»).
+    private readonly Dictionary<(int gridUid, int tileSize, int cx, int cy, bool cover), Bitmap> _floorChunkCache = new();
+    private readonly LinkedList<(int gridUid, int tileSize, int cx, int cy, bool cover)> _floorChunkLru = new();
     // Чанки, в которых нет ни одного тайла пола — BakeFloorChunk возвращает для них null.
     // Храним их отдельным множеством, а не как null-значения в _floorChunkCache, чтобы
     // ClearGridFloorChunks/ClearFloorChunks могли безопасно Dispose каждый закэшированный
     // битмап (null в словаре приводил к NullReferenceException).
-    private readonly HashSet<(int gridUid, int tileSize, int cx, int cy)> _emptyFloorChunks = new();
+    private readonly HashSet<(int gridUid, int tileSize, int cx, int cy, bool cover)> _emptyFloorChunks = new();
 
     // Кэш кадров IconSmooth-стейтов: ключ (прототип, номер стейта) -> Image.
     // Один state_N.png (например state_3.png, 64×64) содержит 4 кадра-фриза по 32×32 —
@@ -2771,7 +2773,7 @@ public partial class Renderer
     // Рисует CTAТИЧНЫЙ слой пола через чанковый кэш. Возвращает список используется ли вообще
     // (пустой tileGrid пола -> ничеrmo рисуется). Интегрируется в z-порядок: пол запекается и
     // выводится целиком ПЕРВЫМ, до декалей/стен/дверей/сущностей, т.к. пол всегда внизу.
-    private void DrawStaticFloorChunks(Graphics g, TileGrid tileGrid, int gridUid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
+    private void DrawStaticFloorChunks(Graphics g, TileGrid tileGrid, int gridUid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect, bool cover)
     {
         // Число клеток в чанке зависит от пиксельного размера тайла: при сильном
         // приближении (тайл 128–256px) большие чанки раздували битмапы до 64 МБ и печь их
@@ -2789,7 +2791,7 @@ public partial class Renderer
         {
             for (int cx = chunkMinX; cx <= chunkMaxX; cx++)
             {
-                var key = (gridUid, tileSize, cx, cy);
+                var key = (gridUid, tileSize, cx, cy, cover);
                 if (!_floorChunkCache.TryGetValue(key, out var chunk))
                 {
                     if (_emptyFloorChunks.Contains(key))
@@ -2814,7 +2816,7 @@ public partial class Renderer
         }
     }
 
-    private void InsertFloorChunk((int gridUid, int tileSize, int cx, int cy) key, Bitmap chunk)
+    private void InsertFloorChunk((int gridUid, int tileSize, int cx, int cy, bool cover) key, Bitmap chunk)
     {
         _floorChunkCache[key] = chunk;
         _floorChunkLru.AddLast(key);
@@ -2834,26 +2836,32 @@ public partial class Renderer
 
     // Запекает чанк пола (GetChunkTiles(tileSize)×GetChunkTiles(tileSize) тайлов) в Bitmap.
     // Возвращает null, если в чанке нет ни одного тайла пола (чик пустой — не создаём битмап).
-    private Bitmap? BakeFloorChunk(TileGrid tileGrid, (int gridUid, int tileSize, int cx, int cy) key, int tileSize)
+    private Bitmap? BakeFloorChunk(TileGrid tileGrid, (int gridUid, int tileSize, int cx, int cy, bool cover) key, int tileSize)
     {
         int chunkTiles = GetChunkTiles(tileSize);
         int chunkPx = chunkTiles * tileSize;
         int baseX = key.cx * chunkTiles;
         int baseY = key.cy * chunkTiles;
+        bool cover = key.cover;
 
-        // Быстрая проверка: есть ли в этом чанке хоть один тайл пола (или пол под дверью).
+        // Быстрая проверка: есть ли в этом чанке хоть один тайл пола (или пол под дверью)
+        // нужного слоя — cover (обычная плитка) или подложка (isSubfloor).
         bool any = false;
-        for (int ly = 0; ly < chunkTiles; ly++)
+        for (int ly = 0; ly < chunkTiles && !any; ly++)
         {
             for (int lx = 0; lx < chunkTiles; lx++)
             {
                 var tile = tileGrid.GetTile(baseX + lx, baseY + ly);
-                if (tile != null &&
-                    (tile.Content == TileContent.Floor ||
-                     (tile.Content == TileContent.Door && tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))))
-                { any = true; break; }
+                if (tile == null) continue;
+                if (tile.Content == TileContent.Floor)
+                {
+                    if (!IsSubfloorFloor(tile.ProtoId) == cover) { any = true; break; }
+                }
+                else if (tile.Content == TileContent.Door && tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))
+                {
+                    if (!IsSubfloorFloor(tile.FloorProtoUnder) == cover) { any = true; break; }
+                }
             }
-            if (any) break;
         }
         if (!any) return null;
 
@@ -2872,18 +2880,32 @@ public partial class Renderer
                     if (tile == null) continue;
                     if (tile.Content == TileContent.Floor)
                     {
-                        DrawFloorTileInto(tg, lx, ly, tile.ProtoId ?? "Plating", tileSize);
+                        string proto = tile.ProtoId ?? "Plating";
+                        if (!IsSubfloorFloor(proto) != cover) continue;
+                        DrawFloorTileInto(tg, lx, ly, proto, tileSize);
                     }
                     else if (tile.Content == TileContent.Door && tile.HasFloorUnder && !string.IsNullOrEmpty(tile.FloorProtoUnder))
                     {
                         // Пол под дверью (прежний цикл «Пол под дверями»): чтобы под дверью
                         // не было пустоты, печём его в чанк — дверь рисуется позже поверх.
+                        if (!IsSubfloorFloor(tile.FloorProtoUnder) != cover) continue;
                         DrawFloorTileInto(tg, lx, ly, tile.FloorProtoUnder!, tileSize);
                     }
                 }
             }
         }
         return bmp;
+    }
+
+    /// <summary>
+    /// true, если тайл пола — подложка (в SS14 это тайлы с isSubfloor: true, прежде всего
+    /// «покрытие» Plating и его варианты). На таких клетках видны трубы и кабели:
+    /// настоящая плитка кладётся ПОВЕРХ них и прячет их, как SubFloorHide в игре.
+    /// </summary>
+    private bool IsSubfloorFloor(string? protoId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return true; // пустая клетка — считаем подложкой
+        return _indexer?.IsSubfloorTile(protoId) ?? true;
     }
 
     private void DrawRenderLayer(Graphics g, TileGrid tileGrid, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
@@ -2924,10 +2946,12 @@ public partial class Renderer
 
         // Пол — через чанковый кэш (инстанцирование для GDI+): тысячи одинаковых тайлов
         // выпекаются в битмапы по чанкам один раз на структурное изменение и выводятся
-        // на кадр по одному DrawImage на видимый чанк. Пол всегда внизу z-порядка, поэтому
-        // выводится ПЕРВЫМ — до декалей/стен/дверей/сущностей, что совпадает с прежним
-        // поведением (dd=FloorTiles, самый нижний слой, без индивидуальной сортировки выше декалей).
-        DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect);
+        // на кадр по одному DrawImage на видимый чанк. Пол выводится в ДВА приёма:
+        // сначала подложка (тайлы с isSubfloor, т.е. «покрытие»/плиты), затем — после
+        // того, что в игре лежит под плиткой (см. ниже) — обычные тайлы пола.
+        int floorTilesOffset = _drawDepthManager.GetOffset("FloorTiles");
+
+        DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect, cover: false);
 
         // Очередь отрисовки собирается и сортируется один раз на структурное изменение
         // (см. GetDrawQueue): в кадре остаётся только фильтр по видимой области и сам
@@ -2935,11 +2959,22 @@ public partial class Renderer
         // замыкания на каждый видимый объект и повторная сортировка.
         var queue = GetDrawQueue(grid, tileGrid, rebuildRenderCaches);
 
-        // Декали — отдельный проход СРАЗУ ПОСЛЕ пола, до всей очереди сущностей.
+        // «Под плиткой»: трубы (ThinPipe/ThickPipe), кабели (ThinWire/ThickWire) и прочие
+        // BelowFloor-объекты. В игре их прячет SubFloorHide, как только сверху появляется
+        // настоящая плитка, а на покрытии они видны — поэтому такие элементы рисуются
+        // МЕЖДУ подложкой и плитками пола. Очередь отсортирована по drawdepth по
+        // возрастанию, так что это её префикс.
+        foreach (var item in queue.Items)
+        {
+            if (item.DrawDepth >= floorTilesOffset) break;
+            DrawQueueItem(g, item, tileGrid, tileSize, viewOffset, gridOffset, opacity, visibleRect);
+        }
+
+        DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect, cover: true);
+
+        // Декали — отдельный проход ПОСЛЕ пола, до всей остальной очереди сущностей.
         // Декаль лежит на полу и обязана быть ниже ЛЮБОГО объекта карты, а не только
-        // обычных сущностей с drawdepth Objects: у кабелей (ThinWire/ThickWire), труб
-        // (ThinPipe/ThickPipe), воды и напольных декораций drawdepth ниже FloorTiles
-        // (-15…-21), и общая сортировка по глубине ставила декали выше них.
+        // обычных сущностей с drawdepth Objects.
         foreach (var item in queue.Decals)
         {
             if (!IsPointVisible(item.X, item.Y, visibleRect)) continue;
@@ -2948,118 +2983,129 @@ public partial class Renderer
 
         foreach (var item in queue.Items)
         {
-            if (item.Kind is DrawItemKind.WallTile or DrawItemKind.DoorTile)
-            {
-                if (!IsTileVisible((int)item.X, (int)item.Y, visibleRect)) continue;
-            }
-            else if (item.Kind != DrawItemKind.PipeEndpoints)
-            {
-                if (!IsPointVisible(item.X, item.Y, visibleRect)) continue;
-            }
-
-            switch (item.Kind)
-            {
-                case DrawItemKind.WallTile:
-                {
-                    var tile = (TileData)item.Data;
-                    DrawWallTile(g, tileGrid, tile.X, tile.Y, tile.ProtoId ?? "WallSolid",
-                                 tileSize, viewOffset, gridOffset, opacity);
-                    break;
-                }
-                case DrawItemKind.DoorTile:
-                {
-                    var tile = (TileData)item.Data;
-                    DrawSingleDoor(g, tile.X, tile.Y, tile.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.PipeEndpoints:
-                {
-                    // Концы атмос-труб при выключенном оверлее труб: напольные детали
-                    // над декалями и под коврами (см. GetDrawQueue).
-                    if (ShowPipeOverlay) break;
-                    var pipes = (List<PipeEntity>)item.Data;
-                    var visiblePipes = new List<PipeEntity>();
-                    foreach (var p in pipes)
-                        if (IsPointVisible(p.X, p.Y, visibleRect)) visiblePipes.Add(p);
-                    if (visiblePipes.Count > 0)
-                        DrawEndpointMarkers(g, visiblePipes, pipes, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Decal:
-                    // Декали в этой очереди не встречаются: они выделены в отдельный
-                    // проход ещё до неё (см. DrawRenderLayer / GetDrawQueue).
-                    break;
-                case DrawItemKind.Carpet:
-                case DrawItemKind.Entity:
-                {
-                    var e = (MapEntity)item.Data;
-                    DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset, pipeLayer: e.PipeLayer);
-                    break;
-                }
-                case DrawItemKind.Firelock:
-                    DrawSingleFirelock(g, (FirelockEntity)item.Data, tileSize, viewOffset, gridOffset);
-                    break;
-                case DrawItemKind.AirAlarm:
-                    DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
-                                    "AirAlarm", Color.FromArgb(200, 255, 200, 100));
-                    break;
-                case DrawItemKind.FireAlarm:
-                    DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
-                                    "FireAlarm", Color.FromArgb(200, 255, 100, 100));
-                    break;
-                case DrawItemKind.Holopad:
-                {
-                    var h = (HolopadEntity)item.Data;
-                    DrawSingleHolopad(g, h.HolopadProto, h.X, h.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Locker:
-                {
-                    var l = (LockerEntity)item.Data;
-                    DrawSingleLocker(g, l.LockerProto, l.X, l.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.SuitStorage:
-                {
-                    var s = (SuitStorageEntity)item.Data;
-                    DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Bed:
-                {
-                    var b = (BedEntity)item.Data;
-                    DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Camera:
-                {
-                    var c = (CameraEntity)item.Data;
-                    DrawSingleCamera(g, c.CameraProto, c.Rotation, c.X, c.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Dresser:
-                {
-                    var d = (DresserEntity)item.Data;
-                    DrawSingleDresser(g, d.DresserProto, d.X, d.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Intercom:
-                {
-                    var i = (IntercomEntity)item.Data;
-                    DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-                case DrawItemKind.Fax:
-                {
-                    var f = (FaxMachineEntity)item.Data;
-                    DrawSingleFax(g, f.FaxProto, f.X, f.Y, tileSize, viewOffset, gridOffset);
-                    break;
-                }
-            }
+            if (item.DrawDepth < floorTilesOffset) continue; // уже нарисовано под плиткой
+            DrawQueueItem(g, item, tileGrid, tileSize, viewOffset, gridOffset, opacity, visibleRect);
         }
 
         // Связи беспроводной сети — поверх всего слоя
         DrawEntityNetworkLinks(g, grid, tileSize, viewOffset, gridOffset);
+    }
+
+    /// <summary>
+    /// Рисует один элемент очереди отрисовки (см. GetDrawQueue) с проверкой попадания
+    /// в видимую область.
+    /// </summary>
+    private void DrawQueueItem(Graphics g, DrawItem item, TileGrid tileGrid, int tileSize,
+                               PointF viewOffset, PointF gridOffset, float opacity, RectangleF visibleRect)
+    {
+        if (item.Kind is DrawItemKind.WallTile or DrawItemKind.DoorTile)
+        {
+            if (!IsTileVisible((int)item.X, (int)item.Y, visibleRect)) return;
+        }
+        else if (item.Kind != DrawItemKind.PipeEndpoints)
+        {
+            if (!IsPointVisible(item.X, item.Y, visibleRect)) return;
+        }
+
+        switch (item.Kind)
+        {
+            case DrawItemKind.WallTile:
+            {
+                var tile = (TileData)item.Data;
+                DrawWallTile(g, tileGrid, tile.X, tile.Y, tile.ProtoId ?? "WallSolid",
+                             tileSize, viewOffset, gridOffset, opacity);
+                break;
+            }
+            case DrawItemKind.DoorTile:
+            {
+                var tile = (TileData)item.Data;
+                DrawSingleDoor(g, tile.X, tile.Y, tile.ProtoId ?? "Airlock", tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.PipeEndpoints:
+            {
+                // Концы атмос-труб при выключенном оверлее труб: напольные детали
+                // над декалями и под коврами (см. GetDrawQueue).
+                if (ShowPipeOverlay) break;
+                var pipes = (List<PipeEntity>)item.Data;
+                var visiblePipes = new List<PipeEntity>();
+                foreach (var p in pipes)
+                    if (IsPointVisible(p.X, p.Y, visibleRect)) visiblePipes.Add(p);
+                if (visiblePipes.Count > 0)
+                    DrawEndpointMarkers(g, visiblePipes, pipes, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Decal:
+                // Декали в этой очереди не встречаются: они выделены в отдельный
+                // проход ещё до неё (см. DrawRenderLayer / GetDrawQueue).
+                break;
+            case DrawItemKind.Carpet:
+            case DrawItemKind.Entity:
+            {
+                var e = (MapEntity)item.Data;
+                DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset, pipeLayer: e.PipeLayer);
+                break;
+            }
+            case DrawItemKind.Firelock:
+                DrawSingleFirelock(g, (FirelockEntity)item.Data, tileSize, viewOffset, gridOffset);
+                break;
+            case DrawItemKind.AirAlarm:
+                DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
+                                "AirAlarm", Color.FromArgb(200, 255, 200, 100));
+                break;
+            case DrawItemKind.FireAlarm:
+                DrawSingleAlarm(g, (MapEntity)item.Data, tileSize, viewOffset, gridOffset,
+                                "FireAlarm", Color.FromArgb(200, 255, 100, 100));
+                break;
+            case DrawItemKind.Holopad:
+            {
+                var h = (HolopadEntity)item.Data;
+                DrawSingleHolopad(g, h.HolopadProto, h.X, h.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Locker:
+            {
+                var l = (LockerEntity)item.Data;
+                DrawSingleLocker(g, l.LockerProto, l.X, l.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.SuitStorage:
+            {
+                var s = (SuitStorageEntity)item.Data;
+                DrawSingleSuitStorage(g, s.SuitStorageProto, s.X, s.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Bed:
+            {
+                var b = (BedEntity)item.Data;
+                DrawSingleBed(g, b.BedProto, b.BedsheetProto, b.X, b.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Camera:
+            {
+                var c = (CameraEntity)item.Data;
+                DrawSingleCamera(g, c.CameraProto, c.Rotation, c.X, c.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Dresser:
+            {
+                var d = (DresserEntity)item.Data;
+                DrawSingleDresser(g, d.DresserProto, d.X, d.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Intercom:
+            {
+                var i = (IntercomEntity)item.Data;
+                DrawSingleIntercom(g, i.IntercomProto, i.Rotation, i.X, i.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+            case DrawItemKind.Fax:
+            {
+                var f = (FaxMachineEntity)item.Data;
+                DrawSingleFax(g, f.FaxProto, f.X, f.Y, tileSize, viewOffset, gridOffset);
+                break;
+            }
+        }
     }
 
     // ===== Очередь отрисовки (кэш на структурное изменение) =====

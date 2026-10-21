@@ -90,6 +90,7 @@ public class PrototypeIndexer
         _prototypes.Clear();
         _palettes.Clear();
         _cableVisualizerCache.Clear();
+        _subfloorTileCache.Clear();
         ClearSearchCache();
 
         var yamlFiles = Directory.GetFiles(prototypesPath, "*.yml", SearchOption.AllDirectories);
@@ -344,7 +345,12 @@ public class PrototypeIndexer
     // v33: добавлены пути RSI трёх слоёв из AtmosPipeLayers (PipeLayerRsiPaths) —
     // у машин (термомашины и т.п.) слои трубы задаются альтернативными RSI, а не
     // прототипами Alt1/Alt2. Старые кэши не содержат этого поля — пересобираем.
-    private const int CacheFormatVersion = 33;
+    // v34: условные оверлеи слоёв (панель проводов, сварка, болты, искры, слом)
+    // помечаются Visible=false уже после разбора слоя — в старых кэшах они
+    // сохранены видимыми, поэтому пересобираем.
+    // v35: добавлено поле тайлов IsSubfloor (подложка/«покрытие»), по нему Renderer
+    // решает, что рисовать поверх труб, — старые кэши его не содержат.
+    private const int CacheFormatVersion = 35;
 
     private class CacheEnvelope
     {
@@ -403,6 +409,7 @@ public class PrototypeIndexer
 
             _prototypes.Clear();
             _cableVisualizerCache.Clear();
+            _subfloorTileCache.Clear();
             foreach (var proto in envelope.Prototypes)
             {
                 if (!string.IsNullOrEmpty(proto.Id))
@@ -613,7 +620,7 @@ public class PrototypeIndexer
         var stateMatch = Regex.Match(block, @"state:\s*([^\s]+)");
         if (stateMatch.Success)
         {
-            proto.State = stateMatch.Groups[1].Value;
+            proto.State = Unquote(stateMatch.Groups[1].Value);
         }
 
         // Коррекция для одеял и прочей экипируемой одежды: если в блоке есть компонент
@@ -708,6 +715,16 @@ public class PrototypeIndexer
         // У многослойных спрайтов цвет задаётся отдельно у каждого слоя (см. ParseSpriteLayers).
         proto.SpriteColor = ParseTopLevelSpriteColor(spriteComponentBlock);
 
+        // isSubfloor: true/false у тайлов (BasePlating → Plating и прочие «покрытия»).
+        // Это подложка: трубы/кабели на ней видны, а обычная плитка пола кладётся поверх.
+        // Значение может быть задано и в потомке (isSubfloor: false перебивает предка).
+        if (type == "tile")
+        {
+            var subfloorMatch = Regex.Match(block, @"(?m)^\s*isSubfloor:\s*(true|false)\b", RegexOptions.IgnoreCase);
+            if (subfloorMatch.Success)
+                proto.IsSubfloor = subfloorMatch.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+
         // EntityStorageVisuals (шкафчики/локеры/ящики) — state имена закрытого хранения,
         // которые переопределяют state базовых слоёв спрайта (Base/Door). Пример:
         //   - type: EntityStorageVisuals
@@ -718,11 +735,11 @@ public class PrototypeIndexer
         if (!string.IsNullOrWhiteSpace(esvBlock))
         {
             var mBase = Regex.Match(esvBlock, @"stateBaseClosed:\s*([^\s#]+)");
-            if (mBase.Success) proto.StorageStateBaseClosed = mBase.Groups[1].Value;
+            if (mBase.Success) proto.StorageStateBaseClosed = Unquote(mBase.Groups[1].Value);
             var mOpen = Regex.Match(esvBlock, @"stateDoorOpen:\s*([^\s#]+)");
-            if (mOpen.Success) proto.StorageStateDoorOpen = mOpen.Groups[1].Value;
+            if (mOpen.Success) proto.StorageStateDoorOpen = Unquote(mOpen.Groups[1].Value);
             var mClosed = Regex.Match(esvBlock, @"stateDoorClosed:\s*([^\s#]+)");
-            if (mClosed.Success) proto.StorageStateDoorClosed = mClosed.Groups[1].Value;
+            if (mClosed.Success) proto.StorageStateDoorClosed = Unquote(mClosed.Groups[1].Value);
         }
 
         // IconSmooth (сглаживание иконок по соседям, режим Corners) — как EntityStorageVisuals,
@@ -975,25 +992,54 @@ public class PrototypeIndexer
     }
 
     /// <summary>
-    /// Парсит YAML-список "layers:" внутри уже вычлененного подблока компонента Sprite
-    /// (см. ExtractComponentBlock). Каждый элемент списка ("- state: X" и последующие
-    /// вложенные строки того же элемента) превращается в один SpriteLayer.
-    /// </summary>
-    /// <summary>
     /// Состояния слоёв спрайта, которые НЕ рисуются на карте и не участвуют в
     /// парсинге/запекании текстур: это "служебные" визуальные состояния —
-    /// открытая панель устройства (generic_panel_open), сломанное/выброс/отказ.
-    /// Такие слои помечаются Visible=false, поэтому парсятся, но рендер, композиция
-    /// и превью в панели (все проверяют layer.Visible) их пропускают, а нумерация
-    /// базовых слоёв (Base/Door у шкафчиков) при этом не сдвигается.
+    /// открытая панель устройства (generic_panel_open/panel_open), сломанное/
+    /// выброс/отказ. Такие слои помечаются Visible=false, поэтому парсятся, но
+    /// рендер, композиция и превью в панели (все проверяют layer.Visible) их
+    /// пропускают, а нумерация базовых слоёв (Base/Door у шкафчиков) при этом
+    /// не сдвигается.
     /// </summary>
     private static readonly HashSet<string> IgnoredVisualStates =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "generic_panel_open",
+            "panel_open",
             "brokenstate",
             "ejectstate",
             "denystate",
+        };
+
+    /// <summary>
+    /// Имена условных визуальных слоёв из map-ключей (последний сегмент после точки),
+    /// которые в игре видны только при особом состоянии объекта и по умолчанию скрыты
+    /// визуализаторами движка: панель проводов (WiresVisualLayers.MaintenancePanel),
+    /// заваренный корпус (WeldableLayers.BaseWelded), болты и аварийный доступ двери
+    /// (DoorVisualLayers.BaseBolted/BaseEmergencyAccess), искры емага и электричества.
+    /// На карте объект показывается в обычном рабочем виде, поэтому такие слои не рисуем.
+    /// </summary>
+    private static readonly HashSet<string> HiddenVisualLayerKeys =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "MaintenancePanel",
+            "BaseWelded",
+            "BaseBolted",
+            "BaseEmergencyAccess",
+            "BaseEmagging",
+            "Sparks",
+            "HUD",
+        };
+
+    /// <summary>
+    /// Типы визуальных слоёв (имя enum'а из map-ключа — предпоследний сегмент), которые
+    /// показываются только при наличии «дополнительного» признака и по умолчанию скрыты.
+    /// PaperLabelVisuals — наклеенный на ящик/шкаф листочек: GenericVisualizer
+    /// BasePaperLabelableVisualized держит слой скрытым, пока HasLabel == false.
+    /// </summary>
+    private static readonly HashSet<string> HiddenVisualLayerEnums =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PaperLabelVisuals",
         };
 
     /// <summary>
@@ -1008,6 +1054,51 @@ public class PrototypeIndexer
         return dot >= 0 && IgnoredVisualStates.Contains(value.Substring(dot + 1));
     }
 
+    /// <summary>
+    /// true, если слой — условный оверлей (панель, сварка, болты, искры, слом),
+    /// который в игре по умолчанию скрыт. Проверяем и state, и map-ключ: у многих
+    /// прототипов состояние панели называется как угодно (panel, smes-open, ...),
+    /// а принадлежность к оверлею задаёт именно map-ключ.
+    /// </summary>
+    private static bool IsHiddenVisualLayer(SpriteLayer layer)
+    {
+        if (IsIgnoredVisualState(layer.State)) return true;
+        return IsIgnoredVisualState(layer.MapKey) || IsHiddenLayerKey(layer.MapKey);
+    }
+
+    private static bool IsHiddenLayerKey(string? mapKey)
+    {
+        if (string.IsNullOrWhiteSpace(mapKey)) return false;
+
+        var parts = mapKey.Split('.');
+        if (HiddenVisualLayerKeys.Contains(parts[^1])) return true;
+        return parts.Length >= 2 && HiddenVisualLayerEnums.Contains(parts[^2]);
+    }
+
+    /// <summary>
+    /// Убирает обрамляющие кавычки у YAML-скаляра: у многих прототипов значения
+    /// записаны как state: "off" (вендоматы, панели и т.п.). Без этого имя файла
+    /// получалось "off".png (с кавычками), стейт не находился и вместо него
+    /// подставлялся первый png из RSI — на карте это выглядело как «чужое» состояние.
+    /// </summary>
+    private static string Unquote(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        value = value.Trim();
+        if (value.Length >= 2)
+        {
+            char first = value[0];
+            if ((first == '"' || first == '\'') && value[^1] == first)
+                return value.Substring(1, value.Length - 2);
+        }
+        return value;
+    }
+
+    /// <summary>
+    /// Парсит YAML-список "layers:" внутри уже вычлененного подблока компонента Sprite
+    /// (см. ExtractComponentBlock). Каждый элемент списка ("- state: X" и последующие
+    /// вложенные строки того же элемента) превращается в один SpriteLayer.
+    /// </summary>
     private List<SpriteLayer> ParseSpriteLayers(string spriteComponentBlock)
     {
         var layers = new List<SpriteLayer>();
@@ -1066,13 +1157,13 @@ public class PrototypeIndexer
             if (current == null) continue;
 
             var stateMatch = Regex.Match(fieldLine, @"^state:\s*(\S+)");
-            if (stateMatch.Success) { current.State = stateMatch.Groups[1].Value; continue; }
+            if (stateMatch.Success) { current.State = Unquote(stateMatch.Groups[1].Value); continue; }
 
             var spriteMatch = Regex.Match(fieldLine, @"^sprite:\s*(\S+)");
-            if (spriteMatch.Success) { current.SpritePath = NormalizeTexturePath(spriteMatch.Groups[1].Value); continue; }
+            if (spriteMatch.Success) { current.SpritePath = NormalizeTexturePath(Unquote(spriteMatch.Groups[1].Value)); continue; }
 
             var rsiMatch = Regex.Match(fieldLine, @"^rsi:\s*(\S+)");
-            if (rsiMatch.Success) { current.RsiPath = NormalizeTexturePath(rsiMatch.Groups[1].Value); continue; }
+            if (rsiMatch.Success) { current.RsiPath = NormalizeTexturePath(Unquote(rsiMatch.Groups[1].Value)); continue; }
 
             // Цвет слоя: hex ("#FFAA00") ИЛИ имя ("Yellow", "Green") — движок принимает
             // оба варианта, и именно именем задан цвет кабеля MV (layers[0].color: Yellow).
@@ -1085,14 +1176,6 @@ public class PrototypeIndexer
             var visibleMatch = Regex.Match(fieldLine, @"^visible:\s*(true|false)", RegexOptions.IgnoreCase);
             if (visibleMatch.Success) { current.Visible = visibleMatch.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase); continue; }
 
-            // Служебные визуальные состояния (generic_panel_open, BrokenState и т.п.)
-            // не рисуем: помечаем слой невидимым. Проверяем и state, и map-ключ.
-            if (IsIgnoredVisualState(current.State) || IsIgnoredVisualState(current.MapKey))
-            {
-                current.Visible = false;
-                continue;
-            }
-
             var offsetMatch = Regex.Match(fieldLine, @"^offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
             if (offsetMatch.Success)
             {
@@ -1103,9 +1186,19 @@ public class PrototypeIndexer
             }
 
             var mapMatch = Regex.Match(fieldLine, "^map:\\s*\\[\\s*[\"']?([^\"',\\]]+)");
-            if (mapMatch.Success) { current.MapKey = mapMatch.Groups[1].Value.Trim(); continue; }
+            if (mapMatch.Success) { current.MapKey = Unquote(mapMatch.Groups[1].Value); continue; }
         }
         if (current != null) layers.Add(current);
+
+        // Условные оверлеи (панель проводов, сварка, болты, искры, слом) в игре
+        // по умолчанию скрыты — проверяем слой уже целиком, когда прочитаны и
+        // state, и map-ключ (раньше проверка шла по ходу разбора и, если state
+        // шёл после map:, до map-ключа дело не доходило — слой оставался видимым).
+        foreach (var layer in layers)
+        {
+            if (IsHiddenVisualLayer(layer))
+                layer.Visible = false;
+        }
 
         return layers;
     }
@@ -1965,6 +2058,8 @@ public class PrototypeIndexer
         if (!string.IsNullOrEmpty(stateOverride))
             state = stateOverride;
 
+        state = Unquote(state);
+
         // Suffix "Open*" (открытые шторы) — движок выбирает open.png по суффиксу,
         // даже если у слоя/родителя задан закрытый state (например "green").
         // Шкафчики/локеры (у которых есть EntityStorageVisuals) суффикса не имеют,
@@ -2067,6 +2162,44 @@ public class PrototypeIndexer
     public List<SpriteLayer> GetLayers(string id)
     {
         return FindLayersRecursive(id, 0) ?? new List<SpriteLayer>();
+    }
+
+    // Кэш «подложка ли тайл» (id -> bool): Renderer спрашивает это на КАЖДУЮ клетку
+    // пола при запекании чанков, а резолв идёт по цепочке parent:. Сбрасывается при
+    // смене/переиндексации репозитория вместе с остальными кэшами.
+    private readonly Dictionary<string, bool> _subfloorTileCache = new();
+
+    /// <summary>
+    /// true, если тайл — подложка (YAML "isSubfloor: true", в том числе унаследованное
+    /// от BasePlating): «покрытие» Plating и его варианты, hull-плиты. Только на таких
+    /// клетках в игре видны трубы и кабели — обычная плитка кладётся поверх них.
+    /// </summary>
+    public bool IsSubfloorTile(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+        if (_subfloorTileCache.TryGetValue(id, out var cached)) return cached;
+
+        var result = FindSubfloorRecursive(id, 0) ?? false;
+        _subfloorTileCache[id] = result;
+        return result;
+    }
+
+    private bool? FindSubfloorRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+        // Явно заданное значение (true ИЛИ false) перебивает предков.
+        if (proto.IsSubfloor.HasValue) return proto.IsSubfloor.Value;
+
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindSubfloorRecursive(parent, depth + 1);
+            if (result.HasValue) return result;
+        }
+
+        return null;
     }
 
 /// <summary>

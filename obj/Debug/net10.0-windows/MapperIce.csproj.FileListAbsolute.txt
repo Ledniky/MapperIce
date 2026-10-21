@@ -371,3 +371,8 @@ C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperI
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\gigatool\out\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\out\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\out\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\out\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\out\MapperIce.pdb

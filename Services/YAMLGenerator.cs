@@ -122,41 +122,7 @@ public static class YAMLGenerator
 
             if (grid.Decals != null && grid.Decals.Count > 0)
             {
-                sb.AppendLine("        nodes:");
-                var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
-                foreach (var decal in grid.Decals)
-                {
-                    var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
-                    if (!byProtoColorRotation.ContainsKey(key))
-                        byProtoColorRotation[key] = new List<PlacedDecal>();
-                    byProtoColorRotation[key].Add(decal);
-                }
-                foreach (var group in byProtoColorRotation)
-                {
-                    sb.AppendLine("        - node:");
-                    if (group.Key.rotation != 0)
-                    {
-                        float exportAngle = -group.Key.rotation;
-                        float fullCircle = (float)(Math.PI * 2);
-                        exportAngle %= fullCircle;
-                        if (exportAngle < 0) exportAngle += fullCircle;
-                        string angleStr = exportAngle.ToString("0.0000000000000000").Replace(',', '.');
-                        sb.AppendLine($"            angle: {angleStr} rad");
-                    }
-                    if (group.Key.cleanable)
-                        sb.AppendLine("            cleanable: True");
-                    sb.AppendLine($"            color: '{group.Key.color}'");
-                    sb.AppendLine($"            id: {group.Key.proto}");
-                    sb.AppendLine("          decals:");
-                    int localId = 0;
-                    foreach (var decal in group.Value)
-                    {
-                        float posX = decal.X - 0.5f;
-                        float posY = -(decal.Y - 0.5f);
-                        sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
-                        localId++;
-                    }
-                }
+                AppendDecalNodeGroups(sb, grid.Decals);
             }
             else
             {
@@ -223,41 +189,7 @@ public static class YAMLGenerator
 
             if (grid.Decals != null && grid.Decals.Count > 0)
             {
-                sb.AppendLine("        nodes:");
-                var byProtoColorRotation = new Dictionary<(string proto, string color, float rotation, bool cleanable), List<PlacedDecal>>();
-                foreach (var decal in grid.Decals)
-                {
-                    var key = (decal.Proto, decal.Color, decal.Rotation, decal.Cleanable);
-                    if (!byProtoColorRotation.ContainsKey(key))
-                        byProtoColorRotation[key] = new List<PlacedDecal>();
-                    byProtoColorRotation[key].Add(decal);
-                }
-                foreach (var group in byProtoColorRotation)
-                {
-                    sb.AppendLine("        - node:");
-                    if (group.Key.rotation != 0)
-                    {
-                        float exportAngle = -group.Key.rotation;
-                        float fullCircle = (float)(Math.PI * 2);
-                        exportAngle %= fullCircle;
-                        if (exportAngle < 0) exportAngle += fullCircle;
-                        string angleStr = exportAngle.ToString("0.0000000000000000").Replace(',', '.');
-                        sb.AppendLine($"            angle: {angleStr} rad");
-                    }
-                    if (group.Key.cleanable)
-                        sb.AppendLine("            cleanable: True");
-                    sb.AppendLine($"            color: '{group.Key.color}'");
-                    sb.AppendLine($"            id: {group.Key.proto}");
-                    sb.AppendLine("          decals:");
-                    int localId = 0;
-                    foreach (var decal in group.Value)
-                    {
-                        float posX = decal.X - 0.5f;
-                        float posY = -(decal.Y - 0.5f);
-                        sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
-                        localId++;
-                    }
-                }
+                AppendDecalNodeGroups(sb, grid.Decals);
             }
             else
             {
@@ -624,6 +556,15 @@ public static class YAMLGenerator
                 byProtoColorRotation[key] = new List<PlacedDecal>();
             byProtoColorRotation[key].Add(decal);
         }
+
+        // Идентификатор декали в chunkCollection формата version: 2 — СКВОЗНОЙ по всему
+        // гриду, а не локальный для node (см. DecalGridChunkCollectionTypeSerializer в SS14:
+        // "V2 stores decal data once and references it by grid-wide id"). Раньше счётчик
+        // начинался с 0 в каждом node, и в чанке, где встречались два разных node (например
+        // угловая декаль и линия стены), декали с одинаковым id перетирали друг друга —
+        // в игре пропадали отдельные декали по углам комнаты.
+        int decalId = 0;
+
         foreach (var group in byProtoColorRotation)
         {
             sb.AppendLine("        - node:");
@@ -641,13 +582,13 @@ public static class YAMLGenerator
             sb.AppendLine($"            color: '{group.Key.color}'");
             sb.AppendLine($"            id: {group.Key.proto}");
             sb.AppendLine("          decals:");
-            int localId = 0;
+
             foreach (var decal in group.Value)
             {
                 float posX = decal.X - 0.5f;
                 float posY = -(decal.Y - 0.5f);
-                sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
-                localId++;
+                sb.AppendLine($"            {decalId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
+                decalId++;
             }
         }
     }
@@ -1809,6 +1750,8 @@ public static class YAMLGenerator
         }
 
         sb.AppendLine("        nodes:");
+        // id декали в version: 2 — сквозной по гриду (см. AppendDecalNodeGroups).
+        int decalId = 0;
         foreach (var group in byProtoColorRotation)
         {
             sb.AppendLine("        - node:");
@@ -1838,7 +1781,6 @@ public static class YAMLGenerator
             sb.AppendLine($"            id: {group.Key.proto}");
             sb.AppendLine("          decals:");
 
-            int localId = 0;
             foreach (var decal in group.Value)
             {
                 // В отличие от сущностей (стены, двери, трубы), которые в игре
@@ -1856,8 +1798,8 @@ public static class YAMLGenerator
                 float posX = decal.X - 0.5f;
                 float posY = -(decal.Y - 0.5f);
 
-                sb.AppendLine($"            {localId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
-                localId++;
+                sb.AppendLine($"            {decalId}: {posX.ToString("0.0000").Replace(',', '.')},{posY.ToString("0.0000").Replace(',', '.')}");
+                decalId++;
             }
         }
     }

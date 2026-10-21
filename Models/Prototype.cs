@@ -65,6 +65,11 @@ public class Prototype
     public string? LocalizationKey { get; set; }
 
     /// <summary>
+    /// YAML-поле "isSubfloor:" тайлов (наследуется от BasePlating). Подложка — «покрытие»
+    /// (Plating) и подобные: на таких клетках видны трубы/кабели, а обычная плитка пола
+    /// кладётся поверх них (в движке это SubFloorHide).
+    /// </summary>
+    public bool? IsSubfloor { get; set; }
 
     /// <summary>
     /// Слои компонента Sprite (YAML "layers:"). Пустой список — прототип без
