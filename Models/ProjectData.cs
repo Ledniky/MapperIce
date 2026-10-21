@@ -15,6 +15,23 @@ public class ProjectData
     // сеанса. Без сохранения после загрузки .ice цвета слоёв возвращались к
     // PipeSettings.DefaultLayers (цвет «сбрасывался»).
     public List<PipeLayerData> PipeLayers { get; set; } = new();
+
+    // Настройки сигнализаций (автопривязка устройств, id прототипа) — часть
+    // проекта, а не сеанса. Без сохранения после загрузки .ice флаги и id
+    // возвращались к AlarmSettings.DefaultAlarms.
+    public List<AlarmSettingsData> AlarmSettings { get; set; } = new();
+}
+
+/// <summary>
+/// Сохранённая настройка сигнализации. Ключ — DisplayName, как в словаре
+/// MainForm._alarmSettings. Цвет здесь НЕ хранится: он чисто визуальный и не
+/// участвует в экспорте/поведении, поэтому его персит не нужно.
+/// </summary>
+public class AlarmSettingsData
+{
+    public string DisplayName { get; set; } = "";
+    public string Id { get; set; } = "";
+    public bool AutoLinkDevices { get; set; } = true;
 }
 
 /// <summary>

@@ -455,6 +455,18 @@ public partial class MainForm
             })
             .ToList();
 
+        // Настройки сигнализаций (автопривязка устройств, id прототипа) —
+        // проектные, сохраняем вместе с картой, иначе после загрузки .ice они
+        // вернутся к AlarmSettings.DefaultAlarms
+        data.AlarmSettings = _alarmSettings.Values
+            .Select(a => new AlarmSettingsData
+            {
+                DisplayName = a.DisplayName,
+                Id = a.Id,
+                AutoLinkDevices = a.AutoLinkDevices
+            })
+            .ToList();
+
         var json = System.Text.Json.JsonSerializer.Serialize(data, ProjectJsonOptions);
         File.WriteAllText(filePath, json);
 
@@ -499,6 +511,11 @@ public partial class MainForm
             // Слои труб восстанавливаем ДО отрисовки карты в конце метода, чтобы
             // трубы сразу рисовались сохранёнными цветами
             ApplyPipeLayers(data.PipeLayers);
+
+            // Настройки сигнализаций (автопривязка устройств, id прототипа) —
+            // восстанавливаем так же до отрисовки, чтобы связи рисовались с
+            // сохранёнными флагами
+            ApplyAlarmSettings(data.AlarmSettings);
 
             int totalRooms = 0;
             int totalDoors = 0;
@@ -856,6 +873,37 @@ public partial class MainForm
         }
 
         UpdatePipeButtonColors();
+    }
+
+    /// <summary>
+    /// Применяет сохранённые в проекте настройки сигнализаций к _alarmSettings:
+    /// id прототипа и флаг автопривязки устройств. Записи, которых нет в файле
+    /// (например, проект сохранён до появления этих настроек), не добавляются —
+    /// остаются дефолтные значения. Вызывается только при загрузке проекта.
+    /// </summary>
+    private void ApplyAlarmSettings(List<AlarmSettingsData>? savedSettings)
+    {
+        if (savedSettings == null || savedSettings.Count == 0) return;
+
+        foreach (var alarmData in savedSettings)
+        {
+            var existing = _alarmSettings.Values.FirstOrDefault(a => a.DisplayName == alarmData.DisplayName);
+            if (existing == null) continue;
+
+            if (!string.IsNullOrEmpty(alarmData.Id))
+                existing.Id = alarmData.Id;
+            existing.AutoLinkDevices = alarmData.AutoLinkDevices;
+        }
+
+        RebuildAlarmNetwork();
+    }
+
+    /// <summary>Пересчитывает кэш сети сигнализаций (используется при загрузке проекта).</summary>
+    private void RebuildAlarmNetwork()
+    {
+        if (_map.ActiveGrid == null) return;
+        var networkBuilder = new AlarmNetworkBuilder(_alarmSettings);
+        _cachedAlarmNetwork = networkBuilder.BuildNetwork(_map.ActiveGrid);
     }
 
     private static bool TryParseColor(string? value, out Color color)

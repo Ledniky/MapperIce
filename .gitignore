@@ -4,3 +4,4 @@
 TODO.txt
 bin/
 bin/Release/net10.0-windows/win-x64/publish/MapperIce.exe
+out/

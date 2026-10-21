@@ -705,7 +705,8 @@ public partial class MainForm : Form
                     if (IsWireTool(_toolManager.CurrentTool))
                         SelectWireLayer(LayerNameFromWireIndex(digit - 1)); // 1→HV,2→MV,3→LV
                     else if (IsPipeTool(_toolManager.CurrentTool))
-                        SelectPipeLayer(digit switch { 2 => "Waste", 3 => "Normal", _ => "Distra" });
+                        // Цифра = номер L-слоя трубы: 1→L1 (Обычная), 2→L2 (Дистра), 3→L3 (Отработка).
+                        SelectPipeLayer(digit switch { 1 => "Normal", 2 => "Distra", 3 => "Waste", _ => "Waste" });
                     break;
                 }
 

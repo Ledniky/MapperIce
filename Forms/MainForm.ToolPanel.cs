@@ -610,28 +610,9 @@ _roomTypeCombo.DrawItem += (s, e) =>
 
         int buttonWidth = pipePanel.Width / 4;
 
-        _btnPipeDistra = new Button
-        {
-            Location = new Point(0, 0),
-            Width = buttonWidth - 1,
-            Height = 34,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Tag = "Distra",
-            Text = "L2",
-            Padding = new Padding(0)
-        };
-        _btnPipeDistra.Click += (s, e) =>
-        {
-            _currentPipeLayer = "Distra";
-            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
-        };
-        pipePanel.Controls.Add(_btnPipeDistra);
-
         _btnPipeNormal = new Button
         {
-            Location = new Point(buttonWidth, 0),
+            Location = new Point(0, 0),
             Width = buttonWidth - 1,
             Height = 34,
             FlatStyle = FlatStyle.Flat,
@@ -647,6 +628,25 @@ _roomTypeCombo.DrawItem += (s, e) =>
             _toolManager.SetTool(ToolManager.Tool.PipeNormal);
         };
         pipePanel.Controls.Add(_btnPipeNormal);
+
+        _btnPipeDistra = new Button
+        {
+            Location = new Point(buttonWidth, 0),
+            Width = buttonWidth - 1,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Tag = "Distra",
+            Text = "L2",
+            Padding = new Padding(0)
+        };
+        _btnPipeDistra.Click += (s, e) =>
+        {
+            _currentPipeLayer = "Distra";
+            _toolManager.SetTool(ToolManager.Tool.PipeDistra);
+        };
+        pipePanel.Controls.Add(_btnPipeDistra);
 
         _btnPipeWaste = new Button
         {
@@ -683,9 +683,9 @@ _roomTypeCombo.DrawItem += (s, e) =>
         pipePanel.Resize += (s, e) =>
         {
             int bw = pipePanel.Width / 4;
-            _btnPipeDistra.Width = bw - 1;
-            _btnPipeNormal.Location = new Point(bw, 0);
             _btnPipeNormal.Width = bw - 1;
+            _btnPipeDistra.Location = new Point(bw, 0);
+            _btnPipeDistra.Width = bw - 1;
             _btnPipeWaste.Location = new Point(bw * 2, 0);
             _btnPipeWaste.Width = bw - 1;
             _btnPipeSettings.Location = new Point(bw * 3, 0);
@@ -1088,10 +1088,10 @@ _roomTypeCombo.DrawItem += (s, e) =>
         // Провода: W включает инструмент, 1/2/3 переключают слой (НВ/СВ/НВ).
         _hint.SetToolTip(_wireTypeCombo, "Инструмент провода (W). 1/2/3 — слой: НВ/СВ/НВ (HV/MV/LV)");
 
-        // Атмос-трубы: P включает, цифры — тип (1 Дистра, 2 Отработка, 3 Обычная, 4 Утилит).
-        _hint.SetToolTip(_btnPipeDistra, "Атмос-труба L2 (P, 1)");
-        _hint.SetToolTip(_btnPipeNormal, "Атмос-труба L1 (P, 3)");
-        _hint.SetToolTip(_btnPipeWaste, "Атмос-труба L3 (P, 2)");
+        // Атмос-трубы: P включает, цифра = номер L-слоя (1 L1, 2 L2, 3 L3, 4 Утилит).
+        _hint.SetToolTip(_btnPipeDistra, "Атмос-труба L2 (P, 2)");
+        _hint.SetToolTip(_btnPipeNormal, "Атмос-труба L1 (P, 1)");
+        _hint.SetToolTip(_btnPipeWaste, "Атмос-труба L3 (P, 3)");
         if (_btnPipeUtil != null) _hint.SetToolTip(_btnPipeUtil, "Утилит-труба (P, 4)");
 
         _toolPanel.Controls.Add(new Label
