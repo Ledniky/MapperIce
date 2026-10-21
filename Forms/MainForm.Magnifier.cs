@@ -183,10 +183,14 @@ public partial class MainForm
     /// placeProtoId — если задан, клик по строке "забирает" прототип из панели
     /// репозитория: включает инструмент "Разместить прототип" с этим ID, как если
     /// бы пользователь выбрал его в списке прототипов (см. ArmPrototypePlacement).
+    /// armAction — если задан, клик по строке "забирает" объект специализированным
+    /// инструментом (привязка, узел сети, окно, создание комнаты): прототип/тип
+    /// подставляется из строки, а не из настроек клетки под курсором. Имеет
+    /// приоритет над placeProtoId.
     /// Ряд с кнопкой удаления тоже кликабелен — нажатие на саму строку берет
     /// предмет, нажатие на "✕" удаляет.
     /// </summary>
-    private void AddMagnifierRow(string text, Action? deleteAction, string? placeProtoId = null)
+    private void AddMagnifierRow(string text, Action? deleteAction, string? placeProtoId = null, Action? armAction = null)
     {
         if (_magnifierListPanel == null) return;
 
@@ -199,6 +203,8 @@ public partial class MainForm
             Margin = new Padding(1)
         };
 
+        bool takeable = armAction != null || !string.IsNullOrEmpty(placeProtoId);
+
         var label = new Label
         {
             Text = text,
@@ -206,15 +212,21 @@ public partial class MainForm
             AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Consolas", 8.5f),
-            Cursor = placeProtoId != null ? Cursors.Hand : Cursors.Default
+            Cursor = takeable ? Cursors.Hand : Cursors.Default
         };
         row.Controls.Add(label);
 
-        if (!string.IsNullOrEmpty(placeProtoId))
+        if (takeable)
         {
-            string protoId = placeProtoId;
-            label.Click += (s, e) => ArmMagnifierPrototypePlacement(protoId);
-            row.Click += (s, e) => ArmMagnifierPrototypePlacement(protoId);
+            string? protoId = placeProtoId;
+            void Take()
+            {
+                if (armAction != null) armAction();
+                else if (!string.IsNullOrEmpty(protoId)) ArmMagnifierPrototypePlacement(protoId);
+            }
+
+            label.Click += (s, e) => Take();
+            row.Click += (s, e) => Take();
         }
 
         if (deleteAction != null)
@@ -334,6 +346,8 @@ public partial class MainForm
                 doorLine += $" (пол под: {doorTile.FloorProtoUnder})";
 
             int dtx = tileX, dty = tileY;
+            string doorProto = doorTile.ProtoId ?? "Airlock";
+            bool isGlassDoor = doorProto.Contains("Glass", StringComparison.OrdinalIgnoreCase);
             AddMagnifierRow(doorLine, () => DeleteMagnifierObject(() =>
             {
                 if (_doorUpdater.TryRemoveDoor(grid, dtx, dty))
@@ -343,7 +357,8 @@ public partial class MainForm
                     UpdateTileGrid();
                     Render();
                 }
-            }), placeProtoId: doorTile.ProtoId ?? "Airlock");
+            }),
+                armAction: () => ArmMagnifierTool(isGlassDoor ? ToolManager.Tool.DoorGlass : ToolManager.Tool.Door));
         }
 
         // Вручную размещённые тайлы (инструмент "Разместить прототип" → tile)
@@ -376,7 +391,8 @@ public partial class MainForm
                     SaveState();
                     UpdateTileGrid();
                     Render();
-                }));
+                }),
+                armAction: () => ArmMagnifierRoomCreation(roomRef.RoomType));
         }
 
         // Сущности — попадание проверяем через floor(X)/floor(Y), как и весь
@@ -411,17 +427,20 @@ public partial class MainForm
                             EndpointType.DisposalUnit => " [DisposalUnit]",
                             _ => ""
                         };
-                        AddMagnifierRow(pipeLine, DeleteEntity, placeProtoId: pipe.Proto);
+                        AddMagnifierRow(pipeLine, DeleteEntity,
+                            armAction: () => ArmMagnifierTool(PipeToolFor(pipe.PipeType)));
                         break;
                     }
                 case FirelockEntity firelock:
                     AddMagnifierRow($"Огнешлюз: {firelock.Proto}{(firelock.IsGlass ? " (стекло)" : "")}", DeleteEntity, placeProtoId: firelock.Proto);
                     break;
                 case AirAlarmEntity air:
-                    AddMagnifierRow($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)", DeleteEntity, placeProtoId: air.Proto);
+                    AddMagnifierRow($"Сигнализация воздуха (поворот {air.Rotation * 180 / Math.PI:F0}°)", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.AirAlarm));
                     break;
                 case FireAlarmEntity fire:
-                    AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity, placeProtoId: fire.Proto);
+                    AddMagnifierRow($"Сигнализация пожара (поворот {fire.Rotation * 180 / Math.PI:F0}°)", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.FireAlarm));
                     break;
                 case IntercomEntity intercom:
                     {
@@ -431,13 +450,44 @@ public partial class MainForm
                         var facingRoom = IntercomFacingRoom(grid, FloorToInt(intercom.X), FloorToInt(intercom.Y), facingSide);
                         string roomLabel = facingRoom != null ? facingRoom.RoomType : "—";
                         AddMagnifierRow($"Интерком: {intercom.IntercomProto} → комната {roomLabel}",
-                            DeleteEntity, placeProtoId: intercom.IntercomProto);
+                            DeleteEntity,
+                            armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceIntercom));
                         break;
                     }
                 case FaxMachineEntity fax:
                     // У факса важно не столько железо, сколько адрес из свойств комнаты
                     AddMagnifierRow($"Факс: {fax.FaxProto} — адрес \"{fax.FaxName}\"",
-                        DeleteEntity, placeProtoId: fax.FaxProto);
+                        DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceFax));
+                    break;
+                case HolopadEntity holopad:
+                    AddMagnifierRow($"Голопад: {holopad.HolopadProto}", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceHolopad));
+                    break;
+                case LockerEntity locker:
+                    AddMagnifierRow($"Шкафчик: {locker.LockerProto}", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceLocker));
+                    break;
+                case SuitStorageEntity suitStorage:
+                    AddMagnifierRow($"Скафандр: {suitStorage.SuitStorageProto}", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceSuitStorage));
+                    break;
+                case BedEntity bed:
+                    {
+                        string bedLine = $"Кровать: {bed.BedProto}";
+                        if (!string.IsNullOrEmpty(bed.BedsheetProto))
+                            bedLine += $" (одеяло: {bed.BedsheetProto})";
+                        AddMagnifierRow(bedLine, DeleteEntity,
+                            armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceBed));
+                        break;
+                    }
+                case CameraEntity camera:
+                    AddMagnifierRow($"Камера: {camera.CameraProto}", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceCamera));
+                    break;
+                case DresserEntity dresser:
+                    AddMagnifierRow($"Комод: {dresser.DresserProto}", DeleteEntity,
+                        armAction: () => ArmMagnifierTool(ToolManager.Tool.PlaceDresser));
                     break;
                 case WireEntity wire:
                     {
@@ -446,16 +496,70 @@ public partial class MainForm
                         var wireColor = _wireTypeManager.GetWireType(wire.WireType).Color;
                         AddMagnifierRow(
                             $"Кабель [{wire.WireType}] цвет:#{wireColor.R:X2}{wireColor.G:X2}{wireColor.B:X2}",
-                            DeleteEntity);
+                            DeleteEntity,
+                            armAction: () => ArmMagnifierTool(WireToolFor(wire.WireType)));
                         break;
                     }
-                default:
-                    // Прототип может быть пустым (сущность хранит тип отдельным полем) —
-                    // тогда показываем имя класса, чтобы строка не оставалась пустой.
-                    AddMagnifierRow(
-                        $"Сущность: {(string.IsNullOrEmpty(entity.Proto) ? entity.GetType().Name : entity.Proto)}",
-                        DeleteEntity, placeProtoId: entity.Proto);
-                    break;
+                case MapEntity mapEntity:
+                    {
+                        string proto = mapEntity.Proto ?? "";
+
+                        // Узел сети (ЛКП/подстанция) ставится своим инструментом: он
+                        // проверяет кабели на клетке и даёт поворот колёсиком, а обычное
+                        // «Разместить прототип» ставит сущность без этой логики.
+                        if (IsPowerJunctionProto(proto))
+                        {
+                            string junctionLabel = proto.StartsWith("APC", StringComparison.OrdinalIgnoreCase)
+                                ? "ЛКП"
+                                : "Подстанция";
+                            AddMagnifierRow($"{junctionLabel}: {proto}", DeleteEntity,
+                                armAction: () => ArmMagnifierPowerJunctionPlacement(proto));
+                            break;
+                        }
+
+                        // Окно ставится инструментом «Заменить на окно»: он сносит стену
+                        // и помечает клетку окном в комнате (иначе стена возвращается
+                        // при пересборке тайлов).
+                        if (IsWindowEntityProto(proto))
+                        {
+                            AddMagnifierRow($"Окно: {proto}", DeleteEntity,
+                                armAction: () => ArmMagnifierWindowPlacement(proto));
+                            break;
+                        }
+
+                        // Привязки на картах, загруженных из YAML, лежат обычными
+                        // MapEntity без типизированного класса — их вид определяем по
+                        // прототипу (цепочка parent:) и берём соответствующим инструментом.
+                        var bindingTool = BindingToolForProto(proto);
+                        if (bindingTool.HasValue)
+                        {
+                            var bindingToolValue = bindingTool.Value;
+                            string bindingLabel = bindingToolValue switch
+                            {
+                                ToolManager.Tool.PlaceHolopad => "Голопад",
+                                ToolManager.Tool.PlaceLocker => "Шкафчик",
+                                ToolManager.Tool.PlaceSuitStorage => "Скафандр",
+                                ToolManager.Tool.PlaceBed => "Кровать",
+                                ToolManager.Tool.PlaceCamera => "Камера",
+                                ToolManager.Tool.PlaceDresser => "Комод",
+                                ToolManager.Tool.PlaceIntercom => "Интерком",
+                                ToolManager.Tool.PlaceFax => "Факс",
+                                ToolManager.Tool.AirAlarm => "Сигнализация воздуха",
+                                ToolManager.Tool.FireAlarm => "Сигнализация пожара",
+                                _ => "Привязка"
+                            };
+                            AddMagnifierRow($"{bindingLabel}: {proto}", DeleteEntity,
+                                armAction: () => ArmMagnifierTool(bindingToolValue));
+                            break;
+                        }
+
+                        // Прототип может быть пустым (сущность хранит тип отдельным полем) —
+                        // тогда показываем имя класса, чтобы строка не оставалась пустой.
+                        AddMagnifierRow(
+                            $"Сущность: {(string.IsNullOrEmpty(proto) ? mapEntity.GetType().Name : proto)}",
+                            DeleteEntity, placeProtoId: proto);
+                        break;
+                    }
             }
         }
 
@@ -489,7 +593,9 @@ public partial class MainForm
             {
                 float supply = _indexer.GetMaxSupply(device.Proto) ?? 0f;
                 total += supply;
-                AddMagnifierRow($"{deviceLabel}: {device.Proto} ({supply:F0} Вт)", null);
+                string deviceProto = device.Proto;
+                AddMagnifierRow($"{deviceLabel}: {deviceProto} ({supply:F0} Вт)", null,
+                    armAction: () => ArmMagnifierPowerJunctionPlacement(deviceProto));
             }
             AddMagnifierRow($"— Сеть {networkLabel}: {total:F0} Вт суммарно ({devices.Count} шт.)", null);
         }
@@ -528,4 +634,173 @@ public partial class MainForm
         _protoToPlace = protoId;
         _toolManager.ForceSetTool(ToolManager.Tool.PlacePrototype);
     }
+
+    /// <summary>
+    /// "Забирает" комнату из строки лупы: выбирает её тип комнаты и включает
+    /// инструмент "Создать комнату". Геометрия рисуется заново, а вот тип (стены,
+    /// пол, двери, прототипы всех привязок и т.д.) переносится из взятой комнаты.
+    /// ForceSetTool — чтобы повторное нажатие по той же строке не выключало инструмент
+    /// (обычный SetTool по тому же инструменту работает как тумблер).
+    /// </summary>
+    private void ArmMagnifierRoomCreation(string? roomType)
+    {
+        if (!string.IsNullOrEmpty(roomType))
+            _roomTypeManager.SelectType(roomType);
+
+        _toolManager.ForceSetTool(ToolManager.Tool.CreateRoom);
+    }
+
+    /// <summary>
+    /// "Забирает" ЛКП или подстанцию из строки лупы: подставляет её прототип в список
+    /// электротехнических переходников и включает соответствующий инструмент точечной
+    /// установки (узел сети ставится с поворотом и проверкой кабелей, а не как обычный
+    /// прототип). Пункт в ComboBox выставляется для наглядности — дальше вращение
+    /// колёсиком и превью работают как при обычном выборе из списка.
+    /// </summary>
+    private void ArmMagnifierPowerJunctionPlacement(string protoId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return;
+
+        bool isApc = protoId.StartsWith("APC", StringComparison.OrdinalIgnoreCase);
+        string type = isApc ? "APC" : "Substation";
+
+        _selectedPowerJunctionProto = protoId;
+        _selectedPowerJunctionType = type;
+
+        if (_powerJunctionCombo != null && !_powerJunctionCombo.IsDisposed)
+        {
+            var item = _powerJunctionCombo.Items.Cast<ProtoDisplayItem>()
+                .FirstOrDefault(p => p.Type == type &&
+                                     string.Equals(p.Id, protoId, StringComparison.OrdinalIgnoreCase));
+            if (item != null)
+                _powerJunctionCombo.SelectedItem = item;
+        }
+
+        _toolManager.ForceSetTool(isApc ? ToolManager.Tool.PlaceApc : ToolManager.Tool.PlaceSubstation);
+    }
+
+    /// <summary>
+    /// "Забирает" окно (а также створку/взрывную дверь) из строки лупы: подставляет
+    /// прототип в список окон и включает инструмент "Заменить на окно". Обычный
+    /// "Разместить прототип" здесь не подходит — он не сносит стену и не помечает
+    /// клетку окном в комнате, из-за чего стена восстанавливалась при пересборке.
+    /// </summary>
+    private void ArmMagnifierWindowPlacement(string protoId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return;
+
+        _selectedWindowProto = protoId;
+
+        if (_windowToolCombo != null && !_windowToolCombo.IsDisposed)
+        {
+            for (int i = 0; i < _windowToolCombo.Items.Count; i++)
+            {
+                var key = _windowToolCombo.Items[i]?.ToString();
+                if (key != null &&
+                    _windowProtoIdCache.TryGetValue(key, out var itemProtoId) &&
+                    itemProtoId == protoId)
+                {
+                    _windowToolCombo.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        _toolManager.ForceSetTool(ToolManager.Tool.ReplaceWallWithWindow);
+    }
+
+    /// <summary>"Забирает" объект из строки лупы его собственным инструментом
+    /// (привязка, сигнализация, кабель, труба) — такой инструмент ставит правильный
+    /// тип сущности со всеми связями, а не "голый" прототип.</summary>
+    private void ArmMagnifierTool(ToolManager.Tool tool)
+    {
+        _toolManager.ForceSetTool(tool);
+    }
+
+    /// <summary>Узел сети: ЛКП (APC…) или подстанция (Substation…).</summary>
+    private static bool IsPowerJunctionProto(string? proto) =>
+        !string.IsNullOrEmpty(proto) &&
+        (proto.StartsWith("APC", StringComparison.OrdinalIgnoreCase) ||
+         proto.StartsWith("Substation", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Прототип ставится инструментом "Заменить на окно": настоящее окно
+    /// (в т.ч. по цепочке parent:) либо створка/взрывная дверь.</summary>
+    private bool IsWindowEntityProto(string? proto)
+    {
+        if (string.IsNullOrEmpty(proto)) return false;
+        return _indexer.IsWindow(proto) || IsFreePlaceableShutterBlast(proto);
+    }
+
+    /// <summary>Прототип наследует baseId по цепочке parent: (id сравнивается целиком,
+    /// не по префиксу). Нужно для карт, загруженных из YAML: там привязки лежат
+    /// обычными MapEntity, и тип сущности можно восстановить только по прототипу.</summary>
+    private bool ProtoInherits(string? protoId, string baseId)
+    {
+        if (string.IsNullOrEmpty(protoId)) return false;
+        if (string.Equals(protoId, baseId, StringComparison.Ordinal)) return true;
+
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var stack = new Stack<string>();
+
+        var start = _indexer.FindPrototype(protoId);
+        if (start == null) return false;
+        foreach (var parent in start.Parents)
+            stack.Push(parent);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!visited.Add(current)) continue;
+            if (string.Equals(current, baseId, StringComparison.Ordinal)) return true;
+
+            var proto = _indexer.FindPrototype(current);
+            if (proto == null) continue;
+            foreach (var parent in proto.Parents)
+                stack.Push(parent);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Инструмент привязки по её прототипу. Базовые прототипы — из проиндексированного
+    /// репозитория: LockerBase/ClosetBase (все шкафчики), SuitStorageBase, Bed,
+    /// SurveillanceCameraBase, Dresser, BaseIntercom, FaxMachineBase, AirAlarm,
+    /// FireAlarm, Holopad.
+    /// </summary>
+    private ToolManager.Tool? BindingToolForProto(string? proto)
+    {
+        if (string.IsNullOrEmpty(proto)) return null;
+
+        if (ProtoInherits(proto, "Holopad")) return ToolManager.Tool.PlaceHolopad;
+        if (ProtoInherits(proto, "LockerBase") || ProtoInherits(proto, "ClosetBase"))
+            return ToolManager.Tool.PlaceLocker;
+        if (ProtoInherits(proto, "SuitStorageBase")) return ToolManager.Tool.PlaceSuitStorage;
+        if (ProtoInherits(proto, "Bed")) return ToolManager.Tool.PlaceBed;
+        if (ProtoInherits(proto, "SurveillanceCameraBase")) return ToolManager.Tool.PlaceCamera;
+        if (ProtoInherits(proto, "Dresser")) return ToolManager.Tool.PlaceDresser;
+        if (ProtoInherits(proto, "BaseIntercom")) return ToolManager.Tool.PlaceIntercom;
+        if (ProtoInherits(proto, "FaxMachineBase")) return ToolManager.Tool.PlaceFax;
+        if (ProtoInherits(proto, "AirAlarm")) return ToolManager.Tool.AirAlarm;
+        if (ProtoInherits(proto, "FireAlarm")) return ToolManager.Tool.FireAlarm;
+
+        return null;
+    }
+
+    /// <summary>Какой инструмент "забирает" кабель этого типа сети.</summary>
+    private static ToolManager.Tool WireToolFor(string? wireType) => wireType switch
+    {
+        "HV" => ToolManager.Tool.WireHV,
+        "MV" => ToolManager.Tool.WireMV,
+        _ => ToolManager.Tool.WireLV
+    };
+
+    /// <summary>Какой инструмент "забирает" трубу этого типа.</summary>
+    private static ToolManager.Tool PipeToolFor(string? pipeType) => pipeType switch
+    {
+        "Distra" => ToolManager.Tool.PipeDistra,
+        "Waste" => ToolManager.Tool.PipeWaste,
+        "Util" => ToolManager.Tool.PipeUtil,
+        _ => ToolManager.Tool.PipeNormal
+    };
 }
