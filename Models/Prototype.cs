@@ -128,6 +128,16 @@ public class Prototype
     /// Null — у прототипа/родителей нет NodeContainer с nodeGroupID.
     /// </summary>
     public string? CableNodeGroup { get; set; }
+
+    /// <summary>
+    /// Компонент AtmosPipeLayers: карта RSI-путей слоя трубы для трёх слоёв атмос-сетей
+    /// (Primary/Secondary/Tertiary). Ключ — map-ключ слоя ("enum.PipeVisualLayers.Pipe"),
+    /// значение — массив из трёх путей RSI [Primary, Secondary, Tertiary]. В отличие от
+    /// труб GasPipe*Alt1/Alt2, у машин (термомашины, насосы и т.п.) три слоя трубы — это
+    /// не отдельные прототипы, а альтернативные RSI, переключаемые компонентом.
+    /// Резолвится по цепочке parent: (см. GetPipeLayerRsiPaths).
+    /// </summary>
+    public Dictionary<string, string[]> PipeLayerRsiPaths { get; set; } = new();
 }
 
 /// <summary>

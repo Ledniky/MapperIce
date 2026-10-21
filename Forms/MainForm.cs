@@ -204,6 +204,9 @@ public partial class MainForm : Form
     private bool _snapEntityRotation = false;
     private Button? _btnEntityRotationSnap;
     private float _currentEntityRotation = 0f;
+    // Текущий слой трубы (AtmosPipeLayers) для размещаемых машин: 0=Primary,
+    // 1=Secondary, 2=Tertiary. Переключается Shift+колесом при размещении.
+    private int _currentEntityPipeLayer = 0;
     // Ручной поворот размещаемого объекта (колёсико мыши): у интеркома переопределяет
     // автоматическое направление вовнутрь комнаты, у ЛКП задаёт поворот самой сущности.
     private float _placeRotation = 0f;
@@ -491,7 +494,8 @@ public partial class MainForm : Form
     {
         "Ctrl+Z — отменить действие, Ctrl+Y — вернуть отменённое.",
         "Ctrl+S — быстро сохранить проект в текущий файл.",
-        "В окне «Лупа» нажмите левой кнопкой мыши по id прототипа — он выберется как прототип для установки в проект."
+        "В окне «Лупа» нажмите левой кнопкой мыши по id прототипа — он выберется как прототип для установки в проект.",
+        "Shift+колесо мыши — сменить слой трубы (L1/L2/L3): у размещаемого элемента переключает X / XAlt1 / XAlt2, у инструмента труб — активный слой."
     };
 
 

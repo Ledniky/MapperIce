@@ -157,7 +157,7 @@ public class GridSnapshot
             .Where(e => e is not PipeEntity && e is not WireEntity && e is not FirelockEntity &&
                         e is not AirAlarmEntity && e is not FireAlarmEntity &&
                         !IsAutoObject(e))
-            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation,
+            .Select(e => new MapEntity { Proto = e.Proto, X = e.X, Y = e.Y, ParentGridUid = e.ParentGridUid, Rotation = e.Rotation, PipeLayer = e.PipeLayer,
                                          NetworkLinks = e.NetworkLinks.Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort }).ToList() })
             .ToList();
 
@@ -269,6 +269,7 @@ public class GridSnapshot
                 Y = entity.Y,
                 ParentGridUid = entity.ParentGridUid,
                 Rotation = entity.Rotation,
+                PipeLayer = entity.PipeLayer,
                 NetworkLinks = entity.NetworkLinks.Select(l => new EntityNetworkLink { TargetX = l.TargetX, TargetY = l.TargetY, SourcePort = l.SourcePort, TargetPort = l.TargetPort }).ToList()
             });
         }

@@ -1,16 +1,16 @@
 {
   "permission": {
     "read": "allow",
-    "edit": "allow",
+    "edit": "ask",
     "glob": "allow",
     "grep": "allow",
     "list": "allow",
-    "bash": "allow",
-    "task": "allow",
-    "external_directory": "allow",
-    "transcribe": "allow",
-    "webfetch": "allow",
+    "bash": "ask",
+    "task": "ask",
+    "external_directory": "ask",
+    "transcribe": "ask",
+    "webfetch": "ask",
     "websearch": "allow",
-    "skill": "allow"
+    "skill": "ask"
   }
 }

@@ -109,7 +109,15 @@ public partial class Renderer
         public int DrawDepthOffset;
         public bool IsOccluder;
         public bool SnapCardinals;
+        // true, если у прототипа есть хотя бы один ВИДИМЫЙ слой с directions>=4.
+        // Нужно, чтобы не обнулять поворот структуры, у которой тело 1-направленное,
+        // а отдельный слой (например, труба термомашины) — 4-направленный: такой
+        // элемент в игре вращается, и по повороту выбирается кадр именно слоя.
+        public bool HasDirectionalLayer;
         public (string? baseClosed, string? doorOpen, string? doorClosed)? StorageVisuals;
+        // Пути RSI трёх слоёв трубы из AtmosPipeLayers (map-ключ слоя → [Primary,
+        // Secondary, Tertiary]). Null — у прототипа/предков нет компонента.
+        public Dictionary<string, string[]>? PipeLayerRsiPaths;
     }
     private readonly Dictionary<string, ProtoRenderMeta> _protoMetaCache = new(StringComparer.Ordinal);
 
@@ -117,14 +125,14 @@ public partial class Renderer
     // сама текстура и признак «у слоя есть directions». Заполняется один раз на
     // (прототип, номер слоя); раньше всё это пересчитывалось на каждый слой каждой
     // сущности в кадре.
-    private readonly Dictionary<(string protoId, int layerIndex), (string CacheKey, Image? Texture, bool HasDirections)> _layerInfoCache = new();
+    private readonly Dictionary<(string protoId, int layerIndex, int pipeLayer), (string CacheKey, Image? Texture, bool HasDirections)> _layerInfoCache = new();
 
     // === Композиция спрайтов в один битмап ===
     // Многослойные прототипы (у телеком-сервера 15 слоёв) и IconSmooth (4 угловых
     // слоя) раньше выводились построчно: 4–15 DrawImage на объект. На стандартной
     // карте это ~7500 вызовов GDI+ за кадр. Здесь слои один раз собираются в один
     // битмап, и на кадр остаётся один DrawImage на объект.
-    private readonly Dictionary<(string protoId, int quarter, int width, int height), Bitmap?> _layeredCompositeCache = new();
+    private readonly Dictionary<(string protoId, int quarter, int width, int height, int pipeLayer), Bitmap?> _layeredCompositeCache = new();
     private const int LayeredCompositeMaxEntries = 1024;
 
     private readonly Dictionary<(string protoId, int mask, int quarter, int tileSize), Bitmap?> _smoothCompositeCache = new();
@@ -180,6 +188,9 @@ public partial class Renderer
     private float _previewEntityX;
     private float _previewEntityY;
     private float _previewEntityRotation;
+    // Слой трубы (AtmosPipeLayers) для превью размещаемого элемента: 0=Primary,
+    // 1=Secondary, 2=Tertiary. Переключается Shift+колесом (см. MainForm).
+    private int _previewPipeLayer = 0;
     private string _previewEntityProto = "";
     private string? _previewDecalColor = null; // не null только когда превью — это декаль
     // false — в этом тайле ставить нельзя (нет комнаты/прототипа или клетка занята):
@@ -793,7 +804,7 @@ public partial class Renderer
     /// нет, вызывает fallback(g, rect) — там уже своя заглушка (цвет/эмодзи/рамка), т.к. она у
     /// каждого типа объекта своя.
     /// </summary>
-    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f, string? tintColor = null)
+    private void DrawTexturedRect(Graphics g, string? protoId, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation = 0f, string? tintColor = null, int pipeLayer = 0)
     {
         // snapCardinals: true — спрайт не вращается при повороте (гироскоп и т.п.).
         // Обнуляем поворот до входа в любой путь отрисовки (однослойный/многослойный),
@@ -808,7 +819,7 @@ public partial class Renderer
         var layered = GetProtoLayers(protoId ?? "");
         if (layered != null)
         {
-            DrawLayeredTexturedRect(g, protoId!, layered, rect, tint, fallback, rotation, tintColor);
+            DrawLayeredTexturedRect(g, protoId!, layered, rect, tint, fallback, rotation, tintColor, pipeLayer);
             return;
         }
 
@@ -904,13 +915,20 @@ public partial class Renderer
     /// раньше для одного слоя), а собственный offset конкретного слоя (если задан) —
     /// уже поверх этого, только к этому слою.
     /// </summary>
-    private void DrawLayeredTexturedRect(Graphics g, string protoId, List<Models.SpriteLayer> layers, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation, string? tintColor = null)
+    private void DrawLayeredTexturedRect(Graphics g, string protoId, List<Models.SpriteLayer> layers, Rectangle rect, ImageAttributes? tint, Action<Graphics, Rectangle>? fallback, float rotation, string? tintColor = null, int pipeLayer = 0)
     {
+        // snapCardinals: 1-направленные слои (тело) не должны крутиться аффинно —
+        // иначе вместе с трубой (4-направленный слой выбирает кадр сам) крутился бы и
+        // корпус. Для таких прототипов поворот применяем только к выбору кадра слоёв.
+        bool snap = GetProtoMeta(protoId).SnapCardinals;
+
         var (offX, offY) = GetProtoSpriteOffset(protoId);
         if (offX != 0f || offY != 0f)
         {
-            float cosR = (float)Math.Cos(rotation);
-            float sinR = (float)Math.Sin(rotation);
+            // При snapCardinals корпус остаётся прямым, поэтому смещение тоже не крутим.
+            float offRot = snap ? 0f : rotation;
+            float cosR = (float)Math.Cos(offRot);
+            float sinR = (float)Math.Sin(offRot);
             float rotatedX = offX * cosR - offY * sinR;
             float rotatedY = offX * sinR + offY * cosR;
 
@@ -928,12 +946,14 @@ public partial class Renderer
         // композиция уже собрана в один битмап, и на кадр остаётся ОДИН DrawImage
         // вместо N (у телеком-сервера их 15). Слои с HasOffset идут старым путём:
         // их смещение поворачивается вокруг центра клетки, а не центра слоя.
-        if (tint == null && LayerSetCanBeComposited(layers))
+        // При snapCardinals композиция не годится: она запекает поворот и в
+        // 1-направленные слои (корпус), поэтому идём построчным путём.
+        if (!snap && tint == null && LayerSetCanBeComposited(layers))
         {
             int quarter = GetQuarterTurn(rotation);
             if (quarter >= 0)
             {
-                var composite = GetLayeredComposite(protoId, layers, rect.Width, rect.Height, quarter);
+                var composite = GetLayeredComposite(protoId, layers, rect.Width, rect.Height, quarter, pipeLayer);
                 if (composite != null)
                 {
                     DrawBakedSprite(g, composite, rect);
@@ -954,7 +974,7 @@ public partial class Renderer
             // кэшируются по (прототип, номер слоя): раньше строка склеивалась и
             // текстура искалась заново на КАЖДЫЙ слой КАЖДОЙ сущности в кадре
             // (у телеком-сервера до 15 слоёв), а на карте это тысячи объектов.
-            var layerInfo = GetLayerInfo(protoId, i, layer);
+            var layerInfo = GetLayerInfo(protoId, i, layer, pipeLayer);
             if (layerInfo.Texture == null) continue;
 
             anyDrawn = true;
@@ -996,6 +1016,14 @@ public partial class Renderer
             }
 
             if (layerHasDirections)
+            {
+                DrawThisLayer();
+                continue;
+            }
+
+            // snapCardinals: 1-направленный слой (корпус) остаётся прямым — аффинный
+            // поворот к нему не применяем (направленные слои уже выбрали кадр выше).
+            if (snap)
             {
                 DrawThisLayer();
                 continue;
@@ -1047,13 +1075,13 @@ public partial class Renderer
     /// прототипа идёт старым путём, потому что смещение поворачивается вокруг центра
     /// клетки, а не центра слоя.
     /// </summary>
-    private Bitmap? GetLayeredComposite(string protoId, List<Models.SpriteLayer> layers, int width, int height, int quarter)
+    private Bitmap? GetLayeredComposite(string protoId, List<Models.SpriteLayer> layers, int width, int height, int quarter, int pipeLayer = 0)
     {
         // Кэш многослойных композиций ключуется размером (width/height) — при смене зума
         // не очищаем: записи под другие размеры остаются валидными, и возврат на прежний
         // зум снова попадает в кэш вместо перепекания. Вытесняет только лимит ниже.
 
-        var key = (protoId, quarter, width, height);
+        var key = (protoId, quarter, width, height, pipeLayer);
         if (_layeredCompositeCache.TryGetValue(key, out var cached)) return cached;
 
         if (_layeredCompositeCache.Count >= LayeredCompositeMaxEntries) ClearLayeredComposites();
@@ -1068,7 +1096,7 @@ public partial class Renderer
                 var layer = layers[i];
                 if (!layer.Visible || layer.HasOffset) continue;
 
-                var info = GetLayerInfo(protoId, i, layer);
+                var info = GetLayerInfo(protoId, i, layer, pipeLayer);
                 if (info.Texture == null) continue;
 
                 var src = GetSourceRect(info.CacheKey, info.Texture, quarterAngle);
@@ -1233,9 +1261,9 @@ public partial class Renderer
     /// (LockerCaptionFilled и т.п.), поэтому без подмены рисовался бы дефолтный
     /// "generic"/"generic_door". Раньше это делалось на каждую сущность в кадре.
     /// </summary>
-    private (string CacheKey, Image? Texture, bool HasDirections) GetLayerInfo(string protoId, int index, Models.SpriteLayer layer)
+    private (string CacheKey, Image? Texture, bool HasDirections) GetLayerInfo(string protoId, int index, Models.SpriteLayer layer, int pipeLayer = 0)
     {
-        var key = (protoId, index);
+        var key = (protoId, index, pipeLayer);
         if (_layerInfoCache.TryGetValue(key, out var cached)) return cached;
 
         string effectiveState = layer.State;
@@ -1264,8 +1292,10 @@ public partial class Renderer
                 effectiveState = overrideState;
         }
 
-        string cacheKey = $"{protoId}__layer{index}__{effectiveState ?? "?"}";
-        var texture = GetOrLoadLayerTexture(cacheKey, protoId, layer, effectiveState);
+        string? rsiOverride = GetPipeLayerRsiOverride(protoId, layer, pipeLayer);
+        string cacheKey = $"{protoId}__layer{index}__{effectiveState ?? "?"}"
+                          + (pipeLayer != 0 ? $"__pl{pipeLayer}" : "");
+        var texture = GetOrLoadLayerTexture(cacheKey, protoId, layer, effectiveState, rsiOverride);
         bool hasDirections = texture != null && GetStateDirections(cacheKey) >= 4;
 
         var result = (cacheKey, texture, hasDirections);
@@ -1274,12 +1304,30 @@ public partial class Renderer
     }
 
     /// <summary>
+    /// RSI-путь для слоя с учётом выбранного слоя трубы (AtmosPipeLayers): 0=Primary
+    /// (базовый RSI слоя), 1=Secondary (alt1), 2=Tertiary (alt2). Null — слой не
+    /// участвует в переключении слоёв, использовать родной RSI слоя.
+    /// </summary>
+    private string? GetPipeLayerRsiOverride(string protoId, Models.SpriteLayer layer, int pipeLayer)
+    {
+        if (pipeLayer <= 0 || pipeLayer > 2) return null;
+        if (string.IsNullOrEmpty(layer.MapKey)) return null;
+
+        var paths = GetProtoMeta(protoId).PipeLayerRsiPaths;
+        if (paths == null || !paths.TryGetValue(layer.MapKey!, out var arr)) return null;
+        if (arr == null || pipeLayer >= arr.Length) return null;
+
+        var path = arr[pipeLayer];
+        return string.IsNullOrEmpty(path) ? null : path;
+    }
+
+    /// <summary>
     /// Загружает и кэширует текстуру ОДНОГО слоя многослойного прототипа. cacheKey —
     /// составной ("protoId__layerN"), поэтому переиспользует те же словари
     /// (_textureCache/_protoTextureDirCache/_protoStateNameCache), что и GetOrLoadTexture
     /// для обычных однослойных текстур, без коллизий с реальными protoId.
     /// </summary>
-    private Image? GetOrLoadLayerTexture(string cacheKey, string protoId, Models.SpriteLayer layer, string? stateOverride = null)
+    private Image? GetOrLoadLayerTexture(string cacheKey, string protoId, Models.SpriteLayer layer, string? stateOverride = null, string? rsiOverride = null)
     {
         if (_textureCache.TryGetValue(cacheKey, out var cached))
             return cached;
@@ -1287,7 +1335,7 @@ public partial class Renderer
         Image? texture = null;
         if (_indexer != null)
         {
-            var texturePath = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, stateOverride ?? layer.State);
+            var texturePath = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, rsiOverride ?? layer.RsiPath, stateOverride ?? layer.State);
             if (texturePath != null && File.Exists(texturePath))
             {
                 try
@@ -2882,10 +2930,23 @@ public partial class Renderer
         DrawStaticFloorChunks(g, tileGrid, grid.Uid, tileSize, viewOffset, gridOffset, visibleRect);
 
         // Очередь отрисовки собирается и сортируется один раз на структурное изменение
-        // (см. GetDrawItems): в кадре остаётся только фильтр по видимой области и сам
+        // (см. GetDrawQueue): в кадре остаётся только фильтр по видимой области и сам
         // вывод. Раньше на КАЖДЫЙ кадр шли несколько проходов по всем сущностям карты,
         // замыкания на каждый видимый объект и повторная сортировка.
-        foreach (var item in GetDrawItems(grid, tileGrid, rebuildRenderCaches))
+        var queue = GetDrawQueue(grid, tileGrid, rebuildRenderCaches);
+
+        // Декали — отдельный проход СРАЗУ ПОСЛЕ пола, до всей очереди сущностей.
+        // Декаль лежит на полу и обязана быть ниже ЛЮБОГО объекта карты, а не только
+        // обычных сущностей с drawdepth Objects: у кабелей (ThinWire/ThickWire), труб
+        // (ThinPipe/ThickPipe), воды и напольных декораций drawdepth ниже FloorTiles
+        // (-15…-21), и общая сортировка по глубине ставила декали выше них.
+        foreach (var item in queue.Decals)
+        {
+            if (!IsPointVisible(item.X, item.Y, visibleRect)) continue;
+            DrawSingleDecal(g, (PlacedDecal)item.Data, tileSize, viewOffset, gridOffset, opacity);
+        }
+
+        foreach (var item in queue.Items)
         {
             if (item.Kind is DrawItemKind.WallTile or DrawItemKind.DoorTile)
             {
@@ -2914,7 +2975,7 @@ public partial class Renderer
                 case DrawItemKind.PipeEndpoints:
                 {
                     // Концы атмос-труб при выключенном оверлее труб: напольные детали
-                    // над декалями и под коврами (см. GetDrawItems).
+                    // над декалями и под коврами (см. GetDrawQueue).
                     if (ShowPipeOverlay) break;
                     var pipes = (List<PipeEntity>)item.Data;
                     var visiblePipes = new List<PipeEntity>();
@@ -2925,13 +2986,14 @@ public partial class Renderer
                     break;
                 }
                 case DrawItemKind.Decal:
-                    DrawSingleDecal(g, (PlacedDecal)item.Data, tileSize, viewOffset, gridOffset, opacity);
+                    // Декали в этой очереди не встречаются: они выделены в отдельный
+                    // проход ещё до неё (см. DrawRenderLayer / GetDrawQueue).
                     break;
                 case DrawItemKind.Carpet:
                 case DrawItemKind.Entity:
                 {
                     var e = (MapEntity)item.Data;
-                    DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset);
+                    DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset, pipeLayer: e.PipeLayer);
                     break;
                 }
                 case DrawItemKind.Firelock:
@@ -3050,7 +3112,10 @@ public partial class Renderer
 
     private sealed class DrawQueueCache
     {
+        // Очередь БЕЗ декалей: всё, что рисуется после прохода декалей.
         public DrawItem[] Items = Array.Empty<DrawItem>();
+        // Декали отдельным массивом — рисуются сразу после пола, до Items.
+        public DrawItem[] Decals = Array.Empty<DrawItem>();
         public int EntityCount;
         public int DecalCount;
         public int FloorObjectsOffset;
@@ -3063,10 +3128,14 @@ public partial class Renderer
     /// изменение грида и переиспользуется между кадрами. Порядок вставки и компаратор
     /// те же, что были у прежней очереди из замыканий, поэтому итоговый порядок
     /// отрисовки (и картинка) не меняются — исчезает только работа на каждый кадр.
+    /// Декали выделены в отдельный массив (Decals): они рисуются отдельным проходом
+    /// сразу после пола и потому оказываются НИЖЕ любой сущности карты, независимо от
+    /// её drawdepth. Внутри декалей порядок тот же: глубина → layer (порядок слоёв
+    /// «Наследования декалей») → Y → порядок вставки.
     /// Счётчики сущностей/декалей и смещение слоя FloorObjects — страховка от правок,
     /// которые почему-то не вызвали InvalidateTileGrid.
     /// </summary>
-    private DrawItem[] GetDrawItems(Grid grid, TileGrid tileGrid, bool rebuildRenderCaches)
+    private DrawQueueCache GetDrawQueue(Grid grid, TileGrid tileGrid, bool rebuildRenderCaches)
     {
         int floorObjectsOffset = _drawDepthManager.GetOffset("FloorObjects");
 
@@ -3076,7 +3145,7 @@ public partial class Renderer
             cached.DecalCount == grid.Decals.Count &&
             cached.FloorObjectsOffset == floorObjectsOffset)
         {
-            return cached.Items;
+            return cached;
         }
 
         int decalShelfDepth = floorObjectsOffset - 1;
@@ -3098,8 +3167,9 @@ public partial class Renderer
         }
 
         // Концы атмос-труб (вентиляция и приёмники утилизации) при ВЫКЛЮЧЕННОМ оверлее
-        // труб остаются видны, но как напольные детали: вся пачка лежит на полке декалей
-        // с максимальным layerOrder — выше всех декалей, но ПОД коврами.
+        // труб остаются видны, но как напольные детали: лежат на полке декалей с
+        // максимальным layerOrder. Декали теперь рисуются отдельным проходом ДО всей
+        // очереди, поэтому концы труб гарантированно выше них, но ПОД коврами.
         if (_pipeBuilder != null)
         {
             var layerPipes = _pipeBuilder.GetPipes(grid);
@@ -3108,7 +3178,8 @@ public partial class Renderer
                                        float.MinValue, float.MinValue, layerPipes));
         }
 
-        // Декали — над тайлами пола и под любыми сущностями.
+        // Декали — над тайлами пола и под любыми сущностями. Отложены в отдельный
+        // массив: DrawRenderLayer рисует их отдельным проходом сразу после пола.
         foreach (var decal in grid.Decals)
             items.Add(new DrawItem(DrawItemKind.Decal, decalShelfDepth, decal.PatternLayerIndex,
                                    decal.X, decal.Y, decal));
@@ -3171,8 +3242,8 @@ public partial class Renderer
             items.Add(new DrawItem(DrawItemKind.Fax, mountDepth, 0, fax.X, fax.Y, fax));
 
         // Порядок вставки — финальный ключ сортировки: при равной глубине и равном Y
-        // объекты рисуются в стабильном порядке (стены → двери → декали → ковры →
-        // сущности → «привязки»), а не в том, который случайно выдал бы introsort.
+        // объекты рисуются в стабильном порядке (стены → двери → концы труб → декали →
+        // ковры → сущности → «привязки»), а не в том, который случайно выдал бы introsort.
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
@@ -3194,15 +3265,29 @@ public partial class Renderer
             return a.Order.CompareTo(b.Order);
         });
 
-        _drawQueueCache[grid.Uid] = new DrawQueueCache
+        // Декали отделяем от остальной очереди: они рисуются своим проходом сразу после
+        // пола, поэтому их глубина больше не участвует в сравнении с сущностями — она
+        // остаётся только порядком «декаль поверх декали».
+        var decals = new List<DrawItem>(grid.Decals.Count);
+        var rest = new List<DrawItem>(array.Length - grid.Decals.Count);
+        foreach (var item in array)
         {
-            Items = array,
+            if (item.Kind == DrawItemKind.Decal) decals.Add(item);
+            else rest.Add(item);
+        }
+
+        var queue = new DrawQueueCache
+        {
+            Items = rest.ToArray(),
+            Decals = decals.ToArray(),
             EntityCount = grid.Entities.Count,
             DecalCount = grid.Decals.Count,
             FloorObjectsOffset = floorObjectsOffset
         };
 
-        return array;
+        _drawQueueCache[grid.Uid] = queue;
+
+        return queue;
     }
 
     /// <summary>
@@ -3754,7 +3839,15 @@ public partial class Renderer
         // СВЯЗНОСТИ, а не направление кадра: state1 = окно встало вплотную к соседним стенам,
         // state0 = изолированное. Поворот сущности влияет на то, какие три соседа проверяются,
         // поэтому фактический поворот окна здесь учитывается (а не игнорируется, как раньше).
-        if (settings.Mode.Equals("Diagonal", StringComparison.OrdinalIgnoreCase))
+        //
+        // Прототип распознаём как диагональный и по Mode (если компонент отресолвился), и по
+        // самому имени id: ВСЕ диагональные стены/окна содержат "Diagonal" в прототипе. Это
+        // важно для загрузки из yml — там может резолвиться IconSmooth предка (mode: Corners),
+        // и тогда поворот сущности применялся бы только в угловом (corners) режиме, а он поворот
+        // игнорирует — диагональные окна после загрузки всегда смотрели "на север".
+        bool isDiagonalProto = settings.Mode.Equals("Diagonal", StringComparison.OrdinalIgnoreCase)
+            || protoId.Contains("Diagonal", StringComparison.OrdinalIgnoreCase);
+        if (isDiagonalProto)
         {
             int state = ComputeDiagonalState(mask, quarter) ? 1 : 0;
             var (img, key) = GetSmoothState(protoId, settings, state);
@@ -3792,7 +3885,7 @@ public partial class Renderer
         g.DrawImage(composite, rect);
     }
 
-    private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, bool cableSmoothing = true)
+    private void DrawSingleEntity(Graphics g, string protoId, float worldX, float worldY, float rotation, int tileSize, PointF viewOffset, PointF gridOffset, bool cableSmoothing = true, int pipeLayer = 0)
     {
         // Кабели (CableHV/CableMV/CableApcExtension и их наследники) рисуются НЕ
         // статическим стейтом *_0, а по маске соседей — как CableVisualizer в игре.
@@ -3835,7 +3928,7 @@ public partial class Renderer
                 string label = protoId.Length > 8 ? protoId.Substring(0, 8) : protoId;
                 gg.DrawString(label, font, textBrush, r.X + 1, r.Y + 1);
             }
-        }, rotation);
+        }, rotation, null, pipeLayer);
     }
 
     /// <summary>
@@ -4256,6 +4349,44 @@ public partial class Renderer
 
     private int GetStateDirections(string protoId) => GetStateDirectionInfo(protoId).directions;
 
+    // Кэш "число направлений стейта" по RSI-каталогу: dir -> (state -> directions).
+    // Нужен для проверки направленных СЛОЁВ (у термомашин слой трубы — 4 направления,
+    // а тело — 1), где состояние берётся не из прототипа, а у конкретного слоя.
+    private readonly Dictionary<string, Dictionary<string, int>> _rsiStateDirsOnlyCache = new(StringComparer.Ordinal);
+
+    private int GetRsiStateDirections(string? dir, string? state)
+    {
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(state)) return 1;
+
+        if (!_rsiStateDirsOnlyCache.TryGetValue(dir!, out var map))
+        {
+            map = new Dictionary<string, int>(StringComparer.Ordinal);
+            try
+            {
+                string metaPath = Path.Combine(dir!, "meta.json");
+                if (File.Exists(metaPath))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(metaPath));
+                    if (doc.RootElement.TryGetProperty("states", out var states) &&
+                        states.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var s in states.EnumerateArray())
+                        {
+                            if (!s.TryGetProperty("name", out var n)) continue;
+                            int d = s.TryGetProperty("directions", out var de) ? de.GetInt32() : 1;
+                            map[n.GetString() ?? ""] = d;
+                        }
+                    }
+                }
+            }
+            catch { }
+            _rsiStateDirsOnlyCache[dir!] = map;
+        }
+
+        return map.TryGetValue(state!, out var dd) ? dd : 1;
+    }
+
+
     // === Метаданные прототипа (обход цепочки parent: один раз на protoId) ===
     // Всё, что ниже, раньше резолвилось на КАЖДЫЙ объект в КАЖДОМ кадре: слои
     // (GetLayers возвращал новый List даже когда слоёв нет), offset и IsStructure
@@ -4277,6 +4408,32 @@ public partial class Renderer
                 var layers = _indexer.GetLayers(protoId);
                 meta.Layers = layers.Count > 0 ? layers : null;
 
+                // Есть ли направленный (>=4) видимый слой. Для термомашин тело 1-напр.,
+                // а слой трубы 4-напр. — такой элемент в игре вращается (поворот выбирает
+                // кадр трубы), поэтому при наличии такого слоя поворот структуры не глушим.
+                if (meta.Layers != null)
+                {
+                    string? baseDir = _indexer.GetRsiDirectory(protoId);
+                    foreach (var layer in meta.Layers)
+                    {
+                        if (!layer.Visible) continue;
+
+                        string? dir = baseDir;
+                        if (!string.IsNullOrEmpty(layer.RsiPath) || !string.IsNullOrEmpty(layer.SpritePath))
+                        {
+                            var lp = _indexer.GetLayerTexturePath(protoId, layer.SpritePath, layer.RsiPath, layer.State, null);
+                            if (!string.IsNullOrEmpty(lp)) dir = Path.GetDirectoryName(lp);
+                        }
+
+                        if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(layer.State) &&
+                            GetRsiStateDirections(dir, layer.State) >= 4)
+                        {
+                            meta.HasDirectionalLayer = true;
+                            break;
+                        }
+                    }
+                }
+
                 meta.SpriteOffset = _indexer.GetSpriteOffset(protoId);
 
                 var proto = _indexer.FindPrototype(protoId);
@@ -4289,6 +4446,10 @@ public partial class Renderer
 
                 // snapCardinals: спрайт не вращается при повороте (гироскоп и т.п.)
                 meta.SnapCardinals = _indexer.GetSnapCardinals(protoId);
+
+                // RSI-пути трёх слоёв трубы (AtmosPipeLayers) — для машин, у которых
+                // слой трубы переключается не прототипами Alt1/Alt2, а альтернативным RSI.
+                meta.PipeLayerRsiPaths = _indexer.GetPipeLayerRsiPaths(protoId);
 
                 // directions у индексатора — самый дорогой вызов (File.ReadAllText
                 // meta.json + разбор JSON), поэтому и кэшируется здесь
@@ -4350,8 +4511,12 @@ public partial class Renderer
         if (string.IsNullOrEmpty(protoId)) return rotation;
         if (IsFreeRotatableShutterBlast(protoId!)) return rotation;
         var meta = GetProtoMeta(protoId!);
-        // snapCardinals: true — спрайт симметричный, вращение не отображается (гироскоп)
-        if (meta.SnapCardinals) return 0f;
+        // snapCardinals: true — 1-направленный спрайт "прибит" без поворота (гироскоп).
+        // НО если у прототипа есть 4-направленный слой (как труба у термомашины), поворот
+        // нужен для выбора кадра этого слоя — не глушим (тело в DrawLayeredTexturedRect
+        // всё равно останется прямым, т.к. у 1-направленных слоёв при snapCardinals
+        // аффинный поворот не применяется).
+        if (meta.SnapCardinals && !meta.HasDirectionalLayer) return 0f;
         // Диагональные стены/окна (IconSmooth mode: Diagonal): у них directions у
         // state0/state1 нет (==1), но они РАЗВОРАЧИВАЮТСЯ поворотом сущности колёсиком —
         // спрайт остаётся тем же, просто аффинно поворачивается. Поэтому для них поворот
@@ -4362,7 +4527,9 @@ public partial class Renderer
             meta.IconSmooth.Mode.Equals("Diagonal", StringComparison.OrdinalIgnoreCase)
             || protoId!.Contains("Diagonal", StringComparison.OrdinalIgnoreCase);
         if (isDiagonalSmooth) return rotation;
-        return meta.IsStructure && meta.StateDirections < 4 ? 0f : rotation;
+        // Структура без направленных кадров обычно смотрит на юг. Но если есть хотя бы
+        // один 4-направленный слой (труба термомашины и т.п.) — поворот сохраняем.
+        return meta.IsStructure && meta.StateDirections < 4 && !meta.HasDirectionalLayer ? 0f : rotation;
     }
 
     /// <summary>
@@ -4982,7 +5149,7 @@ public partial class Renderer
     /// <summary>
     /// Помечает только кэши РЕНДЕРА грида грязными, не трогая TileGrid: для операций,
     /// которые меняют набор/позиции/типы декалей (пересчёт узора декальрула), но не
-    /// тайлы-стены/пол/двери. Очередь отрисовки (GetDrawItems) кэшируется по числу
+    /// тайлы-стены/пол/двери. Очередь отрисовки (GetDrawQueue) кэшируется по числу
     /// сущностей/декалей, и при замене одних декалей другими их число может не
     /// измениться — без инвалидации рендер показывал бы старый узор, пока слой не
     /// переключили. Заодно сбрасываем чанки пола, которые тоже лежат в кэше рендера.
@@ -5037,7 +5204,7 @@ public partial class Renderer
             gg.FillRectangle(brush, r);
             using var pen = new Pen(Color.FromArgb(180, 0, 0, 0), 1);
             gg.DrawRectangle(pen, r);
-        }, previewRotation);
+        }, previewRotation, null, _previewPipeLayer);
     }
 
 
@@ -5555,7 +5722,7 @@ public partial class Renderer
     /// valid = false используется для привязок, у которых в этой клетке нет
     /// подходящего прототипа (например комод вне комнаты главы).
     /// </summary>
-    public void SetEntityPreview(float x, float y, float rotation, string proto, string? decalColor = null, bool valid = true)
+    public void SetEntityPreview(float x, float y, float rotation, string proto, string? decalColor = null, bool valid = true, int pipeLayer = 0)
     {
         _previewEntityX = x;
         _previewEntityY = y;
@@ -5563,6 +5730,7 @@ public partial class Renderer
         _previewEntityProto = proto;
         _previewDecalColor = decalColor;
         _previewEntityValid = valid;
+        _previewPipeLayer = pipeLayer;
         _showEntityPreview = true;
     }
 

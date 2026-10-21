@@ -341,7 +341,10 @@ public class PrototypeIndexer
     // класса Prototype (добавляешь/удаляешь/переименовываешь свойство) — старые
     // кэши на диске автоматически перестанут подхватываться и пересоберутся с нуля.
 
-    private const int CacheFormatVersion = 31;
+    // v33: добавлены пути RSI трёх слоёв из AtmosPipeLayers (PipeLayerRsiPaths) —
+    // у машин (термомашины и т.п.) слои трубы задаются альтернативными RSI, а не
+    // прототипами Alt1/Alt2. Старые кэши не содержат этого поля — пересобираем.
+    private const int CacheFormatVersion = 33;
 
     private class CacheEnvelope
     {
@@ -655,8 +658,15 @@ public class PrototypeIndexer
         // что pos/rot у Transform). Значение задано для южной (rotation=0)
         // ориентации спрайта; поворот под текущую facing-direction сущности
         // считается в Renderer.DrawTexturedRect через GetSpriteOffset.
-        var offsetMatch = Regex.Match(block, @"offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
-        if (offsetMatch.Success)
+        //
+        // ВАЖНО: ищем ТОЛЬКО внутри блока компонента Sprite и только на отступе его
+        // СОБСТВЕННЫХ полей. Раньше offset искался по всему блоку сущности, и первым
+        // совпадением ловился offset чужого компонента (Eye/PointLight и пр.) либо offset
+        // отдельного СЛОЯ (layers[].offset) — из-за этого весь спрайт сущности сдвигался
+        // на чужое небольшое смещение (обычно немного вверх).
+        var spriteBlockForOffset = ExtractComponentBlock(block, "Sprite");
+        var offsetMatch = FindSpriteTopLevelOffset(spriteBlockForOffset);
+        if (offsetMatch != null && offsetMatch.Success)
         {
             proto.OffsetX = float.Parse(offsetMatch.Groups[1].Value, CultureInfo.InvariantCulture);
             proto.OffsetY = float.Parse(offsetMatch.Groups[2].Value, CultureInfo.InvariantCulture);
@@ -787,7 +797,81 @@ public class PrototypeIndexer
             if (mNodeGroup.Success) proto.CableNodeGroup = mNodeGroup.Groups[1].Value;
         }
 
+        // AtmosPipeLayers — три слоя трубы у машин (термомашины и т.п.) задаются не
+        // отдельными прототипами Alt1/Alt2, а альтернативными RSI на слой:
+        //   - type: AtmosPipeLayers
+        //     spriteLayersRsiPaths:
+        //       enum.PipeVisualLayers.Pipe:
+        //         Primary:   .../thermomachine.rsi
+        //         Secondary: .../thermomachine_alt1.rsi
+        //         Tertiary:  .../thermomachine_alt2.rsi
+        var atomPipeLayersBlock = ExtractComponentBlock(block, "AtmosPipeLayers");
+        if (!string.IsNullOrWhiteSpace(atomPipeLayersBlock))
+        {
+            var parsed = ParseSpriteLayersRsiPaths(atomPipeLayersBlock);
+            if (parsed.Count > 0) proto.PipeLayerRsiPaths = parsed;
+        }
+
         return proto;
+    }
+
+    /// <summary>
+    /// Разбирает секцию "spriteLayersRsiPaths:" компонента AtmosPipeLayers в карту
+    /// map-ключ слоя → [Primary, Secondary, Tertiary] RSI-пути (пустые строки допустимы).
+    /// </summary>
+    private Dictionary<string, string[]> ParseSpriteLayersRsiPaths(string atmosBlock)
+    {
+        var result = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var lines = atmosBlock.Replace("\r\n", "\n").Split('\n');
+
+        bool inSection = false;
+        int sectionIndent = -1;
+        string? currentKey = null;
+        int keyIndent = -1;
+
+        foreach (var raw in lines)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            var trimmed = raw.TrimStart();
+            int indent = raw.Length - trimmed.Length;
+
+            if (!inSection)
+            {
+                if (Regex.IsMatch(trimmed, @"^spriteLayersRsiPaths:\s*$"))
+                {
+                    inSection = true;
+                    sectionIndent = indent;
+                }
+                continue;
+            }
+
+            if (indent <= sectionIndent) break; // вышли из секции
+
+            // Ключ слоя: "enum.Xxx.Yyy:" без значения.
+            var keyMatch = Regex.Match(trimmed, @"^(\S.*?):\s*$");
+            if (keyMatch.Success)
+            {
+                currentKey = keyMatch.Groups[1].Value.Trim();
+                keyIndent = indent;
+                if (!result.ContainsKey(currentKey)) result[currentKey] = new string[3];
+                continue;
+            }
+
+            // Значение пути для текущего ключа.
+            var kv = Regex.Match(trimmed, @"^(Primary|Secondary|Tertiary):\s*([^\s#]+)");
+            if (kv.Success && currentKey != null && indent > keyIndent)
+            {
+                int idx = kv.Groups[1].Value == "Primary" ? 0
+                        : kv.Groups[1].Value == "Secondary" ? 1 : 2;
+                result[currentKey][idx] = NormalizeTexturePath(kv.Groups[2].Value);
+            }
+        }
+
+        // Ключи без единого пути не нужны.
+        foreach (var k in result.Keys.ToList())
+            if (result[k].All(string.IsNullOrEmpty)) result.Remove(k);
+
+        return result;
     }
 
     /// <summary>
@@ -832,6 +916,49 @@ public class PrototypeIndexer
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Находит "offset: X,Y" среди ПРЯМЫХ полей вычлененного блока компонента Sprite
+    /// (см. ExtractComponentBlock). Вложенные offset'ы отдельного слоя (внутри "layers:")
+    /// и поля других компонентов сюда не попадают: они лежат на другом отступе.
+    /// Нужно, чтобы смещение применялось ко всему спрайту только когда оно задано
+    /// самому компоненту Sprite, а не слою или постороннему компоненту.
+    /// </summary>
+    private static Match? FindSpriteTopLevelOffset(string spriteBlock)
+    {
+        if (string.IsNullOrWhiteSpace(spriteBlock)) return null;
+
+        var lines = spriteBlock.Replace("\r\n", "\n").Split('\n');
+
+        // Отступ прямых полей компонента — минимальный отступ среди строк "ключ:".
+        // Строка "- type: Sprite" и элементы списков ("- state: ...", "layers:") не
+        // опускают этот отступ ниже, так как "- ..." пропускаем, а "layers:" стоит на
+        // том же уровне, что и остальные поля.
+        int fieldIndent = int.MaxValue;
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith('-')) continue;
+            if (!Regex.IsMatch(trimmed, @"^[A-Za-z_]\w*\s*:")) continue;
+            fieldIndent = Math.Min(fieldIndent, line.Length - trimmed.Length);
+        }
+
+        if (fieldIndent == int.MaxValue) return null;
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+            if (indent != fieldIndent) continue;
+
+            var m = Regex.Match(trimmed, @"^offset:\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)");
+            if (m.Success) return m;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1294,6 +1421,35 @@ public class PrototypeIndexer
     public (float x, float y) GetSpriteOffset(string id)
     {
         return FindOffsetRecursive(id, 0);
+    }
+
+    /// <summary>
+    /// RSI-пути трёх слоёв трубы из AtmosPipeLayers (map-ключ слоя → [Primary,
+    /// Secondary, Tertiary]) с учётом наследования по цепочке parent:. Null —
+    /// компонента нет ни у прототипа, ни у предков.
+    /// </summary>
+    public Dictionary<string, string[]>? GetPipeLayerRsiPaths(string id)
+    {
+        return FindPipeLayerRsiPathsRecursive(id, 0);
+    }
+
+    private Dictionary<string, string[]>? FindPipeLayerRsiPathsRecursive(string id, int depth)
+    {
+        if (depth > 10) return null;
+
+        var proto = FindPrototype(id);
+        if (proto == null) return null;
+
+        if (proto.PipeLayerRsiPaths.Count > 0)
+            return proto.PipeLayerRsiPaths;
+
+        foreach (var parent in proto.Parents)
+        {
+            var result = FindPipeLayerRsiPathsRecursive(parent, depth + 1);
+            if (result != null) return result;
+        }
+
+        return null;
     }
 
     /// <summary>

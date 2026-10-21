@@ -233,6 +233,7 @@ public class YAMLLoader
                 float posX = 0, posY = 0;
                 float rotation = 0;
                 int parent = 2;
+                int pipeLayer = 0;
 
                 foreach (var compObj in transformComponents)
                 {
@@ -269,6 +270,15 @@ public class YAMLLoader
                         if (comp.TryGetValue("parent", out var parentObj))
                         {
                             parent = Convert.ToInt32(parentObj);
+                        }
+                    }
+                    else if (typeObj.ToString() == "AtmosPipeLayers")
+                    {
+                        // Слой трубы машины (термомашины и т.п.): Primary=0, Secondary=1, Tertiary=2.
+                        if (comp.TryGetValue("pipeLayer", out var plObj))
+                        {
+                            var pl = plObj.ToString();
+                            pipeLayer = pl == "Tertiary" ? 2 : pl == "Secondary" ? 1 : 0;
                         }
                     }
                 }
@@ -363,6 +373,7 @@ public class YAMLLoader
                         X = genericX,
                         Y = genericY,
                         Rotation = rotation,
+                        PipeLayer = pipeLayer,
                         ParentGridUid = parent
                     };
 

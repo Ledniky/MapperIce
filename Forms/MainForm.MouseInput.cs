@@ -876,7 +876,7 @@ public partial class MainForm
                         }
                         else
                         {
-                            grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation });
+                            grid.Entities.Add(new MapEntity { X = finalX, Y = finalY, Proto = _protoToPlace, Rotation = _currentEntityRotation, PipeLayer = _currentEntityPipeLayer });
                         }
                     }
 
@@ -1538,8 +1538,169 @@ public partial class MainForm
             UpdatePowerJunctionPreview();
     }
 
+    /// <summary>
+    /// Варианты трёх слоёв для прототипа атмос-элемента: X, XAlt1, XAlt2.
+    /// В игре у труб, углов, насосов, клапанов, вентиляций и прочих атмос-устройств
+    /// именно три слоя, и они существуют отдельными прототипами с суффиксами
+    /// Alt1/Alt2. Возвращает только реально существующие в индексе прототипы в
+    /// порядке базовый → Alt1 → Alt2. Пустой список — у элемента нет трёх слоёв.
+    /// </summary>
+    private List<string> GetPrototypePipeLayerVariants(string protoId)
+    {
+        // Снимаем уже надетый суффикс слоя, чтобы получить базовое имя.
+        string baseId = protoId;
+        if (baseId.EndsWith("Alt1", StringComparison.Ordinal)) baseId = baseId[..^4];
+        else if (baseId.EndsWith("Alt2", StringComparison.Ordinal)) baseId = baseId[..^4];
+
+        var variants = new List<string>(3);
+        foreach (var cand in new[] { baseId, baseId + "Alt1", baseId + "Alt2" })
+            if (_indexer.FindPrototype(cand) != null)
+                variants.Add(cand);
+
+        // Меньше двух слоёв — переключать нечего.
+        return variants.Count >= 2 ? variants : new List<string>();
+    }
+
+    /// <summary>
+    /// Циклически переключает слой размещаемого элемента (меняет прототип на
+    /// соседний по тройке X / XAlt1 / XAlt2). direction: +1 — следующий слой,
+    /// -1 — предыдущий. true — слой изменился.
+    /// </summary>
+    private bool TryCyclePrototypePipeLayer(int direction)
+    {
+        if (string.IsNullOrEmpty(_protoToPlace)) return false;
+
+        // Трубы поставляются отдельными прототипами X / XAlt1 / XAlt2 — меняем прототип.
+        var variants = GetPrototypePipeLayerVariants(_protoToPlace!);
+        if (variants.Count >= 2)
+        {
+            int idx = variants.IndexOf(_protoToPlace!);
+            if (idx < 0) idx = 0;
+            idx = ((idx + direction) % variants.Count + variants.Count) % variants.Count;
+            _protoToPlace = variants[idx];
+            return true;
+        }
+
+        // У машин (термомашины и т.п.) слои трубы заданы компонентом AtmosPipeLayers —
+        // переключаем выбранный слой: 0=Primary, 1=Secondary, 2=Tertiary.
+        if (_indexer.GetPipeLayerRsiPaths(_protoToPlace!) != null)
+        {
+            _currentEntityPipeLayer = ((_currentEntityPipeLayer + direction) % 3 + 3) % 3;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Ставит превью размещаемого прототипа под последнюю позицию мыши — тот же
+    /// расчёт позиции, что и в OnMouseMove/OnMouseWheel для PlacePrototype.
+    /// </summary>
+    private void SetPrototypePreviewAtLastMouse()
+    {
+        if (string.IsNullOrEmpty(_protoToPlace)) return;
+
+        float previewX, previewY;
+        bool isFirelock = _protoToPlace == "Firelock" || _protoToPlace == "FirelockGlass";
+        if (isFirelock)
+        {
+            var tile = GetTilePosition(_lastMousePosition);
+            previewX = tile.x;
+            previewY = tile.y;
+        }
+        else if (_snapEntityToCenter)
+        {
+            var tile = GetTilePosition(_lastMousePosition);
+            previewX = tile.x + _centerOffset.X;
+            previewY = tile.y + _centerOffset.Y;
+        }
+        else
+        {
+            var precise = GetPrecisePosition(_lastMousePosition);
+            previewX = precise.x;
+            previewY = precise.y;
+        }
+
+        var proto = _indexer.FindPrototype(_protoToPlace);
+        bool isDecal = proto != null && proto.Type == "decal";
+        _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace!,
+            isDecal ? _decalColor : null, true, _currentEntityPipeLayer);
+    }
+
+    // Инструменты рисования труб в порядке панели: L1 = Normal, L2 = Distra, L3 = Waste.
+    private static readonly ToolManager.Tool[] _pipeLayerTools =
+    {
+        ToolManager.Tool.PipeNormal,
+        ToolManager.Tool.PipeDistra,
+        ToolManager.Tool.PipeWaste
+    };
+
+    private static bool IsPipeLayerTool(ToolManager.Tool tool) =>
+        tool is ToolManager.Tool.PipeNormal or ToolManager.Tool.PipeDistra or ToolManager.Tool.PipeWaste;
+
+    /// <summary>Циклически переключает активный слой рисования труб (L1/L2/L3).</summary>
+    private void CyclePipeLayerTool(int direction)
+    {
+        int idx = Array.IndexOf(_pipeLayerTools, _toolManager.CurrentTool);
+        if (idx < 0) idx = 0;
+        idx = ((idx + direction) % _pipeLayerTools.Length + _pipeLayerTools.Length) % _pipeLayerTools.Length;
+        // ForceSetTool, а не SetTool: SetTool на том же инструменте сбрасывает в None.
+        _toolManager.ForceSetTool(_pipeLayerTools[idx]);
+    }
+
+    /// <summary>
+    /// Переключает слой трубы (AtmosPipeLayers) у выделенных машин, у которых слой
+    /// вообще есть (термомашины и т.п.). true — хоть одной сущности слой изменён.
+    /// </summary>
+    private bool TryCycleSelectedPipeLayer(int direction)
+    {
+        var targets = _selectedObjects
+            .OfType<MapEntity>()
+            .Where(e => _indexer.GetPipeLayerRsiPaths(e.Proto) != null)
+            .ToList();
+        if (targets.Count == 0) return false;
+
+        foreach (var e in targets)
+            e.PipeLayer = ((e.PipeLayer + direction) % 3 + 3) % 3;
+
+        SaveState();
+        return true;
+    }
+
     private void OnMouseWheel(object? sender, MouseEventArgs e)
     {
+        // Shift+колесо при размещении прототипа — переключение СЛОЯ трубы. В игре у
+        // атмос-элементов три слоя, это прототипы X / XAlt1 / XAlt2 (труба, угол,
+        // насос, клапан, вентиляция и т.п.). Меняем вариант размещаемого элемента и
+        // сразу обновляем превью. Если у элемента трёх слоёв нет — не перехватываем
+        // (Shift+колесо дальше работает как зум).
+        if (ModifierKeys.HasFlag(Keys.Shift) &&
+            _toolManager.CurrentTool == ToolManager.Tool.PlacePrototype &&
+            TryCyclePrototypePipeLayer(e.Delta > 0 ? 1 : -1))
+        {
+            SetPrototypePreviewAtLastMouse();
+            Render();
+            return;
+        }
+
+        // Shift+колесо на инструменте рисования труб — переключение активного слоя
+        // (L1/L2/L3), чтобы не тянуться к кнопкам панели.
+        if (ModifierKeys.HasFlag(Keys.Shift) && IsPipeLayerTool(_toolManager.CurrentTool))
+        {
+            CyclePipeLayerTool(e.Delta > 0 ? 1 : -1);
+            Render();
+            return;
+        }
+        // Shift+колесо на инструменте «Перемещение» — переключение слоя трубы
+        // (AtmosPipeLayers) у выделенных машин (термомашины и т.п.).
+        if (ModifierKeys.HasFlag(Keys.Shift) &&
+            _toolManager.CurrentTool == ToolManager.Tool.Move &&
+            TryCycleSelectedPipeLayer(e.Delta > 0 ? 1 : -1))
+        {
+            Render();
+            return;
+        }
+
         // Камера: колёсико перебирает стены, примыкающие к клетке под курсором, —
         // разворот камеры сразу виден в превью (см. ResolveLinkedEntityPlacement).
         if (_toolManager.CurrentTool == ToolManager.Tool.PlaceCamera && !ModifierKeys.HasFlag(Keys.Control))
@@ -1612,7 +1773,7 @@ public partial class MainForm
                 var wheelProto = _indexer.FindPrototype(_protoToPlace);
                 bool wheelIsDecal = wheelProto != null && wheelProto.Type == "decal";
                 _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace,
-                    wheelIsDecal ? _decalColor : null);
+                    wheelIsDecal ? _decalColor : null, true, _currentEntityPipeLayer);
             }
 
 
@@ -1825,7 +1986,7 @@ public partial class MainForm
             var moveProto = _indexer.FindPrototype(_protoToPlace);
             bool moveIsDecal = moveProto != null && moveProto.Type == "decal";
             _renderer.SetEntityPreview(previewX, previewY, _currentEntityRotation, _protoToPlace,
-                moveIsDecal ? _decalColor : null);
+                moveIsDecal ? _decalColor : null, true, _currentEntityPipeLayer);
             Render();
             return;
         }

@@ -319,11 +319,6 @@ C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\Mapp
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\gigatool\mapperbuild\MapperIce.pdb
-C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\Debug\net10.0-windows\MapperIce.exe
-C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\Debug\net10.0-windows\MapperIce.deps.json
-C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\Debug\net10.0-windows\MapperIce.runtimeconfig.json
-C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\Debug\net10.0-windows\MapperIce.dll
-C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\Debug\net10.0-windows\MapperIce.pdb
 D:\My programs\MapperIce\obj\checkbuild\Debug\net10.0-windows\MapperIce.exe
 D:\My programs\MapperIce\obj\checkbuild\Debug\net10.0-windows\MapperIce.deps.json
 D:\My programs\MapperIce\obj\checkbuild\Debug\net10.0-windows\MapperIce.runtimeconfig.json
@@ -371,3 +366,8 @@ C:\Users\Администратор\AppData\Local\Temp\mi_build_check2\MapperIce
 C:\Users\Администратор\AppData\Local\Temp\mi_build_check2\MapperIce.runtimeconfig.json
 C:\Users\Администратор\AppData\Local\Temp\mi_build_check2\MapperIce.dll
 C:\Users\Администратор\AppData\Local\Temp\mi_build_check2\MapperIce.pdb
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.exe
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.deps.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.runtimeconfig.json
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.dll
+C:\Users\Администратор\AppData\Local\Temp\gigatool\mi-build\MapperIce.pdb

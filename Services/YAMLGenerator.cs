@@ -1967,6 +1967,14 @@ public static class YAMLGenerator
                 sb.AppendLine($"      pos: {posX.ToString("0.000000").Replace(',', '.')},{posY.ToString("0.000000").Replace(',', '.')}");
                 sb.AppendLine($"      parent: {_exportParentUid}");
 
+                // Слой трубы у машин с AtmosPipeLayers (термомашины и т.п.). Primary —
+                // значение по умолчанию, поэтому пишем компонент только для Secondary/Tertiary.
+                if (entity.PipeLayer > 0)
+                {
+                    sb.AppendLine($"    - type: AtmosPipeLayers");
+                    sb.AppendLine($"      pipeLayer: {(entity.PipeLayer == 2 ? "Tertiary" : "Secondary")}");
+                }
+
                 // Связи беспроводной сети (для кнопок/рычагов): DeviceLinkSource.linkedPorts
                 if (entity.NetworkLinks != null && entity.NetworkLinks.Count > 0)
                 {
