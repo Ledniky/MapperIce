@@ -45,6 +45,8 @@ public class Brig : SecurityRoomType
     public override Color LineColor => Color.FromArgb(255, 180, 50, 50);
     public override string? HolopadProto => "HolopadSecurityBrig";
     public override string? LockerProto => "WardrobePrisonFilled";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetSpawner";
     public override int Priority => 15;
 }
 

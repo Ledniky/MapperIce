@@ -108,7 +108,7 @@ public partial class Renderer
 
                     // Трубы и провода — реальные спрайты из репозитория (композицию пол/стены
                     // они не перекрывают как линии-оверлеи — каждый узел рисуется своим спрайтом).
-                    DrawPipeSprites(g, grid, tileSize, viewOffset, gridOffset, visibleRect);
+                    DrawPipeSprites(g, grid, GetUnifiedPipes(grid), tileSize, viewOffset, gridOffset, visibleRect);
                     DrawWireSprites(g, grid, tileSize, viewOffset, gridOffset, visibleRect);
                 }
             }
@@ -181,21 +181,31 @@ public partial class Renderer
     /// <summary>
     /// Рисует все трубы грида реальными спрайтами прототипов из репозитория (как при
     /// экспорте в YAML), а не линиями-оверлеями. Утилизация (Util) — DisposalPipe*,
-    /// обычные слои — GasPipe*Alt1/Alt2 по топологии соседей.
+    /// обычные слои — GasPipe*Alt1/Alt2 по топологии соседей. На вход принимается
+    /// ОБЪЕДИНЁННЫЙ список узлов (PipeEntity из инструмента + трубы из репозитория),
+    /// поэтому топология и слияние считаются по единой сетке для обеих групп.
     /// </summary>
-    private void DrawPipeSprites(Graphics g, Grid grid, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
+    private void DrawPipeSprites(Graphics g, Grid grid, List<PipeEntity> pipes, int tileSize, PointF viewOffset, PointF gridOffset, RectangleF visibleRect)
     {
-        var pipes = grid.Entities.OfType<PipeEntity>().ToList();
         if (pipes.Count == 0) return;
-        pipes = pipes.Where(p => IsPointVisible(p.X, p.Y, visibleRect)).ToList();
-        if (pipes.Count == 0) return;
+        var visiblePipes = pipes
+            .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
+            .ToList();
+        if (visiblePipes.Count == 0) return;
 
-        foreach (var group in pipes.GroupBy(p => p.PipeType))
+        float tileF = tileSize;
+        foreach (var group in visiblePipes.GroupBy(p => p.PipeType))
         {
             var groupList = group.ToList();
             foreach (var pipe in groupList)
             {
                 var neighbors = YAMLGenerator.GetNeighbors(groupList, (int)pipe.X, (int)pipe.Y);
+
+                // Узел хранится в ЦЕЛЫХ координатах тайла, а DrawSingleEntity рисует спрайт
+                // по ЦЕНТРУ клетки (сам вычитает 0.5 из координаты, см. ToRect). Поэтому
+                // передаём центр клетки (x+0.5, y+0.5) — как для проводов (DrawWireSprites).
+                float drawX = pipe.X + 0.5f;
+                float drawY = pipe.Y + 0.5f;
 
                 if (pipe.PipeType == "Util")
                 {
@@ -203,7 +213,7 @@ public partial class Renderer
                     bool isMarked = pipe.HasFilterMarker || !string.IsNullOrEmpty(pipe.FilterLabel);
                     if (isMarked && proto == "DisposalPipe")
                         proto = "DisposalTagger";
-                    DrawSingleEntity(g, proto, pipe.X, pipe.Y, rotation, tileSize, viewOffset, gridOffset);
+                    DrawSingleEntity(g, proto, drawX, drawY, rotation, tileSize, viewOffset, gridOffset);
                     continue;
                 }
 
@@ -213,10 +223,91 @@ public partial class Renderer
                     "Waste" => "Alt1",
                     _ => ""
                 };
+
+                // Концевой узел (ровно 1 сосед) — тело трубы НЕ рисуем: в игре на конце
+                // сегмента стоит вентиляция/приёмник (или просто обрыв), а полное тело
+                // прямой трубы на зависшем конце выглядело бы как продолжение сети.
+                if (neighbors.Count == 1)
+                    continue;
+
                 string protoName = YAMLGenerator.GetPipeProto(suffix, neighbors);
                 float rot = YAMLGenerator.GetPipeRotation(neighbors);
-                DrawSingleEntity(g, protoName, pipe.X, pipe.Y, rot, tileSize, viewOffset, gridOffset);
+
+                // Тело трубы рисуем с тонированием цветом сетевого слоя (AtmosPipeColor):
+                // сами спрайты труб — серые, и в игре Distra/Waste окрашиваются в свой цвет.
+                string? tintHex = GetPipeBodyTintHex(pipe.PipeType);
+                DrawPipeBody(g, protoName, drawX, drawY, rot, tintHex, tileSize, viewOffset, gridOffset);
+
+                // Коннекторы на каждой грани, где есть сосед того же слоя, сливают отдельные
+                // тела соседних клеток в один непрерывный отрезок — ровно как PipeAppearance
+                // в игре рисует pipeConnector поверх тела для каждого направления связи.
+                DrawPipeConnectors(g, pipe, neighbors, suffix, tintHex, tileSize, viewOffset, gridOffset);
             }
+        }
+    }
+
+    /// <summary>
+    /// Тонирующий цвет сетевого слоя газа — совпадает с экспортом AtmosPipeColor
+    /// (YAMLGenerator.GetPipeHexColor): Distra — синий, Waste — красный, Normal белый
+    /// (без тонирования). Утилизация обрабатывается отдельно (DisposalPipe*).
+    /// </summary>
+    private static string? GetPipeBodyTintHex(string pipeType)
+    {
+        return pipeType switch
+        {
+            "Distra" => "#0055CCFF",
+            "Waste" => "#990000FF",
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Рисует тело газовой трубы в клетке с заданным поворотом и тонированием.
+    /// </summary>
+    private void DrawPipeBody(Graphics g, string protoName, float drawX, float drawY, float rot, string? tintHex, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        var rect = ToRect(drawX, drawY, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+        DrawTexturedRect(g, protoName, rect, null, null, rot, tintHex);
+    }
+
+    /// <summary>
+    /// Соединяет тела соседних труб: поверх тела, на каждой грани с соседом того же слоя,
+    /// рисуется маленький коннектор (pipeConnector) — короткий «штуцер», который сшивает
+    /// две клетки в единый отрезок. Кадр коннектора выбирается по направлению грани,
+    /// цвет — тот же тонирующий цвет слоя.
+    /// </summary>
+    private void DrawPipeConnectors(Graphics g, PipeEntity pipe, List<(int dx, int dy)> neighbors,
+        string suffix, string? tintHex, int tileSize, PointF viewOffset, PointF gridOffset)
+    {
+        // Прототип-носитель RSI коннектора: у него в ресурсе лежит pipeConnector (свой .rsi
+        // для каждого слоя). Через GetRsiStatePath достаём именно стейт pipeConnector.
+        string hostProto = suffix == "Alt2" ? "GasPipeStraightAlt2"
+                         : suffix == "Alt1" ? "GasPipeStraightAlt1"
+                         : "GasPipeStraight";
+
+        string cacheKey = $"{hostProto}||pipeconnector";
+        Image? tex = GetOrLoadCableStateTexture(cacheKey, hostProto, "pipeConnector");
+        if (tex == null) return;
+
+        var cellRect = ToRect(pipe.X + 0.5f, pipe.Y + 0.5f, tileSize, viewOffset, gridOffset, -0.5f, -0.5f);
+
+        foreach (var (dx, dy) in neighbors)
+        {
+            // Кадр pipeConnector для направления грани: 4-направленный спрайт, выбор кадра
+            // делает GetSourceRect по углу. Юг=0, Восток=π/2, Север=π, Запад=3π/2.
+            float dirRot = dx == 1 ? (float)(Math.PI / 2)
+                         : dx == -1 ? (float)(3 * Math.PI / 2)
+                         : dy == -1 ? (float)Math.PI
+                         : 0f;
+
+            var src = GetSourceRect(cacheKey, tex, dirRot);
+            if (src.Width == 0 || src.Height == 0) continue;
+
+            // Печём коннектор с тонированием под этот размер/направление (без аффинного
+            // поворота — направление уже зашито в выбранный кадр).
+            var baked = GetBakedSprite(cacheKey, 0, tex, src, tileSize, tileSize, 0f, tintHex);
+            if (baked == null) continue;
+            DrawBakedSprite(g, baked, cellRect);
         }
     }
 

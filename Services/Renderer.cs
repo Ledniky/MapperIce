@@ -464,7 +464,10 @@ public partial class Renderer
                 // элементы на КОНЦАХ труб (утилизационные и почтовые юниты на слое U,
                 // вентиляции газовых слоёв L1..L3) должны оставаться видимыми — иначе
                 // вместе с трубами с карты пропадали бы и расставленные на них приёмники.
-                var gridPipes = _pipeBuilder.GetPipes(grid);
+                // Объединённый список труб: и PipeEntity (инструмент), и трубы из
+                // репозитория (GasPipe*/Disposal*) приводятся к одной сетке узлов,
+                // чтобы топология соседства (и слияние) считались по единому правилу.
+                var gridPipes = GetUnifiedPipes(grid);
                 var allPipes = gridPipes
                     .Where(p => IsPointVisible(p.X, p.Y, visibleRect))
                     .OrderBy(p => p.Y)
@@ -472,16 +475,18 @@ public partial class Renderer
 
                 if (ShowPipeOverlay)
                 {
-                    DrawPipeLinesBatch(g, allPipes, tileSize, viewOffset, gridOffset);
+                    // Трубы из репозитория и инструмента рисуются СПРАЙТАМИ с авто-выбором
+                    // типа, поворота по соседям и коннекторами (см. DrawPipeSprites) — так
+                    // они сливаются в единую сеть, как в игре. Толстые цветные линии и точки
+                    // между узлами больше не рисуем поверх спрайтов: они разбивали слитную
+                    // трубу на отдельные отрезки, из-за чего сеть выглядела несоединённой.
+                    DrawPipeSprites(g, grid, gridPipes, tileSize, viewOffset, gridOffset, visibleRect);
 
                     // Маркеры фильтра — рисуем первыми, чтобы стрелка и точка трубы были поверх
                     DrawFilterMarkers(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     // Стрелки направления потока — рисуем ДО точек, чтобы были сзади
                     DrawPipeFlowArrows(g, allPipes, tileSize, viewOffset, gridOffset);
-
-                    if (allPipes.Count > 0)
-                        DrawPipeDotsBatch(g, allPipes, tileSize, viewOffset, gridOffset);
 
                     if (_pipeBuilder.IsDrawing && _pipeBuilder.StartPoint.HasValue)
                     {
@@ -3043,6 +3048,11 @@ public partial class Renderer
             case DrawItemKind.Entity:
             {
                 var e = (MapEntity)item.Data;
+                // Трубы из репозитория (GasPipe*/Disposal*) при включённом оверлее труб
+                // уже нарисованы едиными спрайтами со слиянием (см. DrawPipeSprites) —
+                // здесь их обычный одиночный спрайт не рисуем, чтобы не было дубля.
+                if (e is not PipeEntity && ShowPipeOverlay && IsRepoPipeProto(e.Proto))
+                    break;
                 DrawSingleEntity(g, e.Proto, e.X, e.Y, e.Rotation, tileSize, viewOffset, gridOffset, pipeLayer: e.PipeLayer);
                 break;
             }
@@ -4759,6 +4769,55 @@ public partial class Renderer
             "Waste" => (q, -q), // сверху-справа
             _ => (0, 0)  // Normal, Util — по центру
         };
+    }
+
+    /// <summary>
+    /// Труба ли это, поставленная обычным прототипом из панели репозитория
+    /// (GasPipe*/Disposal*), а не PipeEntity инструмента труб. Такие сущности
+    /// участвуют в единой топологии труб вместе с PipeEntity (см. GetUnifiedPipes),
+    /// чтобы визуально сливаться с ними, как кабели/стены.
+    /// </summary>
+    private static bool IsRepoPipeProto(string? proto)
+    {
+        if (string.IsNullOrEmpty(proto)) return false;
+        return proto.StartsWith("GasPipe", StringComparison.OrdinalIgnoreCase)
+            || proto.StartsWith("Disposal", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Слой атмос-трубы по имени её прототипа из репозитория. Совпадает с экспортным
+    /// суффиксом YAMLGenerator (Alt2 → Distra, Alt1 → Waste), а утилизация — Disposal*.
+    /// </summary>
+    private static string RepoPipeLayer(string proto)
+    {
+        if (proto.StartsWith("Disposal", StringComparison.OrdinalIgnoreCase)) return "Util";
+        if (proto.Contains("Waste", StringComparison.OrdinalIgnoreCase)) return "Waste";
+        if (proto.EndsWith("Alt2", StringComparison.OrdinalIgnoreCase)) return "Distra";
+        if (proto.EndsWith("Alt1", StringComparison.OrdinalIgnoreCase)) return "Waste";
+        return "Normal";
+    }
+
+    /// <summary>
+    /// Объединённый список всех узлов-труб грида: и PipeEntity (инструмент труб),
+    /// и трубы, поставленные обычным прототипом из репозитория (GasPipe*/Disposal*).
+    /// Репо-трубы приводятся к тем же целочисленным координатам клетки, что и узлы
+    /// инструмента, чтобы топология соседства считалась по единой сетке.
+    /// </summary>
+    private List<PipeEntity> GetUnifiedPipes(Grid grid)
+    {
+        var result = _pipeBuilder.GetPipes(grid);
+        foreach (var e in grid.Entities)
+        {
+            if (e is PipeEntity) continue;
+            if (!IsRepoPipeProto(e.Proto)) continue;
+            result.Add(new PipeEntity
+            {
+                X = (int)Math.Floor(e.X),
+                Y = (int)Math.Floor(e.Y),
+                PipeType = RepoPipeLayer(e.Proto)
+            });
+        }
+        return result;
     }
 
     /// <summary>

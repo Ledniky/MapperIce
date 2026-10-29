@@ -25,7 +25,7 @@ public class Interrogation : SecurityPlusRoomType
     public override int Priority => 20;
 }
 
-public class Permabrig : SecurityPlusRoomType
+public class Permabrig : Brig
 {
     public override string Name => "Permabrig";
     public override string? FaxName => "Перма-бриг";
@@ -36,6 +36,18 @@ public class Permabrig : SecurityPlusRoomType
     public override Color LineColor => Color.FromArgb(255, 150, 50, 50);
     public override string? HolopadProto => "HolopadSecurityPerma";
     public override string? SuitStorageProto => "SuitStorageEVAPrisoner";
+    public override string? BedProto => "Bed";
+    public override string? BedsheetProto => "BedsheetSpawner";
+    public override int Priority => 20;
+}
+
+public class BrigHallway : Brig
+{
+    public override string Name => "BrigHallway";
+    public override string DisplayName => "Коридор брига";
+    public override string? FaxName => "Коридор брига";
+    public override string? HolopadProto => "HolopadSecurityBrig";
+    public override string? LockerProto => "LockerEvidence";
     public override int Priority => 20;
 }
 
